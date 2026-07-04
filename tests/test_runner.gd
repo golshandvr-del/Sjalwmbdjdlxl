@@ -2003,7 +2003,10 @@ func _scan_for_policy(path: String, out_violations: Array) -> void:
 				_scan_for_policy(full, out_violations)
 		else:
 			var ext: String = full.get_extension().to_lower()
-			if scanned_ext.has(ext) and not _is_in_localization(full) and not _is_in_docs(full):
+			# Mirror the linter: every .md file (anywhere, not just docs/) is
+			# documentation prose and may be Persian (e.g. AGENT_RULES.md,
+			# ci/README.md). Exempt it from the ASCII content scan.
+			if scanned_ext.has(ext) and ext != "md" and not _is_in_localization(full) and not _is_in_docs(full):
 				var file: FileAccess = FileAccess.open(full, FileAccess.READ)
 				if file != null:
 					var line_number: int = 0
