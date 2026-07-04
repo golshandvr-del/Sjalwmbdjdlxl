@@ -44,6 +44,15 @@ const LOCALIZATION_DIR: String = "localization"
 # keeping the CI gate permanently red and hiding the single real violation).
 const DOCS_DIR: String = "docs"
 
+# Markdown documentation (.md) is prose, not shipping source code. Design docs
+# and mandatory project notes are intentionally allowed to be in Persian no
+# matter WHERE they live (e.g. the top-level AGENT_RULES.md and ci/README.md are
+# Persian on purpose). The ASCII-only rule targets code, so every .md file is
+# exempt from the content scan (its file NAME is still checked for ASCII above).
+# This generalises the docs/ exemption so the CI gate is not turned red by a
+# Persian .md that happens to sit outside docs/.
+const MARKDOWN_EXTENSION: String = "md"
+
 var _violations: Array = []
 var _files_scanned: int = 0
 
@@ -91,6 +100,9 @@ func _maybe_scan_file(full: String) -> void:
 	if _is_in_localization(full):
 		return
 	if _is_in_docs(full):
+		return
+	# Any .md file anywhere is documentation prose (Persian allowed by policy).
+	if ext == MARKDOWN_EXTENSION:
 		return
 	_files_scanned += 1
 	var file: FileAccess = FileAccess.open(full, FileAccess.READ)
