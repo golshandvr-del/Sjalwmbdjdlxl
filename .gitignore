@@ -1,0 +1,37 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+/.import/
+export.cfg
+# NOTE (P8): export_presets.cfg IS committed on purpose so builds are
+# reproducible on any dev/CI machine (see docs/RELEASE.md). Do not ignore it.
+# export_presets.cfg
+
+# Imported translations (automatically generated from CSV files)
+*.translation
+
+# Mono-specific ignores
+.mono/
+data_*/
+mono_crash.*.json
+
+# Build artifacts / exports
+/build/
+/dist/
+*.pck
+*.zip
+*.apk
+*.aab
+*.exe
+*.dmg
+
+# User data / local saves
+user://
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*~
+*.swp
+.idea/
+.vscode/

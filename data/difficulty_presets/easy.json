@@ -1,0 +1,11 @@
+{
+  "id": "easy",
+  "display_name_key": "difficulty.easy.name",
+  "ai_think_interval": 25,
+  "ai_build_chance_pct": 35,
+  "ai_aggression": 0,
+  "player_resource_multiplier": 1.5,
+  "ai_resource_multiplier": 0.8,
+  "starting_resources": 200,
+  "ai_max_queue": 1
+}

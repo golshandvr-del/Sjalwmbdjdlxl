@@ -1,0 +1,164 @@
+[gd_scene format=3 uid="uid://chxprrson40p3"]
+
+[ext_resource type="Script" uid="uid://d0i01yq02jdb8" path="res://ui/shared/main_menu.gd" id="1_mainmenu"]
+
+[sub_resource type="GDScript" id="GDScript_bg"]
+script/source = "extends ColorRect"
+
+[node name="MainMenu" type="Control" unique_id=1936674764]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_mainmenu")
+
+[node name="Background" type="ColorRect" parent="." unique_id=1448779166]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0627451, 0.0745098, 0.105882, 1)
+script = SubResource("GDScript_bg")
+
+[node name="Center" type="CenterContainer" parent="." unique_id=1489088254]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Box" type="VBoxContainer" parent="Center" unique_id=1316648818]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Center/Box" unique_id=89300559]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.882353, 0.745098, 0.341176, 1)
+theme_override_font_sizes/font_size = 48
+text = "Project Nexus"
+horizontal_alignment = 1
+
+[node name="Status" type="Label" parent="Center/Box" unique_id=682915741]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.682353, 0.752941, 0.866667, 1)
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+
+[node name="MainPanel" type="VBoxContainer" parent="Center/Box" unique_id=1410312511]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SingleButton" type="Button" parent="Center/Box/MainPanel" unique_id=40488865]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Single Player"
+
+[node name="MultiplayerButton" type="Button" parent="Center/Box/MainPanel" unique_id=702878708]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Multiplayer"
+
+[node name="SettingsButton" type="Button" parent="Center/Box/MainPanel" unique_id=470800462]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Settings"
+
+[node name="ModEditorButton" type="Button" parent="Center/Box/MainPanel" unique_id=2099989503]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Mod Editor"
+
+[node name="MapEditorButton" type="Button" parent="Center/Box/MainPanel" unique_id=1470684492]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Map Editor"
+
+[node name="CustomGamesButton" type="Button" parent="Center/Box/MainPanel" unique_id=695802317]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Custom Games"
+
+[node name="SaveLoadButton" type="Button" parent="Center/Box/MainPanel" unique_id=1830964838]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Save / Load"
+
+[node name="LangButton" type="Button" parent="Center/Box/MainPanel" unique_id=1404531972]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Language: en"
+
+[node name="QuitButton" type="Button" parent="Center/Box/MainPanel" unique_id=1383482677]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Quit"
+
+[node name="SinglePanel" type="VBoxContainer" parent="Center/Box" unique_id=173922732]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SingleDesktopButton" type="Button" parent="Center/Box/SinglePanel" unique_id=1065697103]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Single Player (Desktop)"
+
+[node name="SingleMobileButton" type="Button" parent="Center/Box/SinglePanel" unique_id=1727045201]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Single Player (Mobile)"
+
+[node name="SingleBackButton" type="Button" parent="Center/Box/SinglePanel" unique_id=1637279984]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Back"
+
+[node name="MultiplayerPanel" type="VBoxContainer" parent="Center/Box" unique_id=550513911]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="OfflineButton" type="Button" parent="Center/Box/MultiplayerPanel" unique_id=995428868]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Offline (Local)"
+
+[node name="OnlineButton" type="Button" parent="Center/Box/MultiplayerPanel" unique_id=603628217]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Online"
+
+[node name="MpBackButton" type="Button" parent="Center/Box/MultiplayerPanel" unique_id=2126652001]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Back"
+
+[node name="OnlinePanel" type="VBoxContainer" parent="Center/Box" unique_id=203291145]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HostButton" type="Button" parent="Center/Box/OnlinePanel" unique_id=891455837]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Host Game"
+
+[node name="JoinButton" type="Button" parent="Center/Box/OnlinePanel" unique_id=1628081955]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Join Game"
+
+[node name="AddressEdit" type="LineEdit" parent="Center/Box/OnlinePanel" unique_id=350650980]
+custom_minimum_size = Vector2(320, 40)
+layout_mode = 2
+placeholder_text = "127.0.0.1"
+
+[node name="OnlineBackButton" type="Button" parent="Center/Box/OnlinePanel" unique_id=291632441]
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+text = "Back"

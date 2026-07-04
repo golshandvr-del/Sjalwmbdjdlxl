@@ -1,0 +1,16 @@
+{
+  "id": "heavy_soldier",
+  "display_name_key": "unit.heavy_soldier.name",
+  "category": "infantry",
+  "stats": {
+    "health": 200,
+    "move_speed": 1,
+    "attack_damage": 20,
+    "attack_range": 1,
+    "vision_range": 4
+  },
+  "cost": {
+    "resource_basic": 120
+  },
+  "build_time_ticks": 120
+}

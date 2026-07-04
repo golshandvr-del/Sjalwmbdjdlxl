@@ -1,0 +1,68 @@
+{
+  "id": "tech_tree_default",
+  "display_name_key": "tech.tree.default.name",
+  "nodes": [
+    {
+      "id": "improved_armor",
+      "display_name_key": "tech.improved_armor.name",
+      "cost": { "resource_basic": 100 },
+      "research_time_ticks": 120,
+      "requires": [],
+      "effects": [
+        { "type": "unit_stat_add", "category": "infantry", "stat": "max_health", "amount": 40 }
+      ]
+    },
+    {
+      "id": "improved_weapons",
+      "display_name_key": "tech.improved_weapons.name",
+      "cost": { "resource_basic": 120 },
+      "research_time_ticks": 140,
+      "requires": [],
+      "effects": [
+        { "type": "unit_stat_add", "category": "infantry", "stat": "attack_damage", "amount": 5 }
+      ]
+    },
+    {
+      "id": "advanced_optics",
+      "display_name_key": "tech.advanced_optics.name",
+      "cost": { "resource_basic": 90 },
+      "research_time_ticks": 100,
+      "requires": ["improved_armor"],
+      "effects": [
+        { "type": "unit_stat_add", "category": "infantry", "stat": "vision_range", "amount": 2 }
+      ]
+    },
+    {
+      "id": "veteran_doctrine",
+      "display_name_key": "tech.veteran_doctrine.name",
+      "cost": { "resource_basic": 200 },
+      "research_time_ticks": 180,
+      "requires": ["improved_weapons", "improved_armor"],
+      "effects": [
+        { "type": "veterancy_bonus", "amount": 1 }
+      ]
+    },
+    {
+      "id": "recon_training",
+      "display_name_key": "tech.recon_training.name",
+      "cost": { "resource_basic": 80 },
+      "research_time_ticks": 90,
+      "requires": [],
+      "effects": [
+        { "type": "unit_stat_add", "category": "recon", "stat": "vision_range", "amount": 2 },
+        { "type": "unit_stat_add", "category": "recon", "stat": "move_speed", "amount": 1 }
+      ]
+    },
+    {
+      "id": "armored_vehicles",
+      "display_name_key": "tech.armored_vehicles.name",
+      "cost": { "resource_basic": 220 },
+      "research_time_ticks": 200,
+      "requires": ["improved_armor"],
+      "effects": [
+        { "type": "unit_stat_add", "category": "armor", "stat": "max_health", "amount": 80 },
+        { "type": "unit_stat_add", "category": "armor", "stat": "attack_damage", "amount": 8 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+[gd_scene load_steps=3 format=3 uid="uid://nexuscustomgames1"]
+
+[ext_resource type="Script" path="res://ui/shared/custom_games.gd" id="1_custom"]
+
+[sub_resource type="GDScript" id="GDScript_bg"]
+script/source = "extends ColorRect"
+
+[node name="CustomGames" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_custom")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0627451, 0.0745098, 0.105882, 1)
+script = SubResource("GDScript_bg")
+
+[node name="Root" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Root"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.882353, 0.745098, 0.341176, 1)
+theme_override_font_sizes/font_size = 36
+text = "Custom Games"
+
+[node name="ScenarioList" type="ItemList" parent="Root"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="EmptyLabel" type="Label" parent="Root"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.682353, 0.752941, 0.866667, 1)
+text = "No installed scenarios found."
+
+[node name="Footer" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="PlayButton" type="Button" parent="Root/Footer"]
+custom_minimum_size = Vector2(160, 48)
+layout_mode = 2
+text = "Play"
+
+[node name="BackButton" type="Button" parent="Root/Footer"]
+custom_minimum_size = Vector2(160, 48)
+layout_mode = 2
+text = "Back"

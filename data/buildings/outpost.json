@@ -1,0 +1,37 @@
+{
+  "id": "outpost",
+  "display_name_key": "building.outpost.name",
+  "category": "command",
+  "stats": {
+    "health": 600,
+    "vision_range": 6
+  },
+  "produces": {
+    "resource_basic": 1
+  },
+  "buildable_units": ["soldier"],
+  "cost": {
+    "resource_basic": 120
+  },
+  "build_time_ticks": 90,
+  "territory_radius": 4,
+  "visual": {
+    "shape": "square",
+    "color": "#5AA0B0",
+    "texture": "textures/outpost.png",
+    "size_scale": 0.9,
+    "outline": true
+  },
+  "upgrades": {
+    "level_2": {
+      "display_name_key": "building.outpost.level_2.name",
+      "cost": { "resource_basic": 180 },
+      "upgrade_time_ticks": 120,
+      "requires_level": 1,
+      "effects": {
+        "max_health_add": 300,
+        "produces_add": { "resource_basic": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,136 @@
+[gd_resource type="Theme" load_steps=10 format=3 uid="uid://nexustheme060"]
+
+[ext_resource type="FontFile" path="res://assets/fonts/Vazirmatn-Regular.ttf" id="ui_font"]
+
+; nexus_theme.tres
+; ----------------------------------------------------------------------------
+; Project Nexus - Global UI Theme (P1.1, v0.6.0).
+;
+; A single, dark, "military strategy" flat theme applied project-wide via
+; project.godot -> gui/theme/custom. It gives every Button / Panel / Label a
+; consistent rounded, high-contrast look so the game stops looking like raw
+; engine defaults. Purely cosmetic -- never referenced by the simulation.
+;
+; Palette:
+;   bg      #12161d   panel background (near-black blue)
+;   panel   #1b212c   raised panels
+;   accent  #3d6fb4   interactive blue (buttons)
+;   accent+ #4d84d4   hover
+;   accent- #2c5290   pressed
+;   text    #e0e8f2   primary text
+; ----------------------------------------------------------------------------
+
+[sub_resource type="StyleBoxFlat" id="btn_normal"]
+bg_color = Color(0.239, 0.435, 0.706, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="btn_hover"]
+bg_color = Color(0.302, 0.518, 0.831, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="btn_pressed"]
+bg_color = Color(0.173, 0.322, 0.565, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="btn_disabled"]
+bg_color = Color(0.235, 0.267, 0.322, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="panel_box"]
+bg_color = Color(0.106, 0.129, 0.173, 0.941)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="popup_box"]
+bg_color = Color(0.106, 0.129, 0.173, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.239, 0.435, 0.706, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="line_edit_box"]
+bg_color = Color(0.071, 0.086, 0.118, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.239, 0.435, 0.706, 0.6)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+
+[resource]
+; P1.1 (v0.6.0): a bundled Vazirmatn face gives the whole UI a clean, readable
+; look with full Persian + Latin coverage, replacing the engine's fallback font.
+; Purely cosmetic -- never referenced by the simulation / deterministic hash.
+default_font = ExtResource("ui_font")
+default_font_size = 16
+Button/colors/font_color = Color(0.878, 0.909, 0.949, 1)
+Button/colors/font_hover_color = Color(1, 1, 1, 1)
+Button/colors/font_pressed_color = Color(0.784, 0.847, 0.925, 1)
+Button/colors/font_disabled_color = Color(0.549, 0.588, 0.647, 1)
+Button/styles/normal = SubResource("btn_normal")
+Button/styles/hover = SubResource("btn_hover")
+Button/styles/pressed = SubResource("btn_pressed")
+Button/styles/disabled = SubResource("btn_disabled")
+Button/styles/focus = SubResource("btn_hover")
+Label/colors/font_color = Color(0.878, 0.909, 0.949, 1)
+Panel/styles/panel = SubResource("panel_box")
+PanelContainer/styles/panel = SubResource("panel_box")
+OptionButton/styles/normal = SubResource("btn_normal")
+OptionButton/styles/hover = SubResource("btn_hover")
+OptionButton/styles/pressed = SubResource("btn_pressed")
+OptionButton/colors/font_color = Color(0.878, 0.909, 0.949, 1)
+PopupMenu/styles/panel = SubResource("popup_box")
+PopupMenu/colors/font_color = Color(0.878, 0.909, 0.949, 1)
+PopupMenu/colors/font_hover_color = Color(1, 1, 1, 1)
+ItemList/colors/font_color = Color(0.851, 0.902, 0.961, 1)
+ItemList/styles/panel = SubResource("panel_box")
+LineEdit/colors/font_color = Color(0.878, 0.909, 0.949, 1)
+LineEdit/styles/normal = SubResource("line_edit_box")
+CheckBox/colors/font_color = Color(0.878, 0.909, 0.949, 1)
+CheckButton/colors/font_color = Color(0.878, 0.909, 0.949, 1)

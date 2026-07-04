@@ -1,0 +1,33 @@
+{
+  "id": "skirmish_duel",
+  "display_name_key": "scenario.skirmish_duel.name",
+  "random_seed": 20240711,
+  "difficulty": "hard",
+  "map": {
+    "width": 24,
+    "height": 16,
+    "walls": [
+      [11, 0], [11, 1], [11, 2],
+      [12, 13], [12, 14], [12, 15],
+      [7, 8], [8, 8], [15, 7], [16, 7]
+    ]
+  },
+  "players": [
+    { "owner": 0, "is_human": true,  "start_resources": { "resource_basic": 200 } },
+    { "owner": 1, "is_human": false, "difficulty": "hard", "smart": true, "personality": "aggressive", "start_resources": { "resource_basic": 200 } }
+  ],
+  "buildings": [
+    { "type": "hq",       "owner": 0, "x": 2,  "y": 8 },
+    { "type": "barracks", "owner": 0, "x": 4,  "y": 8 },
+    { "type": "hq",       "owner": 1, "x": 21, "y": 8 },
+    { "type": "barracks", "owner": 1, "x": 19, "y": 8 }
+  ],
+  "units": [
+    { "type": "soldier", "owner": 0, "x": 3, "y": 6 },
+    { "type": "soldier", "owner": 0, "x": 3, "y": 10 },
+    { "type": "scout",   "owner": 0, "x": 4, "y": 7 },
+    { "type": "soldier", "owner": 1, "x": 20, "y": 6 },
+    { "type": "soldier", "owner": 1, "x": 20, "y": 10 },
+    { "type": "scout",   "owner": 1, "x": 19, "y": 7 }
+  ]
+}

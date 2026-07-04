@@ -1,0 +1,55 @@
+# Project Nexus - Continuous Integration (Phase 5, step 5.1).
+#
+# Two gates run on every push / pull request, both headless (no GPU needed):
+#   1) code-policy : enforces docs/CODE_POLICY.md (English-only source) via
+#                    tools/check_code_policy.gd.
+#   2) tests       : runs the deterministic unit + integration suite via
+#                    tests/test_runner.gd.
+#
+# Both use the same headless Godot 4.x binary. The project's global class cache
+# is generated first (godot --headless --editor --quit) so the test runner can
+# resolve class_name types like IModule on a fresh checkout.
+#
+# CODE LANGUAGE POLICY: English-only identifiers/comments.
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  GODOT_VERSION: "4.2.2"
+  GODOT_RELEASE: "stable"
+
+jobs:
+  code-policy:
+    name: CODE_POLICY (English-only) lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot (headless)
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip" -O godot.zip
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+      - name: Run the CODE_POLICY linter
+        run: godot --headless --path . --script res://tools/check_code_policy.gd
+
+  tests:
+    name: Headless unit + integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot (headless)
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip" -O godot.zip
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+      - name: Import project (generate global class cache)
+        run: godot --headless --editor --quit --path . || true
+      - name: Run the test suite
+        run: godot --headless --path . --script res://tests/test_runner.gd

@@ -1,0 +1,23 @@
+{
+  "id": "soldier",
+  "display_name_key": "unit.soldier.name",
+  "category": "infantry",
+  "stats": {
+    "health": 100,
+    "move_speed": 2,
+    "attack_damage": 10,
+    "attack_range": 1,
+    "vision_range": 5
+  },
+  "cost": {
+    "resource_basic": 50
+  },
+  "build_time_ticks": 60,
+  "visual": {
+    "shape": "circle",
+    "color": "#4CB0F2",
+    "texture": "textures/soldier.png",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

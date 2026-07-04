@@ -1,0 +1,36 @@
+{
+  "id": "skirmish_four_corners",
+  "display_name_key": "scenario.skirmish_four_corners.name",
+  "random_seed": 20240825,
+  "difficulty": "normal",
+  "map": {
+    "width": 28,
+    "height": 20,
+    "walls": [
+      [13, 9], [14, 9], [13, 10], [14, 10],
+      [6, 6], [21, 6], [6, 13], [21, 13]
+    ]
+  },
+  "players": [
+    { "owner": 0, "is_human": true,  "start_resources": { "resource_basic": 180 } },
+    { "owner": 1, "is_human": false, "difficulty": "normal", "smart": true, "personality": "balanced",   "start_resources": { "resource_basic": 180 } },
+    { "owner": 2, "is_human": false, "difficulty": "hard",   "smart": true, "personality": "aggressive", "start_resources": { "resource_basic": 180 } },
+    { "owner": 3, "is_human": false, "difficulty": "easy",   "smart": true, "personality": "economic",   "start_resources": { "resource_basic": 180 } }
+  ],
+  "buildings": [
+    { "type": "hq", "owner": 0, "x": 2,  "y": 2 },
+    { "type": "hq", "owner": 1, "x": 25, "y": 2 },
+    { "type": "hq", "owner": 2, "x": 2,  "y": 17 },
+    { "type": "hq", "owner": 3, "x": 25, "y": 17 }
+  ],
+  "units": [
+    { "type": "soldier", "owner": 0, "x": 3, "y": 3 },
+    { "type": "scout",   "owner": 0, "x": 4, "y": 2 },
+    { "type": "soldier", "owner": 1, "x": 24, "y": 3 },
+    { "type": "scout",   "owner": 1, "x": 23, "y": 2 },
+    { "type": "soldier", "owner": 2, "x": 3, "y": 16 },
+    { "type": "scout",   "owner": 2, "x": 4, "y": 17 },
+    { "type": "soldier", "owner": 3, "x": 24, "y": 16 },
+    { "type": "scout",   "owner": 3, "x": 23, "y": 17 }
+  ]
+}

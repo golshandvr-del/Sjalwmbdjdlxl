@@ -1,0 +1,130 @@
+[gd_scene load_steps=3 format=3 uid="uid://nexusoptionsmenu1"]
+
+[ext_resource type="Script" path="res://ui/shared/options_menu.gd" id="1_options"]
+
+[sub_resource type="GDScript" id="GDScript_bg"]
+script/source = "extends ColorRect"
+
+[node name="OptionsMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_options")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0627451, 0.0745098, 0.105882, 1)
+script = SubResource("GDScript_bg")
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Box" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Center/Box"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.882353, 0.745098, 0.341176, 1)
+theme_override_font_sizes/font_size = 40
+horizontal_alignment = 1
+text = "Options"
+
+[node name="LocaleRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="LocaleButton" type="Button" parent="Center/Box/LocaleRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Language: en"
+
+[node name="StyleRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="StyleButton" type="Button" parent="Center/Box/StyleRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Style: Simple"
+
+[node name="DifficultyRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="DifficultyButton" type="Button" parent="Center/Box/DifficultyRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Difficulty: normal"
+
+[node name="ZoomRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="ZoomButton" type="Button" parent="Center/Box/ZoomRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Zoom: 1.00x"
+
+[node name="UiScaleAutoRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="UiScaleAutoButton" type="Button" parent="Center/Box/UiScaleAutoRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Auto GUI Scale: On"
+
+[node name="UiScaleRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="UiScaleButton" type="Button" parent="Center/Box/UiScaleRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "GUI Scale: Auto"
+
+[node name="SfxRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="SfxButton" type="Button" parent="Center/Box/SfxRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Sound Effects: On"
+
+[node name="MusicRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="MusicButton" type="Button" parent="Center/Box/MusicRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Music: On"
+
+[node name="ContentPathRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="ContentPathButton" type="Button" parent="Center/Box/ContentPathRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Content Folder: user://content"
+
+[node name="ButtonRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ResetButton" type="Button" parent="Center/Box/ButtonRow"]
+custom_minimum_size = Vector2(172, 48)
+layout_mode = 2
+text = "Reset"
+
+[node name="BackButton" type="Button" parent="Center/Box/ButtonRow"]
+custom_minimum_size = Vector2(172, 48)
+layout_mode = 2
+text = "Back"

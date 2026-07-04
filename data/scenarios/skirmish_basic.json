@@ -1,0 +1,27 @@
+{
+  "id": "skirmish_basic",
+  "display_name_key": "scenario.skirmish_basic.name",
+  "random_seed": 20240601,
+  "map": {
+    "width": 20,
+    "height": 14,
+    "walls": [
+      [9, 4], [9, 5], [9, 6], [9, 7], [9, 8], [9, 9],
+      [10, 4], [10, 9]
+    ]
+  },
+  "players": [
+    { "owner": 0, "is_human": true,  "start_resources": { "resource_basic": 150 } },
+    { "owner": 1, "is_human": false, "difficulty": "normal", "start_resources": { "resource_basic": 150 } }
+  ],
+  "buildings": [
+    { "type": "hq", "owner": 0, "x": 2,  "y": 7 },
+    { "type": "hq", "owner": 1, "x": 17, "y": 7 }
+  ],
+  "units": [
+    { "type": "soldier", "owner": 0, "x": 3, "y": 6 },
+    { "type": "soldier", "owner": 0, "x": 3, "y": 8 },
+    { "type": "soldier", "owner": 1, "x": 16, "y": 6 },
+    { "type": "soldier", "owner": 1, "x": 16, "y": 8 }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "normal",
+  "display_name_key": "difficulty.normal.name",
+  "ai_think_interval": 15,
+  "ai_build_chance_pct": 70,
+  "ai_aggression": 1,
+  "player_resource_multiplier": 1.0,
+  "ai_resource_multiplier": 1.0,
+  "starting_resources": 150,
+  "ai_max_queue": 2
+}

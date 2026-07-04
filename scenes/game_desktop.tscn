@@ -1,0 +1,178 @@
+[gd_scene load_steps=4 format=3 uid="uid://nexusgamedesktop1"]
+
+[ext_resource type="Script" path="res://ui/desktop/desktop_hud.gd" id="1_desktophud"]
+[ext_resource type="Script" path="res://render/render_adapter.gd" id="2_renderadapter"]
+
+[sub_resource type="GDScript" id="GDScript_bg"]
+script/source = "extends ColorRect"
+
+[node name="GameDesktop" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_desktophud")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0784314, 0.0901961, 0.121569, 1)
+script = SubResource("GDScript_bg")
+
+[node name="WorldLayer" type="Node2D" parent="."]
+
+[node name="RenderAdapter" type="Node2D" parent="WorldLayer"]
+script = ExtResource("2_renderadapter")
+
+[node name="TopBar" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+grow_horizontal = 2
+
+[node name="Margin" type="MarginContainer" parent="TopBar"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 8
+
+[node name="Row" type="HBoxContainer" parent="TopBar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="ResourceLabel" type="Label" parent="TopBar/Margin/Row"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.882353, 0.745098, 0.341176, 1)
+theme_override_font_sizes/font_size = 18
+text = "Resources: 0"
+
+[node name="StatusLabel" type="Label" parent="TopBar/Margin/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.811765, 0.866667, 0.92549, 1)
+theme_override_font_sizes/font_size = 16
+text = "RUNNING"
+
+[node name="HintLabel" type="Label" parent="TopBar/Margin/Row"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.65, 0.72, 1)
+theme_override_font_sizes/font_size = 13
+text = ""
+
+[node name="BottomBar" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="Margin" type="MarginContainer" parent="BottomBar"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 10
+
+[node name="Row" type="HBoxContainer" parent="BottomBar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PauseButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(110, 44)
+layout_mode = 2
+text = "Pause"
+
+[node name="BuildButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+text = "Build Soldier"
+
+[node name="SpeedButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(110, 44)
+layout_mode = 2
+text = "Speed x1"
+
+[node name="ResearchButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(130, 44)
+layout_mode = 2
+text = "Research"
+
+[node name="UpgradeButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+text = "Upgrade HQ"
+
+[node name="FuseButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(130, 44)
+layout_mode = 2
+text = "Fuse Hero"
+
+[node name="StyleButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+text = "Style: Simple"
+
+[node name="LangButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+text = "Lang: en"
+
+[node name="MenuButton" type="Button" parent="BottomBar/Margin/Row"]
+custom_minimum_size = Vector2(110, 44)
+layout_mode = 2
+text = "Menu"
+
+[node name="SelectionBox" type="ColorRect" parent="."]
+visible = false
+layout_mode = 0
+color = Color(0.337255, 0.701961, 0.964706, 0.25)
+
+[node name="EndOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="CenterContainer" type="CenterContainer" parent="EndOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Box" type="VBoxContainer" parent="EndOverlay/CenterContainer"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="ResultLabel" type="Label" parent="EndOverlay/CenterContainer/Box"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 64
+horizontal_alignment = 1
+text = "VICTORY"
+
+[node name="RestartButton" type="Button" parent="EndOverlay/CenterContainer/Box"]
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Play Again"
+
+[node name="MenuButton" type="Button" parent="EndOverlay/CenterContainer/Box"]
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Menu"

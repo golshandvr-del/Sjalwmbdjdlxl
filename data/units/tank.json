@@ -1,0 +1,23 @@
+{
+  "id": "tank",
+  "display_name_key": "unit.tank.name",
+  "category": "armor",
+  "stats": {
+    "health": 280,
+    "move_speed": 1,
+    "attack_damage": 28,
+    "attack_range": 2,
+    "vision_range": 5
+  },
+  "cost": {
+    "resource_basic": 160
+  },
+  "build_time_ticks": 140,
+  "visual": {
+    "shape": "square",
+    "color": "#C8A24A",
+    "texture": "textures/tank.png",
+    "size_scale": 1.2,
+    "outline": true
+  }
+}

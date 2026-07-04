@@ -1,0 +1,47 @@
+{
+  "id": "hq",
+  "display_name_key": "building.hq.name",
+  "category": "command",
+  "stats": {
+    "health": 1000,
+    "vision_range": 8
+  },
+  "produces": {
+    "resource_basic": 2
+  },
+  "buildable_units": ["soldier"],
+  "cost": {
+    "resource_basic": 200
+  },
+  "build_time_ticks": 0,
+  "visual": {
+    "shape": "square",
+    "color": "#3E78C8",
+    "texture": "textures/hq.png",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "upgrades": {
+    "level_2": {
+      "display_name_key": "building.hq.level_2.name",
+      "cost": { "resource_basic": 250 },
+      "upgrade_time_ticks": 150,
+      "requires_level": 1,
+      "effects": {
+        "max_health_add": 500,
+        "produces_add": { "resource_basic": 2 },
+        "buildable_units_add": ["soldier"]
+      }
+    },
+    "level_3": {
+      "display_name_key": "building.hq.level_3.name",
+      "cost": { "resource_basic": 400 },
+      "upgrade_time_ticks": 220,
+      "requires_level": 2,
+      "effects": {
+        "max_health_add": 800,
+        "produces_add": { "resource_basic": 3 }
+      }
+    }
+  }
+}

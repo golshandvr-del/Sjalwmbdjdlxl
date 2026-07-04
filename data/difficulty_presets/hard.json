@@ -1,0 +1,11 @@
+{
+  "id": "hard",
+  "display_name_key": "difficulty.hard.name",
+  "ai_think_interval": 8,
+  "ai_build_chance_pct": 100,
+  "ai_aggression": 1,
+  "player_resource_multiplier": 1.0,
+  "ai_resource_multiplier": 1.4,
+  "starting_resources": 120,
+  "ai_max_queue": 3
+}

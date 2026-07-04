@@ -1,0 +1,30 @@
+{
+  "id": "hero_fusion_recipes",
+  "display_name_key": "fusion.recipes.name",
+  "recipes": [
+    {
+      "id": "soldier_squad_to_hero",
+      "display_name_key": "fusion.soldier_squad_to_hero.name",
+      "ingredients": [
+        { "type": "soldier", "count": 3 }
+      ],
+      "min_veterancy_total": 0,
+      "result": {
+        "type": "hero",
+        "veterancy_bonus": 1
+      }
+    },
+    {
+      "id": "veteran_squad_to_hero",
+      "display_name_key": "fusion.veteran_squad_to_hero.name",
+      "ingredients": [
+        { "type": "soldier", "count": 2 }
+      ],
+      "min_veterancy_total": 4,
+      "result": {
+        "type": "hero",
+        "veterancy_bonus": 3
+      }
+    }
+  ]
+}

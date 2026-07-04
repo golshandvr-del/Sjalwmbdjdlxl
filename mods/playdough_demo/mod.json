@@ -1,0 +1,15 @@
+{
+  "id": "playdough_demo",
+  "name": "Play-Dough Demo",
+  "version": "0.1.0",
+  "author": "Project Nexus Team",
+  "description": "Phase B.6 proof of the 'play-dough' idea: the SAME data-driven building schema becomes a Wall (high HP, no attack) or a Turret (attack_range + texture) purely by changing the JSON visual + stats -- no engine code. Disabled by default; enable it to see modded defenses with custom textures.",
+  "enabled": false,
+  "load_after": [],
+  "provides": {
+    "buildings": [
+      "data/buildings/raw_wall.json",
+      "data/buildings/raw_turret.json"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "example_mod",
+  "name": "Example Mod",
+  "version": "0.1.0",
+  "author": "Project Nexus Team",
+  "description": "A sample mod that adds a 'heavy_soldier' unit, demonstrating the Phase 3 data-driven mod pipeline (discover -> order -> merge).",
+  "enabled": true,
+  "load_after": [],
+  "provides": {
+    "units": ["data/units/heavy_soldier.json"]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "raw_turret",
+  "display_name_key": "building.raw_turret.name",
+  "category": "defense",
+  "stats": {
+    "health": 800,
+    "vision_range": 6,
+    "attack_damage": 22,
+    "attack_range": 5
+  },
+  "produces": {},
+  "buildable_units": [],
+  "cost": {
+    "resource_basic": 120
+  },
+  "build_time_ticks": 90,
+  "visual": {
+    "shape": "square",
+    "color": "#cc6644",
+    "texture": "textures/turret.png",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

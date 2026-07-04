@@ -1,0 +1,89 @@
+# Project Nexus - Android release build (Phase P8, step P8.1/P8.6).
+# ----------------------------------------------------------------------------
+# Produces an installable Android APK (arm64-v8a first, per docs/STRUCTURE.md)
+# from the committed export_presets.cfg. It runs the SAME green-tree gates as
+# ci.yml (CODE_POLICY lint + headless tests) FIRST, so an artifact can only be
+# built from a passing tree, then exports the "Android" preset headlessly and
+# uploads the APK as a workflow artifact.
+#
+# This workflow is intentionally manual (workflow_dispatch) + on tags, so normal
+# pushes stay fast and only real releases pay the Android toolchain cost.
+#
+# CODE LANGUAGE POLICY: English-only identifiers/comments.
+# ----------------------------------------------------------------------------
+name: Build Android
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: [ "v*" ]
+
+env:
+  GODOT_VERSION: "4.2.2"
+  GODOT_RELEASE: "stable"
+
+jobs:
+  build-android:
+    name: Export Android APK (arm64-v8a)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Java + Android command-line tools are needed by Godot's Android export.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34" "cmdline-tools;latest" || true
+
+      - name: Install Godot (headless) + export templates
+        run: |
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}"
+          wget -q "${BASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip" -O godot.zip
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+          wget -q "${BASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz" -O templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}"
+          unzip -q templates.tpz
+          mv templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/"
+
+      - name: Import project (generate global class cache)
+        run: godot --headless --editor --quit --path . || true
+
+      - name: CODE_POLICY lint gate
+        run: godot --headless --path . --script res://tools/check_code_policy.gd
+
+      - name: Headless test gate
+        run: godot --headless --path . --script res://tests/test_runner.gd
+
+      # A debug keystore lets an unsigned CI build install on a device for QA.
+      # Release signing uses a real keystore configured out-of-band (never here).
+      - name: Generate a debug keystore
+        run: |
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey \
+            -keypass android -keystore debug.keystore \
+            -storepass android -dname "CN=Android Debug,O=Android,C=US" \
+            -validity 9999 -deststoretype pkcs12
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$PWD/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey"    >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android"        >> "$GITHUB_ENV"
+
+      - name: Export Android APK
+        run: |
+          mkdir -p build/android
+          godot --headless --path . --export-debug "Android" build/android/project-nexus.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-nexus-android
+          path: build/android/project-nexus.apk
+          if-no-files-found: warn

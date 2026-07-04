@@ -1,0 +1,23 @@
+{
+  "id": "hero",
+  "display_name_key": "unit.hero.name",
+  "category": "hero",
+  "stats": {
+    "health": 400,
+    "move_speed": 2,
+    "attack_damage": 35,
+    "attack_range": 2,
+    "vision_range": 7
+  },
+  "cost": {
+    "resource_basic": 0
+  },
+  "build_time_ticks": 0,
+  "visual": {
+    "shape": "sprite",
+    "color": "#F2C14E",
+    "texture": "textures/hero.png",
+    "size_scale": 1.4,
+    "outline": true
+  }
+}

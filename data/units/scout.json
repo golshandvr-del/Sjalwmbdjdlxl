@@ -1,0 +1,23 @@
+{
+  "id": "scout",
+  "display_name_key": "unit.scout.name",
+  "category": "recon",
+  "stats": {
+    "health": 60,
+    "move_speed": 4,
+    "attack_damage": 6,
+    "attack_range": 1,
+    "vision_range": 8
+  },
+  "cost": {
+    "resource_basic": 40
+  },
+  "build_time_ticks": 45,
+  "visual": {
+    "shape": "circle",
+    "color": "#7FE0A0",
+    "texture": "textures/scout.png",
+    "size_scale": 0.85,
+    "outline": true
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "raw_wall",
+  "display_name_key": "building.raw_wall.name",
+  "category": "defense",
+  "stats": {
+    "health": 2000,
+    "vision_range": 2
+  },
+  "produces": {},
+  "buildable_units": [],
+  "cost": {
+    "resource_basic": 60
+  },
+  "build_time_ticks": 40,
+  "visual": {
+    "shape": "square",
+    "color": "#6b6258",
+    "texture": "textures/wall_block.png",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}
