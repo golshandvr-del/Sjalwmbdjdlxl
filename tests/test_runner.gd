@@ -2045,7 +2045,13 @@ func test_phase5_scenes_and_presets_exist() -> void:
 	if cfg != null:
 		cfg.close()
 	_check(text.contains("platform=\"Android\""), "Android export preset present (priority platform)")
-	_check(text.contains("platform=\"Linux/X11\""), "Linux export preset present")
+	# The Linux export platform id changed from "Linux/X11" (Godot 4.2 and older)
+	# to "Linux" (Godot 4.3+). export_presets.cfg is saved by 4.3, so accept both
+	# spellings instead of hard-coding the old one (which made this test stale).
+	_check(
+		text.contains("platform=\"Linux/X11\"") or text.contains("platform=\"Linux\""),
+		"Linux export preset present"
+	)
 	_check(text.contains("platform=\"Windows Desktop\""), "Windows export preset present")
 	_check(text.contains("platform=\"macOS\""), "macOS export preset present")
 
