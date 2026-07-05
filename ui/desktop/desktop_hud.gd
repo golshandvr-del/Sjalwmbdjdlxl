@@ -29,6 +29,9 @@ const LOCAL_PLAYER: int = 0
 
 # Camera pan speed in pixels per second (scaled by zoom).
 const PAN_SPEED: float = 600.0
+# Trackpad two-finger pan gestures deliver a small normalised delta; scale it up
+# so a comfortable swipe moves the map a useful distance.
+const GESTURE_PAN_SPEED: float = 40.0
 # Zoom limits/steps are owned by RenderAdapter.zoom_by (anchored zoom); the HUD
 # just requests a zoom factor around the cursor.
 
@@ -194,6 +197,20 @@ func _handle_camera_pan(delta: float) -> void:
 # --- Mouse input ------------------------------------------------------------
 
 func _gui_input(event: InputEvent) -> void:
+	# Trackpad two-finger pinch = zoom (a gesture, NOT two mouse events), anchored
+	# under the gesture point. Without this, "two-finger zoom" did nothing on
+	# laptops/desktops. factor > 1 spreads (in), < 1 pinches (out).
+	if event is InputEventMagnifyGesture:
+		_render_adapter.zoom_at(event.factor, event.position)
+		_render_adapter.clamp_camera(get_viewport_rect().size)
+		accept_event()
+		return
+	# Trackpad two-finger scroll = pan.
+	if event is InputEventPanGesture:
+		_render_adapter.pan_by_screen(-event.delta * GESTURE_PAN_SPEED)
+		_render_adapter.clamp_camera(get_viewport_rect().size)
+		accept_event()
+		return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion and _dragging:
@@ -201,16 +218,15 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
-	# BUG-4: zoom around the CURSOR (anchored) instead of assigning a raw zoom
-	# value. zoom_by keeps the world point under the mouse fixed and clamps the
-	# camera so the map cannot jump to a corner while zooming.
+	# BUG-4/BUG-5: zoom around the CURSOR (anchored) via zoom_at, which converts
+	# the raw event position into canvas space through content_scale_factor. The
+	# old code multiplied by get_global_transform_with_canvas() (identity under
+	# the canvas_items stretch mode), so the anchor drifted on scaled windows.
 	if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-		var focus_in: Vector2 = get_global_transform_with_canvas() * event.position
-		_render_adapter.zoom_by(1.15, focus_in)
+		_render_adapter.zoom_at(1.15, event.position)
 		_render_adapter.clamp_camera(get_viewport_rect().size)
 	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-		var focus_out: Vector2 = get_global_transform_with_canvas() * event.position
-		_render_adapter.zoom_by(1.0 / 1.15, focus_out)
+		_render_adapter.zoom_at(1.0 / 1.15, event.position)
 		_render_adapter.clamp_camera(get_viewport_rect().size)
 	elif event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
