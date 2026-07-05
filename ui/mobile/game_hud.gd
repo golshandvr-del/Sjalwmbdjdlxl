@@ -324,13 +324,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		_handle_mouse_motion(event)
 
 
-# True when an input event was SYNTHESISED by the engine from a touch (the
+# True when a mouse event was SYNTHESISED by the engine from a touch (the
 # emulate_mouse_from_touch project setting). Such events must be ignored so a
-# single finger tap is not processed twice (once as touch, once as fake mouse).
+# single finger tap is not processed twice (once as touch, once as fake mouse),
+# which was the reason units could not be moved.
+#
+# Robust across Godot versions (InputEventMouse has NO is_emulated() method in
+# 4.3, verified at runtime):
+#   (a) Emulated pointer events carry device == InputEvent.DEVICE_ID_EMULATION
+#       (-1). This is the engine's own marker for synthetic touch->mouse events
+#       and works in 4.2 / 4.3 / 4.4 / 4.7.
+#   (b) Belt-and-braces fallback: if ANY real finger is currently down we also
+#       treat mouse events as emulated, because a genuine mouse and a live touch
+#       never coexist on a phone. This makes de-duplication independent of how a
+#       given Godot build tags the synthetic event.
 func _is_emulated(event: InputEvent) -> bool:
-	# Godot flags emulated pointer events via a dedicated helper in 4.x.
-	if event.has_method("is_emulated"):
-		return event.is_emulated()
+	if event is InputEventMouse and (event as InputEventMouse).device == InputEvent.DEVICE_ID_EMULATION:
+		return true
+	if not _active_touches.is_empty():
+		return true
 	return false
 
 
