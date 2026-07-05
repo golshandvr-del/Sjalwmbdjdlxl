@@ -276,27 +276,51 @@ func _tile_rect(x: int, y: int) -> Rect2:
 	return Rect2(px, py, size, size)
 
 
+# BUG-5 fix (P0.5, THE root cause of "cannot move units" + "pinch zoom feels
+# wrong"): map a raw INPUT position (the coordinate space Godot delivers to
+# _input / _unhandled_input / _gui_input) into this adapter's CANVAS space.
+#
+# The game uses the "canvas_items" stretch mode and UiScale sets
+# Window.content_scale_factor (e.g. 0.5 on small/HiDPI screens). In that mode the
+# ENGINE scales the rendered canvas by content_scale_factor, but the input events
+# it hands to our code are still in the *physical window* coordinate space --
+# they are NOT pre-divided by that factor. Crucially,
+# get_global_transform_with_canvas() returns IDENTITY here (it does not carry the
+# stretch factor), so the old code mapped a physical tap straight through and
+# landed on a tile near the corner (roughly tap*factor). Selecting a unit only
+# "sometimes" worked by luck; issuing a MOVE to that wrong tile silently went
+# nowhere the player intended -- exactly the reported bug.
+#
+# Correct, platform-independent conversion:
+#     canvas = gtwc.affine_inverse() * (input_pos / content_scale_factor)
+# When content_scale_factor == 1.0 (desktop, no scaling) this is identical to the
+# previous behaviour, so nothing regresses.
+func _viewport_to_canvas(pos: Vector2) -> Vector2:
+	var scaled: Vector2 = pos
+	if is_inside_tree():
+		var win: Window = get_window()
+		if win != null:
+			var factor: float = win.content_scale_factor
+			if factor > 0.0 and not is_equal_approx(factor, 1.0):
+				scaled = pos / factor
+		# Undo any parent (WorldLayer) offset via the real canvas transform.
+		return get_global_transform_with_canvas().affine_inverse() * scaled
+	# Headless / no tree: no stretch, no parent transform.
+	return scaled
+
+
 # Convert a screen-space pixel position into a tile coordinate.
 #
 # BUG-3 fix (P0.3): the adapter is a Node2D that may sit UNDER a transformed
-# WorldLayer (offset/scale). A tap arrives in the Control/viewport space, so we
-# first map it into THIS node's local space via the real canvas transform, then
-# undo the adapter's own camera pan/zoom. This makes taps land on the correct
-# tile regardless of any parent offset (the old version assumed a zero-offset
-# parent, which silently sent move commands to the wrong tile).
+# WorldLayer (offset/scale). A tap arrives in viewport space, so we first map it
+# into THIS node's canvas space (accounting for the content-scale stretch factor
+# and any parent offset), then undo the adapter's own camera pan/zoom. This makes
+# taps land on the correct tile regardless of parent offset OR window scaling.
 func screen_to_tile(pos: Vector2) -> Vector2i:
-	var local: Vector2
-	if is_inside_tree():
-		# Map the viewport-space position into this Node2D's local space using the
-		# actual accumulated canvas transform (accounts for WorldLayer offset).
-		var xform: Transform2D = get_global_transform_with_canvas()
-		var node_local: Vector2 = xform.affine_inverse() * pos
-		# node_local is already in the adapter's local pixel space; the camera
-		# pan/zoom are applied inside _tile_rect on top of that, so undo them.
-		local = (node_local - camera_offset) / zoom
-	else:
-		# Headless / no tree: fall back to the plain pan/zoom inverse.
-		local = (pos - camera_offset) / zoom
+	var node_local: Vector2 = _viewport_to_canvas(pos)
+	# node_local is now in the adapter's local pixel space; the camera pan/zoom
+	# are applied inside _tile_rect on top of that, so undo them.
+	var local: Vector2 = (node_local - camera_offset) / zoom
 	return Vector2i(int(floor(local.x / tile_size)), int(floor(local.y / tile_size)))
 
 
@@ -307,9 +331,14 @@ func center_camera_on(tile: Vector2i, viewport_size: Vector2) -> void:
 # --- BUG-4 (P3.1): interactive zoom + pan (pure presentation) ---------------
 #
 # All of these only mutate `zoom` / `camera_offset` and NEVER the WorldState, so
-# they can never affect the deterministic hash. `focus` is the viewport-space
-# point the zoom should keep stationary (e.g. the pinch midpoint or cursor), so
-# zooming feels anchored under the fingers instead of jumping to a corner.
+# they can never affect the deterministic hash. `focus` is the CANVAS-space point
+# the zoom should keep stationary (e.g. the pinch midpoint or cursor), so zooming
+# feels anchored under the fingers instead of jumping to a corner.
+#
+# NOTE: `focus` here is in the SAME space as camera_offset (canvas space). Input
+# handlers get raw viewport/physical positions, so they must call zoom_at() below
+# (which converts through the content-scale factor) rather than zoom_by()
+# directly -- otherwise the anchor point drifts on scaled windows (BUG-5).
 func zoom_by(factor: float, focus: Vector2) -> void:
 	var old_zoom: float = zoom
 	var new_zoom: float = clampf(zoom * factor, ZOOM_MIN, ZOOM_MAX)
@@ -323,15 +352,42 @@ func zoom_by(factor: float, focus: Vector2) -> void:
 	queue_redraw()
 
 
+# Zoom anchored under a RAW input position (cursor / pinch midpoint in the
+# viewport/physical space that Godot delivers to input callbacks). Converts the
+# anchor into canvas space first so the point under the fingers stays fixed even
+# when Window.content_scale_factor != 1 (BUG-5). All HUD input handlers should
+# call this instead of zoom_by().
+func zoom_at(factor: float, screen_pos: Vector2) -> void:
+	zoom_by(factor, _viewport_to_canvas(screen_pos))
+
+
 # Zoom a fixed step in/out around the viewport centre (for the +/- buttons).
 func zoom_step(zoom_in: bool, viewport_size: Vector2) -> void:
 	var factor: float = 1.2 if zoom_in else (1.0 / 1.2)
 	zoom_by(factor, viewport_size * 0.5)
 
 
-# Pan by a screen-space delta (single-finger drag on empty ground).
+# Pan by a CANVAS-space delta (camera_offset lives in canvas space).
 func pan_by(delta: Vector2) -> void:
 	camera_offset += delta
+	queue_redraw()
+
+
+# Pan by a RAW input-space delta (finger drag / mouse relative motion). Input
+# deltas are in physical-window space, but camera_offset is canvas space, so on a
+# scaled window (content_scale_factor != 1) the raw delta must be rescaled first
+# or the map would drift faster/slower than the finger (BUG-5). A delta is a
+# direction+length only, so we scale it (divide by factor) WITHOUT applying the
+# canvas transform's translation.
+func pan_by_screen(delta: Vector2) -> void:
+	var scaled: Vector2 = delta
+	if is_inside_tree():
+		var win: Window = get_window()
+		if win != null:
+			var factor: float = win.content_scale_factor
+			if factor > 0.0 and not is_equal_approx(factor, 1.0):
+				scaled = delta / factor
+	camera_offset += scaled
 	queue_redraw()
 
 
