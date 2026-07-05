@@ -300,14 +300,24 @@ func _refresh_top_bar() -> void:
 # get_global_transform_with_canvas() multiply (that was for _gui_input's
 # control-local coordinates and caused taps to land on the wrong tile).
 func _unhandled_input(event: InputEvent) -> void:
-	# BUG-FIX (double-tap / cannot move): with emulate_mouse_from_touch = true
-	# (Godot default) a real finger tap fires BOTH an InputEventScreenTouch and a
-	# synthetic InputEventMouse*. Handling both ran the tap twice: the first tap
-	# selected a unit and the second immediately toggled it back off (or cancelled
-	# the move), so units never actually moved. We therefore IGNORE emulated mouse
-	# events entirely and treat touch as the source of truth on devices that send
-	# it; real mouse input (desktop testing) still works because those events are
-	# not flagged as emulated.
+	# BUG-FIX (double-tap / cannot move). This project enables BOTH emulation
+	# directions:
+	#   * emulate_touch_from_mouse = true  -> on DESKTOP a real mouse click also
+	#     spawns a synthetic InputEventScreenTouch.
+	#   * emulate_mouse_from_touch (default true) -> on MOBILE a real finger tap
+	#     also spawns a synthetic InputEventMouseButton.
+	# If we processed both the real event and its synthetic twin, every tap ran
+	# twice: it selected a unit and then immediately toggled it back off (or
+	# cancelled the move), which is exactly why units could not be moved -- on the
+	# phone AND on the desktop editor.
+	#
+	# The clean, version-independent rule: SYNTHETIC events are flagged by the
+	# engine with device == InputEvent.DEVICE_ID_EMULATION (-1). We drop every
+	# emulated event (whether it is a fake touch or a fake mouse) and act only on
+	# the ORIGINAL event, whichever kind the hardware actually produced. That
+	# guarantees each physical tap is handled exactly once on every platform.
+	if _is_emulated(event):
+		return
 	if event is InputEventScreenTouch:
 		_handle_touch(event)
 		get_viewport().set_input_as_handled()
@@ -315,34 +325,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		_handle_drag(event)
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
-		if _is_emulated(event):
-			return
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion:
-		if _is_emulated(event):
-			return
 		_handle_mouse_motion(event)
 
 
-# True when a mouse event was SYNTHESISED by the engine from a touch (the
-# emulate_mouse_from_touch project setting). Such events must be ignored so a
-# single finger tap is not processed twice (once as touch, once as fake mouse),
-# which was the reason units could not be moved.
+# True when a pointer event (touch OR mouse) was SYNTHESISED by the engine from
+# the other kind, via emulate_touch_from_mouse / emulate_mouse_from_touch. Such
+# events must be ignored so a single physical tap is not processed twice (once as
+# the real event, once as its emulated twin) -- the reason units could not be
+# moved on both phone and desktop.
 #
-# Robust across Godot versions (InputEventMouse has NO is_emulated() method in
-# 4.3, verified at runtime):
-#   (a) Emulated pointer events carry device == InputEvent.DEVICE_ID_EMULATION
-#       (-1). This is the engine's own marker for synthetic touch->mouse events
-#       and works in 4.2 / 4.3 / 4.4 / 4.7.
-#   (b) Belt-and-braces fallback: if ANY real finger is currently down we also
-#       treat mouse events as emulated, because a genuine mouse and a live touch
-#       never coexist on a phone. This makes de-duplication independent of how a
-#       given Godot build tags the synthetic event.
+# The engine marks EVERY emulated pointer event with
+# device == InputEvent.DEVICE_ID_EMULATION (-1). This is reliable across Godot
+# versions (4.2 / 4.3 / 4.4 / 4.7) and, unlike is_emulated(), actually exists on
+# InputEventMouse (verified at runtime: InputEventMouse has NO is_emulated()
+# method in 4.3). A genuine hardware touch/mouse always has device >= 0.
 func _is_emulated(event: InputEvent) -> bool:
-	if event is InputEventMouse and (event as InputEventMouse).device == InputEvent.DEVICE_ID_EMULATION:
-		return true
-	if not _active_touches.is_empty():
-		return true
+	if event is InputEventFromWindow or event is InputEventMouse or event is InputEventScreenTouch or event is InputEventScreenDrag:
+		return event.device == InputEvent.DEVICE_ID_EMULATION
 	return false
 
 
