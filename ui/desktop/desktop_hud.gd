@@ -29,9 +29,8 @@ const LOCAL_PLAYER: int = 0
 
 # Camera pan speed in pixels per second (scaled by zoom).
 const PAN_SPEED: float = 600.0
-const ZOOM_MIN: float = 0.5
-const ZOOM_MAX: float = 3.0
-const ZOOM_STEP: float = 0.1
+# Zoom limits/steps are owned by RenderAdapter.zoom_by (anchored zoom); the HUD
+# just requests a zoom factor around the cursor.
 
 @onready var _render_adapter: RenderAdapter = $WorldLayer/RenderAdapter
 @onready var _resource_label: Label = $TopBar/Margin/Row/ResourceLabel
@@ -202,10 +201,17 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
+	# BUG-4: zoom around the CURSOR (anchored) instead of assigning a raw zoom
+	# value. zoom_by keeps the world point under the mouse fixed and clamps the
+	# camera so the map cannot jump to a corner while zooming.
 	if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-		_render_adapter.zoom = clampf(_render_adapter.zoom + ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+		var focus_in: Vector2 = get_global_transform_with_canvas() * event.position
+		_render_adapter.zoom_by(1.15, focus_in)
+		_render_adapter.clamp_camera(get_viewport_rect().size)
 	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-		_render_adapter.zoom = clampf(_render_adapter.zoom - ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+		var focus_out: Vector2 = get_global_transform_with_canvas() * event.position
+		_render_adapter.zoom_by(1.0 / 1.15, focus_out)
+		_render_adapter.clamp_camera(get_viewport_rect().size)
 	elif event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_dragging = true
