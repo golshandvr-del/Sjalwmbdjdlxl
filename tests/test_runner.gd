@@ -162,6 +162,7 @@ func _init() -> void:
 	test_060_p3_zoom_clamps_to_range()
 	test_060_p3_zoom_keeps_focus_point_fixed()
 	test_060_p3_pan_by_moves_offset()
+	test_060_p3_pinch_ratio_zooms_in_and_out()
 	test_060_p3_camera_math_is_cosmetic_only()
 	test_060_p3_hud_keys_localized_in_all_locales()
 	# Phase P7 (v0.6.0) -- HQ/Flag placement, team layout, and game modes.
@@ -3056,6 +3057,30 @@ func test_060_p3_pan_by_moves_offset() -> void:
 	adapter.camera_offset = Vector2.ZERO
 	adapter.pan_by(Vector2(30, -15))
 	_check(adapter.camera_offset == Vector2(30, -15), "pan_by adds the screen delta to camera_offset")
+	adapter.free()
+
+
+func test_060_p3_pinch_ratio_zooms_in_and_out() -> void:
+	print("test_060_p3_pinch_ratio_zooms_in_and_out")
+	# BUG-FIX regression: the mobile HUD computes a pinch as (new finger distance /
+	# old finger distance) and feeds that ratio to RenderAdapter.zoom_by. This test
+	# reproduces that exact math so a broken pinch (e.g. wrong ratio direction) is
+	# caught without needing a live touchscreen. Fingers spreading apart (ratio > 1)
+	# must zoom IN; fingers pinching together (ratio < 1) must zoom OUT.
+	var adapter: RenderAdapter = RenderAdapter.new()
+	adapter.tile_size = 24
+	adapter.zoom = 1.0
+	adapter.camera_offset = Vector2(0, 0)
+	var mid: Vector2 = Vector2(200, 200)
+	# Fingers start 100px apart, spread to 200px apart -> ratio 2.0 -> zoom in.
+	var spread_ratio: float = 200.0 / 100.0
+	adapter.zoom_by(spread_ratio, mid)
+	_check(adapter.zoom > 1.0, "spreading fingers (ratio>1) zooms in")
+	# Now pinch back together: 200px -> 120px -> ratio 0.6 -> zoom out.
+	var z_after_in: float = adapter.zoom
+	var pinch_ratio: float = 120.0 / 200.0
+	adapter.zoom_by(pinch_ratio, mid)
+	_check(adapter.zoom < z_after_in, "pinching fingers (ratio<1) zooms out")
 	adapter.free()
 
 
