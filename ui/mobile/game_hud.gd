@@ -56,6 +56,9 @@ var _pinch_last_dist: float = 0.0
 var _press_start: Vector2 = Vector2.ZERO
 var _press_moved: bool = false
 const _DRAG_THRESHOLD: float = 12.0    # px before a press becomes a pan, not a tap
+# Trackpad two-finger pan gestures deliver a small normalised delta; scale it up
+# so a comfortable swipe moves the map a useful distance.
+const _GESTURE_PAN_SPEED: float = 40.0
 
 # P3.2 (R11): control groups. 9 slots (a 3x3 corner grid). Each slot stores a
 # saved list of unit ids. A short tap RECALLS the group (selects it + centres
@@ -318,6 +321,21 @@ func _unhandled_input(event: InputEvent) -> void:
 	# guarantees each physical tap is handled exactly once on every platform.
 	if _is_emulated(event):
 		return
+	# Trackpad / touchscreen gesture zoom (two fingers). On laptops and desktops a
+	# two-finger pinch produces an InputEventMagnifyGesture, NOT two touch points,
+	# so without this branch "two-finger zoom" did nothing. factor > 1 spreads
+	# (zoom in), < 1 pinches (zoom out); the gesture position is the anchor.
+	if event is InputEventMagnifyGesture:
+		_render_adapter.zoom_at(event.factor, event.position)
+		_render_adapter.clamp_camera(get_viewport_rect().size)
+		get_viewport().set_input_as_handled()
+		return
+	# Two-finger pan gesture (trackpad) scrolls the map.
+	if event is InputEventPanGesture:
+		_render_adapter.pan_by_screen(-event.delta * _GESTURE_PAN_SPEED)
+		_render_adapter.clamp_camera(get_viewport_rect().size)
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventScreenTouch:
 		_handle_touch(event)
 		get_viewport().set_input_as_handled()
@@ -381,9 +399,9 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
 		if _pinch_last_dist > 0.0 and dist > 0.0:
 			var factor: float = dist / _pinch_last_dist
 			var mid: Vector2 = _touch_midpoint()
-			# mid is already viewport-space (in _unhandled_input), which is the
-			# focus space zoom_by expects, so no canvas transform is needed.
-			_render_adapter.zoom_by(factor, mid)
+			# mid is a raw viewport/physical position; zoom_at converts it into
+			# canvas space so the pinch stays anchored on scaled windows (BUG-5).
+			_render_adapter.zoom_at(factor, mid)
 			_render_adapter.clamp_camera(get_viewport_rect().size)
 		_pinch_last_dist = dist
 		_press_moved = true
@@ -392,10 +410,10 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
 		if event.position.distance_to(_press_start) > _DRAG_THRESHOLD:
 			_press_moved = true
 			_is_panning = true
-		if _is_panning:
-			_render_adapter.pan_by(event.position - _pan_last)
-			_render_adapter.clamp_camera(get_viewport_rect().size)
-		_pan_last = event.position
+			if _is_panning:
+				_render_adapter.pan_by_screen(event.position - _pan_last)
+				_render_adapter.clamp_camera(get_viewport_rect().size)
+			_pan_last = event.position
 
 
 func _touch_distance() -> float:
@@ -415,8 +433,8 @@ func _touch_midpoint() -> Vector2:
 # --- Mouse (desktop-in-mobile-scene) camera + tap handling ------------------
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
-	# In _unhandled_input, event.position is already viewport-space (what
-	# screen_to_tile / zoom_by expect), so it is passed through directly.
+	# In _unhandled_input, event.position is raw viewport/physical space;
+	# screen_to_tile / zoom_at / pan_by_screen convert it internally.
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_press_start = event.position
@@ -427,24 +445,24 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 				_handle_tap(event.position)
 			_is_panning = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-		_render_adapter.zoom_by(1.15, event.position)
+		_render_adapter.zoom_at(1.15, event.position)
 		_render_adapter.clamp_camera(get_viewport_rect().size)
 	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-		_render_adapter.zoom_by(1.0 / 1.15, event.position)
+		_render_adapter.zoom_at(1.0 / 1.15, event.position)
 		_render_adapter.clamp_camera(get_viewport_rect().size)
 
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	# Middle-button (or left-drag past threshold) pans the camera.
 	if event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
-		_render_adapter.pan_by(event.relative)
+		_render_adapter.pan_by_screen(event.relative)
 		_render_adapter.clamp_camera(get_viewport_rect().size)
 	elif event.button_mask & MOUSE_BUTTON_MASK_LEFT:
 		if event.position.distance_to(_press_start) > _DRAG_THRESHOLD:
 			_press_moved = true
 			_is_panning = true
 		if _is_panning:
-			_render_adapter.pan_by(event.relative)
+			_render_adapter.pan_by_screen(event.relative)
 			_render_adapter.clamp_camera(get_viewport_rect().size)
 
 
