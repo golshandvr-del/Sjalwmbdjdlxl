@@ -22,6 +22,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 color = Color(0.0784314, 0.0901961, 0.121569, 1)
 script = SubResource("GDScript_bg")
 
@@ -134,6 +135,7 @@ text = "Menu"
 [node name="SelectionBox" type="ColorRect" parent="."]
 visible = false
 layout_mode = 0
+mouse_filter = 2
 color = Color(0.337255, 0.701961, 0.964706, 0.25)
 
 [node name="EndOverlay" type="ColorRect" parent="."]
