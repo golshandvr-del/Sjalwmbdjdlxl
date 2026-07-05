@@ -83,6 +83,16 @@ var _selection_label: RichTextLabel = null
 
 
 func _ready() -> void:
+	# BUG-FIX (mobile zoom + move): the root HUD Control defaults to
+	# MOUSE_FILTER_STOP, which would SWALLOW every tap/drag in the GUI pass so it
+	# never reaches _unhandled_input (where world input now lives). Set it to
+	# IGNORE so pointer events fall through to _unhandled_input, while the child
+	# Buttons (bottom bar, zoom +/-, control groups) keep their own STOP filter
+	# and still receive their taps first. This is what makes both moving units
+	# and pinch-zoom work on a real device.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Make sure this node processes unhandled input even if a parent paused it.
+	set_process_unhandled_input(true)
 	# Phase G: apply the persisted GUI scale so the in-game HUD buttons match the
 	# size chosen in Options. This scales the interface layer; the world fit below
 	# reads the post-scale viewport size, so the map still frames correctly.
@@ -270,18 +280,58 @@ func _refresh_top_bar() -> void:
 
 # --- Touch / click input ----------------------------------------------------
 
-func _gui_input(event: InputEvent) -> void:
-	# BUG-3 + BUG-4 (P0.3 / P3.1): a unified input handler that distinguishes a
-	# TAP (issue select/move command) from a PAN (single-finger drag on empty
-	# ground) and a PINCH (two-finger zoom). All camera moves are cosmetic.
+# BUG-FIX (mobile zoom + move): world input is handled in _unhandled_input, NOT
+# _gui_input. Two reasons this matters and is the correct pattern:
+#
+#   1. MULTI-TOUCH / PINCH: Control._gui_input only routes the finger under the
+#      GUI focus point, so the SECOND finger of a pinch never reliably arrives
+#      (Godot issue #29525). _unhandled_input receives every InputEventScreen
+#      touch/drag with its own index, so two-finger pinch-zoom works.
+#
+#   2. UI BUTTONS FIRST: GUI Controls (the bottom-bar Buttons, zoom +/- buttons,
+#      control-group grid, onboarding overlay) consume their events in the GUI
+#      pass BEFORE _unhandled_input runs. So a tap on a button no longer leaks
+#      through as a "move to that tile" command, and a tap on empty ground still
+#      reaches us here. This is exactly what a mobile RTS needs.
+#
+# All positions in _unhandled_input are already in VIEWPORT space, which is what
+# RenderAdapter.screen_to_tile() expects (it undoes the canvas transform + camera
+# pan/zoom internally). So we pass event.position straight through -- no extra
+# get_global_transform_with_canvas() multiply (that was for _gui_input's
+# control-local coordinates and caused taps to land on the wrong tile).
+func _unhandled_input(event: InputEvent) -> void:
+	# BUG-FIX (double-tap / cannot move): with emulate_mouse_from_touch = true
+	# (Godot default) a real finger tap fires BOTH an InputEventScreenTouch and a
+	# synthetic InputEventMouse*. Handling both ran the tap twice: the first tap
+	# selected a unit and the second immediately toggled it back off (or cancelled
+	# the move), so units never actually moved. We therefore IGNORE emulated mouse
+	# events entirely and treat touch as the source of truth on devices that send
+	# it; real mouse input (desktop testing) still works because those events are
+	# not flagged as emulated.
 	if event is InputEventScreenTouch:
 		_handle_touch(event)
+		get_viewport().set_input_as_handled()
 	elif event is InputEventScreenDrag:
 		_handle_drag(event)
+		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
+		if _is_emulated(event):
+			return
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion:
+		if _is_emulated(event):
+			return
 		_handle_mouse_motion(event)
+
+
+# True when an input event was SYNTHESISED by the engine from a touch (the
+# emulate_mouse_from_touch project setting). Such events must be ignored so a
+# single finger tap is not processed twice (once as touch, once as fake mouse).
+func _is_emulated(event: InputEvent) -> bool:
+	# Godot flags emulated pointer events via a dedicated helper in 4.x.
+	if event.has_method("is_emulated"):
+		return event.is_emulated()
+	return false
 
 
 # --- Touch (mobile) camera + tap handling -----------------------------------
@@ -300,8 +350,10 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 	else:
 		_active_touches.erase(event.index)
 		# A quick, non-moving single-finger release is a TAP -> command.
+		# In _unhandled_input the position is already in viewport space, which is
+		# exactly what screen_to_tile() expects, so pass it straight through.
 		if _active_touches.is_empty() and not _press_moved:
-			_handle_tap(get_global_transform_with_canvas() * event.position)
+			_handle_tap(event.position)
 		if _active_touches.size() < 2:
 			_pinch_last_dist = 0.0
 		if _active_touches.is_empty():
@@ -316,7 +368,9 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
 		if _pinch_last_dist > 0.0 and dist > 0.0:
 			var factor: float = dist / _pinch_last_dist
 			var mid: Vector2 = _touch_midpoint()
-			_render_adapter.zoom_by(factor, get_global_transform_with_canvas() * mid)
+			# mid is already viewport-space (in _unhandled_input), which is the
+			# focus space zoom_by expects, so no canvas transform is needed.
+			_render_adapter.zoom_by(factor, mid)
 			_render_adapter.clamp_camera(get_viewport_rect().size)
 		_pinch_last_dist = dist
 		_press_moved = true
@@ -348,6 +402,8 @@ func _touch_midpoint() -> Vector2:
 # --- Mouse (desktop-in-mobile-scene) camera + tap handling ------------------
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
+	# In _unhandled_input, event.position is already viewport-space (what
+	# screen_to_tile / zoom_by expect), so it is passed through directly.
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_press_start = event.position
@@ -355,13 +411,13 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			_pan_last = event.position
 		else:
 			if not _press_moved:
-				_handle_tap(get_global_transform_with_canvas() * event.position)
+				_handle_tap(event.position)
 			_is_panning = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-		_render_adapter.zoom_by(1.15, get_global_transform_with_canvas() * event.position)
+		_render_adapter.zoom_by(1.15, event.position)
 		_render_adapter.clamp_camera(get_viewport_rect().size)
 	elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-		_render_adapter.zoom_by(1.0 / 1.15, get_global_transform_with_canvas() * event.position)
+		_render_adapter.zoom_by(1.0 / 1.15, event.position)
 		_render_adapter.clamp_camera(get_viewport_rect().size)
 
 
