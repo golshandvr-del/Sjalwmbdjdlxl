@@ -54,6 +54,13 @@ const EVENT_PEER_DISCONNECTED: String = "net.peer_disconnected"
 const EVENT_CONNECTED: String = "net.connected"            # we joined a host
 const EVENT_CONNECTION_FAILED: String = "net.connection_failed"
 const EVENT_SERVER_DISCONNECTED: String = "net.server_disconnected"
+# MA7.2 (B10): a lobby/control message arrived from a peer (typically the host's
+# "start the match / switch to the game scene" signal, or a slot assignment).
+# This is a PRESENTATION / session-orchestration channel, NOT a simulation
+# channel: it never carries game state or commands (those travel only in the
+# deterministic turn packets), so it can never cause a desync. The payload is a
+# plain, small, serializable Dictionary understood by the lobby/session layer.
+const EVENT_CONTROL: String = "net.control"
 
 # The lockstep module this transport feeds (set via attach()).
 var _lockstep: Object = null
