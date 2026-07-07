@@ -139,6 +139,17 @@ func _on_connected(_event_name: String, _payload: Dictionary) -> void:
 	begin_session()
 
 
+# --- Control channel (MA7.2 / B10) ------------------------------------------
+
+# Broadcast a lobby/session control message to the other peers over whatever
+# transport we own. The lobby uses this for the host's "start the match" signal
+# and for slot assignments -- never for simulation data. Safe no-op if there is
+# no transport yet. The transport stamps the real `sender` id on delivery.
+func send_control(msg: Dictionary) -> void:
+	if _transport != null and _transport.has_method("send_control"):
+		_transport.send_control(msg)
+
+
 # --- Accessors --------------------------------------------------------------
 
 func transport() -> Object:
