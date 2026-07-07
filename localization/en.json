@@ -42,6 +42,8 @@
 		"ui.game.resources": "Resources",
 		"ui.game.resume": "Resume",
 		"ui.game.running": "RUNNING",
+		"ui.game.select_mode": "Select",
+		"ui.game.select_mode_hint": "Drag to box-select units",
 		"ui.game.selected": "Selected",
 		"ui.game.speed": "Speed",
 		"ui.game.style": "Style",
