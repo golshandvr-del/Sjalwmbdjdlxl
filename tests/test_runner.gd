@@ -74,6 +74,9 @@ func _init() -> void:
 	test_enet_transport_implements_loopback_interface()
 	test_transport_swap_keeps_two_peers_in_sync()
 	test_network_session_seed_and_peer_agreement()
+	test_loopback_control_channel_fanout()
+	test_network_session_send_control_delegates()
+	test_enet_transport_has_control_channel()
 	# Phase 5 -- Tooling, Desktop UI & Export.
 	test_localization_load_and_lookup()
 	test_localization_fallback_and_locale_switch()
@@ -1493,6 +1496,62 @@ func test_network_session_seed_and_peer_agreement() -> void:
 	_check(lock.input_delay == 4, "session honoured the requested input delay")
 	_check(nexus.world_state.random_seed == 13579, "session seeded the world deterministically")
 	session.free()
+
+
+func test_loopback_control_channel_fanout() -> void:
+	print("test_loopback_control_channel_fanout")
+	# MA7.2 (B10): send_control() must reach EVERY other peer's bus (never the
+	# sender's own), stamped with the correct sender id, carrying the message
+	# verbatim. This is the exact mechanism the host uses to tell join clients to
+	# leave the lobby for the game scene.
+	var transport: LoopbackTransport = LoopbackTransport.new()
+	var buses: Array = []
+	var collectors: Array = []
+	for pid in [0, 1, 2]:
+		var bus: EventBus = EventBus.new()
+		var col: ControlCollector = ControlCollector.new()
+		bus.subscribe(LoopbackTransport.EVENT_CONTROL, col, "on_control")
+		# attach() captures the bus; a dummy lockstep object is fine (no turns here).
+		transport.attach(pid, RefCounted.new(), bus)
+		buses.append(bus)
+		collectors.append(col)
+	# Host (peer 0) broadcasts a start_match control message.
+	transport.send_control(0, { "type": "start_match", "scene": "res://x.tscn", "seed": 77 })
+	_check((collectors[0] as ControlCollector).received.is_empty(), "sender (peer 0) does NOT receive its own control message")
+	_check((collectors[1] as ControlCollector).received.size() == 1, "peer 1 received exactly one control message")
+	_check((collectors[2] as ControlCollector).received.size() == 1, "peer 2 received exactly one control message")
+	var got: Dictionary = (collectors[1] as ControlCollector).received[0]
+	_check(str(got.get("type", "")) == "start_match", "control payload type preserved")
+	_check(int(got.get("seed", 0)) == 77, "control payload data preserved")
+	_check(int(got.get("sender", -1)) == 0, "control payload stamped with host sender id 0")
+
+
+func test_network_session_send_control_delegates() -> void:
+	print("test_network_session_send_control_delegates")
+	# NetworkSession.send_control() must forward to whatever transport it owns so
+	# the lobby stays transport-agnostic (MA7.2 / B10).
+	var session: NetworkSession = NetworkSession.new()
+	var rec: RecordingTransport = RecordingTransport.new()
+	session._transport = rec
+	session.send_control({ "type": "start_match", "scene": "res://y.tscn" })
+	_check(rec.control_calls == 1, "session delegated exactly one send_control to the transport")
+	_check(str(rec.last_control.get("type", "")) == "start_match", "session forwarded the control payload unchanged")
+	# With no transport it must be a safe no-op (never crash).
+	session._transport = null
+	session.send_control({ "type": "start_match" })
+	_check(true, "send_control with no transport is a safe no-op")
+	session.free()
+
+
+func test_enet_transport_has_control_channel() -> void:
+	print("test_enet_transport_has_control_channel")
+	# The online sibling must expose the same control surface as the loopback so
+	# the lobby code path is identical for local and online play (MA7.2 / B10).
+	var enet: EnetTransport = EnetTransport.new()
+	_check(enet.has_method("send_control"), "EnetTransport exposes send_control()")
+	_check(EnetTransport.EVENT_CONTROL == "net.control", "EnetTransport.EVENT_CONTROL matches the shared event name")
+	_check(LoopbackTransport.EVENT_CONTROL == EnetTransport.EVENT_CONTROL, "loopback and enet agree on the control event name")
+	enet.free()
 
 
 # ============================================================================
