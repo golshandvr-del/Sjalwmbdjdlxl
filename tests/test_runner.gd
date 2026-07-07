@@ -180,6 +180,13 @@ func _init() -> void:
 	test_ma2_box_select_filters_by_owner()
 	test_ma2_box_select_corner_order_independent()
 	test_ma2_box_select_ids_sorted_deterministic()
+	# Phase MA3 (Android): control groups (assign / recall / prune / labels).
+	test_ma3_assign_normalises_selection()
+	test_ma3_recall_prunes_dead_units()
+	test_ma3_recall_is_deterministic()
+	test_ma3_empty_groups_table_shape()
+	test_ma3_button_label_shows_count()
+	test_ma3_slot_validation()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3346,6 +3353,79 @@ func test_ma2_box_select_ids_sorted_deterministic() -> void:
 	var sorted_copy: Array = ids.duplicate()
 	sorted_copy.sort()
 	_check(ids == sorted_copy, "box-select ids are returned sorted ascending")
+
+
+# --- Phase MA3: control groups (unit grouping) ------------------------------
+
+# Build a minimal units section dictionary for control-group tests. Keys are id
+# strings (matching WorldState); only ids 1,2,3 are "alive".
+func _ma3_units() -> Dictionary:
+	var d: Dictionary = {}
+	d["1"] = { "id": 1, "x": 0, "y": 0, "owner": 0 }
+	d["2"] = { "id": 2, "x": 1, "y": 0, "owner": 0 }
+	d["3"] = { "id": 3, "x": 2, "y": 0, "owner": 0 }
+	return d
+
+
+# Assigning a selection stores a sorted, de-duplicated int list (deterministic).
+func test_ma3_assign_normalises_selection() -> void:
+	print("test_ma3_assign_normalises_selection")
+	# A messy selection: out of order, with a duplicate and mixed int/string ids.
+	var stored: Array = ControlGroupUtil.normalise_ids([3, 1, "2", 1])
+	_check(stored == [1, 2, 3], "assign yields a sorted, de-duplicated int list")
+	# Empty selection produces an empty group.
+	_check(ControlGroupUtil.normalise_ids([]).is_empty(), "assigning nothing yields an empty group")
+
+
+# Recall must drop ids whose units have died since the group was assigned.
+func test_ma3_recall_prunes_dead_units() -> void:
+	print("test_ma3_recall_prunes_dead_units")
+	var units: Dictionary = _ma3_units()
+	# Group held ids 1,2,3,99 -- unit 99 no longer exists.
+	var living: Array = ControlGroupUtil.prune_living([1, 2, 3, 99], units)
+	_check(living == [1, 2, 3], "dead unit (99) pruned from the recalled group")
+	# A group of only-dead units recalls to nothing.
+	_check(ControlGroupUtil.prune_living([98, 99], units).is_empty(), "group of only-dead units recalls empty")
+
+
+# Prune returns ids in a stable ascending order regardless of stored order.
+func test_ma3_recall_is_deterministic() -> void:
+	print("test_ma3_recall_is_deterministic")
+	var units: Dictionary = _ma3_units()
+	var a: Array = ControlGroupUtil.prune_living([3, 1, 2], units)
+	var b: Array = ControlGroupUtil.prune_living([2, 3, 1], units)
+	_check(a == b, "recall order is independent of stored order")
+	var sorted_copy: Array = a.duplicate()
+	sorted_copy.sort()
+	_check(a == sorted_copy, "recalled ids come back sorted ascending")
+
+
+# The fresh control-group table has exactly SLOT_COUNT empty lists.
+func test_ma3_empty_groups_table_shape() -> void:
+	print("test_ma3_empty_groups_table_shape")
+	var groups: Array = ControlGroupUtil.empty_groups()
+	_check(groups.size() == ControlGroupUtil.SLOT_COUNT, "empty table has SLOT_COUNT slots")
+	var all_empty: bool = true
+	for g in groups:
+		if not (g as Array).is_empty():
+			all_empty = false
+	_check(all_empty, "every fresh slot is an empty list")
+
+
+# The button label shows the 1-based slot number, plus a count when populated.
+func test_ma3_button_label_shows_count() -> void:
+	print("test_ma3_button_label_shows_count")
+	_check(ControlGroupUtil.button_label(0, 0) == "1", "empty slot 0 labelled '1' (no count)")
+	_check(ControlGroupUtil.button_label(4, 3) == "5\n(3)", "populated slot 4 shows '5' + count 3")
+
+
+# Only slots 0..SLOT_COUNT-1 are valid.
+func test_ma3_slot_validation() -> void:
+	print("test_ma3_slot_validation")
+	_check(ControlGroupUtil.is_valid_slot(0), "slot 0 is valid")
+	_check(ControlGroupUtil.is_valid_slot(ControlGroupUtil.SLOT_COUNT - 1), "last slot is valid")
+	_check(not ControlGroupUtil.is_valid_slot(-1), "negative slot is invalid")
+	_check(not ControlGroupUtil.is_valid_slot(ControlGroupUtil.SLOT_COUNT), "out-of-range slot is invalid")
 
 
 # Generic event capture helper used by several Phase 2 tests.
