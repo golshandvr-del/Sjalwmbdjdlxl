@@ -77,6 +77,8 @@ func _init() -> void:
 	test_loopback_control_channel_fanout()
 	test_network_session_send_control_delegates()
 	test_enet_transport_has_control_channel()
+	test_hotseat_session_info_carried()
+	test_solo_session_info_defaults()
 	# Phase 5 -- Tooling, Desktop UI & Export.
 	test_localization_load_and_lookup()
 	test_localization_fallback_and_locale_switch()
@@ -1552,6 +1554,35 @@ func test_enet_transport_has_control_channel() -> void:
 	_check(EnetTransport.EVENT_CONTROL == "net.control", "EnetTransport.EVENT_CONTROL matches the shared event name")
 	_check(LoopbackTransport.EVENT_CONTROL == EnetTransport.EVENT_CONTROL, "loopback and enet agree on the control event name")
 	enet.free()
+
+
+func test_hotseat_session_info_carried() -> void:
+	print("test_hotseat_session_info_carried")
+	# MA7.4 (B8): a hot-seat setup writes hot_seat=true + a human count into the
+	# transient match_config; carry_session_info() must copy those facts into the
+	# persistent session_info section so the running game can surface local-MP
+	# state after match_config is cleared.
+	var ws: WorldState = WorldState.new()
+	var cfg: Dictionary = ws.get_section("match_config")
+	cfg["hot_seat"] = true
+	cfg["human_players"] = 3
+	GameBootstrap.carry_session_info(ws)
+	var info: Dictionary = ws.get_section("session_info")
+	_check(bool(info.get("hot_seat", false)) == true, "session_info.hot_seat reflects the hot-seat setup")
+	_check(int(info.get("human_players", 0)) == 3, "session_info.human_players carried over from match_config")
+
+
+func test_solo_session_info_defaults() -> void:
+	print("test_solo_session_info_defaults")
+	# A plain single-player setup carries no hot_seat flag; session_info must then
+	# default to hot_seat=false and a single human so no local-MP UI is shown.
+	var ws: WorldState = WorldState.new()
+	var cfg: Dictionary = ws.get_section("match_config")
+	cfg["human_players"] = 1
+	GameBootstrap.carry_session_info(ws)
+	var info: Dictionary = ws.get_section("session_info")
+	_check(bool(info.get("hot_seat", true)) == false, "solo session defaults to hot_seat=false")
+	_check(int(info.get("human_players", 0)) == 1, "solo session has a single human player")
 
 
 # ============================================================================
