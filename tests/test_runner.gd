@@ -202,6 +202,15 @@ func _init() -> void:
 	test_ma5_orientation_changes_placement()
 	test_ma5_project_allows_rotation()
 	test_ma5_hud_reapplies_scale_on_resize()
+	# Phase MA6 (Android): single-tap select/toggle/move on the real input path.
+	test_ma6_tap_empty_ground_with_no_selection_is_noop()
+	test_ma6_tap_friendly_unit_selects_it()
+	test_ma6_tap_selected_unit_toggles_it_off()
+	test_ma6_repeated_taps_build_a_squad()
+	test_ma6_tap_empty_ground_with_selection_moves()
+	test_ma6_unit_at_tile_owner_filter_and_determinism()
+	test_ma6_resolve_tap_does_not_mutate_input()
+	test_ma6_hud_delegates_tap_to_util()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3672,6 +3681,106 @@ func test_ma5_hud_reapplies_scale_on_resize() -> void:
 		"_on_viewport_resized re-applies the GUI scale (rotation-safe)")
 	_check(body.contains("_apply_responsive_layout"),
 		"_on_viewport_resized re-flows the overlay widgets")
+
+
+# ============================================================================
+# Phase MA6 (Android): single-tap unit selection / move on the real input path.
+# ============================================================================
+#
+# B7: "on mobile, units are not selected". We centralised the tap decision in the
+# pure, dependency-free TapSelectUtil so it can be exercised headlessly here, and
+# the mobile HUD delegates to it. These unit tests pin down EXACTLY what a single
+# tap does (select / toggle / move), plus a static check that the HUD routes
+# through the util. A full end-to-end InputEventScreenTouch injection through a
+# live HUD (which needs the Nexus autoload) runs in the separate scene harness
+# tests/ma6_touch_probe.gd, kept green alongside this suite.
+
+func test_ma6_tap_empty_ground_with_no_selection_is_noop() -> void:
+	print("test_ma6_tap_empty_ground_with_no_selection_is_noop")
+	# Tapping bare ground with nothing selected must do nothing (no phantom move).
+	var plan: Dictionary = TapSelectUtil.resolve_tap([], -1)
+	_check(str(plan.get("action", "")) == TapSelectUtil.ACTION_NONE, "empty ground + empty selection -> none")
+	_check((plan.get("selection", []) as Array).is_empty(), "selection stays empty")
+
+
+func test_ma6_tap_friendly_unit_selects_it() -> void:
+	print("test_ma6_tap_friendly_unit_selects_it")
+	# The core B7 fix: tapping a friendly unit selects it.
+	var plan: Dictionary = TapSelectUtil.resolve_tap([], 42)
+	_check(str(plan.get("action", "")) == TapSelectUtil.ACTION_SELECT, "tap unit -> select action")
+	_check((plan.get("selection", []) as Array) == [42], "the tapped unit becomes the selection")
+
+
+func test_ma6_tap_selected_unit_toggles_it_off() -> void:
+	print("test_ma6_tap_selected_unit_toggles_it_off")
+	# Tapping an already-selected unit removes it from the squad (touch toggle).
+	var plan: Dictionary = TapSelectUtil.resolve_tap([7, 8, 9], 8)
+	_check(str(plan.get("action", "")) == TapSelectUtil.ACTION_SELECT, "re-tap -> select action (updated set)")
+	_check((plan.get("selection", []) as Array) == [7, 9], "the re-tapped unit is toggled off")
+
+
+func test_ma6_repeated_taps_build_a_squad() -> void:
+	print("test_ma6_repeated_taps_build_a_squad")
+	# Repeated taps on distinct units build a multi-unit squad (needed for fusion).
+	var sel: Array = []
+	sel = TapSelectUtil.resolve_tap(sel, 1).get("selection", [])
+	sel = TapSelectUtil.resolve_tap(sel, 2).get("selection", [])
+	sel = TapSelectUtil.resolve_tap(sel, 3).get("selection", [])
+	_check(sel == [1, 2, 3], "three taps build a 3-unit squad in tap order")
+
+
+func test_ma6_tap_empty_ground_with_selection_moves() -> void:
+	print("test_ma6_tap_empty_ground_with_selection_moves")
+	# With a squad selected, tapping empty ground issues a MOVE (selection kept).
+	var plan: Dictionary = TapSelectUtil.resolve_tap([5, 6], -1)
+	_check(str(plan.get("action", "")) == TapSelectUtil.ACTION_MOVE, "empty ground + selection -> move action")
+	_check((plan.get("selection", []) as Array) == [5, 6], "the selection is preserved for the move")
+
+
+func test_ma6_unit_at_tile_owner_filter_and_determinism() -> void:
+	print("test_ma6_unit_at_tile_owner_filter_and_determinism")
+	# unit_at_tile picks the friendly unit standing on a tile, honours the owner
+	# filter, and is deterministic (lowest id) when two units share a tile.
+	var units: Dictionary = {
+		"3": { "id": 3, "x": 4, "y": 2, "owner": 0 },
+		"1": { "id": 1, "x": 4, "y": 2, "owner": 0 },
+		"9": { "id": 9, "x": 4, "y": 2, "owner": 1 },
+		"5": { "id": 5, "x": 0, "y": 0, "owner": 0 },
+	}
+	_check(TapSelectUtil.unit_at_tile(units, Vector2i(4, 2), 0) == 1, "lowest-id friendly on the shared tile is picked")
+	_check(TapSelectUtil.unit_at_tile(units, Vector2i(4, 2), 1) == 9, "owner filter selects the enemy unit")
+	_check(TapSelectUtil.unit_at_tile(units, Vector2i(4, 2), -1) == 1, "owner -1 matches any owner (still lowest id)")
+	_check(TapSelectUtil.unit_at_tile(units, Vector2i(7, 7), 0) == -1, "empty tile returns -1")
+
+
+func test_ma6_resolve_tap_does_not_mutate_input() -> void:
+	print("test_ma6_resolve_tap_does_not_mutate_input")
+	# The util must be pure: the caller's selection array is never mutated in place
+	# (the HUD keeps its own list; a leak here would corrupt selection state).
+	var original: Array = [10, 20]
+	TapSelectUtil.resolve_tap(original, 30)
+	_check(original == [10, 20], "resolve_tap leaves the caller's array unchanged")
+
+
+func test_ma6_hud_delegates_tap_to_util() -> void:
+	print("test_ma6_hud_delegates_tap_to_util")
+	# Static guard: the mobile HUD must route its tap through TapSelectUtil so the
+	# behaviour tested above is the behaviour the game actually ships (a full live
+	# HUD needs the Nexus autoload, unavailable in --script mode; the scene harness
+	# ma6_touch_probe.gd exercises the end-to-end InputEventScreenTouch path).
+	var src: String = FileAccess.get_file_as_string("res://ui/mobile/game_hud.gd")
+	_check(src != "", "game_hud.gd source is readable")
+	var tap_at: int = src.find("func _handle_tap")
+	_check(tap_at != -1, "game_hud has _handle_tap")
+	if tap_at == -1:
+		return
+	var next_func: int = src.find("\nfunc ", tap_at + 1)
+	if next_func == -1:
+		next_func = src.length()
+	var body: String = src.substr(tap_at, next_func - tap_at)
+	_check(body.contains("TapSelectUtil.resolve_tap"), "_handle_tap delegates the decision to TapSelectUtil")
+	_check(body.contains("TapSelectUtil.ACTION_MOVE"), "_handle_tap issues a move on the util's move action")
+	_check(body.contains("select_units"), "_handle_tap still issues the authoritative select_units command")
 
 
 # Generic event capture helper used by several Phase 2 tests.
