@@ -191,6 +191,16 @@ func _init() -> void:
 	test_ma4_portrait_phone_scale_not_tiny()
 	test_ma4_scale_is_orientation_agnostic()
 	test_ma4_bottom_bar_scrolls()
+	# Phase MA5 (Android): free rotation + responsive HUD re-flow.
+	test_ma5_orientation_detection()
+	test_ma5_safe_area_excludes_bars()
+	test_ma5_all_widgets_stay_on_screen_portrait()
+	test_ma5_all_widgets_stay_on_screen_landscape()
+	test_ma5_widgets_avoid_hud_bars()
+	test_ma5_select_button_sits_above_group()
+	test_ma5_oversized_widget_pinned_not_offscreen()
+	test_ma5_orientation_changes_placement()
+	test_ma5_project_allows_rotation()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3482,6 +3492,161 @@ func test_ma4_bottom_bar_scrolls() -> void:
 			row_under_scroll = true
 	_check(found_scroll, "bottom bar contains a ScrollContainer")
 	_check(row_under_scroll, "the action Row lives inside the ScrollContainer")
+
+
+# --- Phase MA5: free rotation + responsive HUD re-flow ----------------------
+
+# A few representative device viewports (absolute px) used across the MA5 tests.
+# Each pair is the SAME physical screen in portrait and landscape.
+func _ma5_viewports() -> Array:
+	return [
+		Vector2(1080, 2340),  # tall modern phone (portrait)
+		Vector2(2340, 1080),  # ... landscape
+		Vector2(720, 1280),   # small phone (portrait)
+		Vector2(1280, 720),   # ... landscape (reference)
+		Vector2(1600, 2560),  # tablet (portrait)
+		Vector2(2560, 1600),  # ... landscape
+	]
+
+
+# Representative widget sizes matching the real HUD nodes.
+func _ma5_minimap_size() -> Vector2:
+	return Vector2(180, 130)
+
+
+func _ma5_zoom_size() -> Vector2:
+	return Vector2(48, 102)   # two 48px buttons + separation
+
+
+func _ma5_group_size() -> Vector2:
+	return Vector2(140, 190)  # assign button + 3x3 grid
+
+
+func _ma5_select_size() -> Vector2:
+	return Vector2(140, 34)
+
+
+# True when `widget` (top-left `pos`, given `size`) is fully inside the viewport.
+func _ma5_on_screen(pos: Vector2, size: Vector2, vp: Vector2) -> bool:
+	return pos.x >= 0.0 and pos.y >= 0.0 and pos.x + size.x <= vp.x + 0.01 and pos.y + size.y <= vp.y + 0.01
+
+
+# is_landscape must key purely off the aspect (>= is landscape/square).
+func test_ma5_orientation_detection() -> void:
+	print("test_ma5_orientation_detection")
+	_check(ResponsiveLayoutUtil.is_landscape(Vector2(1280, 720)), "wide viewport is landscape")
+	_check(not ResponsiveLayoutUtil.is_landscape(Vector2(720, 1280)), "tall viewport is portrait")
+	_check(ResponsiveLayoutUtil.is_landscape(Vector2(1000, 1000)), "square counts as landscape")
+
+
+# The safe area must sit inside the outer margin and clear both HUD bars.
+func test_ma5_safe_area_excludes_bars() -> void:
+	print("test_ma5_safe_area_excludes_bars")
+	var vp: Vector2 = Vector2(1080, 2340)
+	var area: Rect2 = ResponsiveLayoutUtil.safe_area(vp)
+	_check(area.position.x >= ResponsiveLayoutUtil.MARGIN - 0.01, "safe area left honours margin")
+	_check(area.position.y >= ResponsiveLayoutUtil.TOP_BAR_H, "safe area top clears the top bar")
+	_check(area.position.x + area.size.x <= vp.x - ResponsiveLayoutUtil.MARGIN + 0.01, "safe area right honours margin")
+	_check(area.position.y + area.size.y <= vp.y - ResponsiveLayoutUtil.BOTTOM_BAR_H + 0.01, "safe area bottom clears the bottom bar")
+
+
+# Every floating widget must stay fully on-screen in PORTRAIT for all devices.
+func test_ma5_all_widgets_stay_on_screen_portrait() -> void:
+	print("test_ma5_all_widgets_stay_on_screen_portrait")
+	for vp in _ma5_viewports():
+		if ResponsiveLayoutUtil.is_landscape(vp):
+			continue
+		_ma5_assert_all_on_screen(vp)
+
+
+# Every floating widget must stay fully on-screen in LANDSCAPE for all devices.
+func test_ma5_all_widgets_stay_on_screen_landscape() -> void:
+	print("test_ma5_all_widgets_stay_on_screen_landscape")
+	for vp in _ma5_viewports():
+		if not ResponsiveLayoutUtil.is_landscape(vp):
+			continue
+		_ma5_assert_all_on_screen(vp)
+
+
+# Shared assertion: place every widget for `vp` and confirm each is on-screen.
+func _ma5_assert_all_on_screen(vp: Vector2) -> void:
+	var mm: Vector2 = ResponsiveLayoutUtil.minimap_pos(vp, _ma5_minimap_size())
+	_check(_ma5_on_screen(mm, _ma5_minimap_size(), vp), "minimap on-screen @ %s" % vp)
+	var zc: Vector2 = ResponsiveLayoutUtil.zoom_col_pos(vp, _ma5_zoom_size())
+	_check(_ma5_on_screen(zc, _ma5_zoom_size(), vp), "zoom column on-screen @ %s" % vp)
+	var gp: Vector2 = ResponsiveLayoutUtil.control_group_pos(vp, _ma5_group_size())
+	_check(_ma5_on_screen(gp, _ma5_group_size(), vp), "control groups on-screen @ %s" % vp)
+	var sb: Vector2 = ResponsiveLayoutUtil.select_button_pos(vp, _ma5_select_size(), gp, _ma5_group_size())
+	_check(_ma5_on_screen(sb, _ma5_select_size(), vp), "select button on-screen @ %s" % vp)
+
+
+# Widgets must not intrude into the top bar (y >= TOP_BAR_H) nor the bottom bar
+# (bottom edge <= viewport - BOTTOM_BAR_H) for every device/orientation.
+func test_ma5_widgets_avoid_hud_bars() -> void:
+	print("test_ma5_widgets_avoid_hud_bars")
+	var top_h: float = ResponsiveLayoutUtil.TOP_BAR_H
+	for vp in _ma5_viewports():
+		var mm: Vector2 = ResponsiveLayoutUtil.minimap_pos(vp, _ma5_minimap_size())
+		_check(mm.y >= top_h - 0.01, "minimap clears top bar @ %s" % vp)
+		var bottom_limit: float = vp.y - ResponsiveLayoutUtil.BOTTOM_BAR_H
+		var gp: Vector2 = ResponsiveLayoutUtil.control_group_pos(vp, _ma5_group_size())
+		_check(gp.y + _ma5_group_size().y <= bottom_limit + 0.01, "control groups clear bottom bar @ %s" % vp)
+		var zc: Vector2 = ResponsiveLayoutUtil.zoom_col_pos(vp, _ma5_zoom_size())
+		_check(zc.y + _ma5_zoom_size().y <= bottom_limit + 0.01, "zoom column clears bottom bar @ %s" % vp)
+
+
+# The Select toggle must sit ABOVE the control-group panel (smaller y) and share
+# its left edge, in both orientations.
+func test_ma5_select_button_sits_above_group() -> void:
+	print("test_ma5_select_button_sits_above_group")
+	for vp in _ma5_viewports():
+		var gp: Vector2 = ResponsiveLayoutUtil.control_group_pos(vp, _ma5_group_size())
+		var sb: Vector2 = ResponsiveLayoutUtil.select_button_pos(vp, _ma5_select_size(), gp, _ma5_group_size())
+		_check(sb.y + _ma5_select_size().y <= gp.y + 0.01, "select button is above the group panel @ %s" % vp)
+		_check(abs(sb.x - gp.x) < 0.01, "select button shares the group panel's left edge @ %s" % vp)
+
+
+# A widget LARGER than the safe area must be pinned to the safe-area top-left
+# (never pushed off-screen with a negative position).
+func test_ma5_oversized_widget_pinned_not_offscreen() -> void:
+	print("test_ma5_oversized_widget_pinned_not_offscreen")
+	var vp: Vector2 = Vector2(320, 480)  # tiny screen
+	var huge: Vector2 = Vector2(1000, 1000)
+	var pos: Vector2 = ResponsiveLayoutUtil.clamp_into_safe_area(Vector2(-500, -500), huge, vp)
+	var area: Rect2 = ResponsiveLayoutUtil.safe_area(vp)
+	_check(abs(pos.x - area.position.x) < 0.01, "oversized widget pinned to safe-area left")
+	_check(abs(pos.y - area.position.y) < 0.01, "oversized widget pinned to safe-area top")
+
+
+# Rotating the SAME device (portrait <-> landscape) must actually move the
+# thumb-reachable controls (proving the layout re-flows, not just clamps).
+func test_ma5_orientation_changes_placement() -> void:
+	print("test_ma5_orientation_changes_placement")
+	var portrait: Vector2 = Vector2(1080, 2340)
+	var landscape: Vector2 = Vector2(2340, 1080)
+	var zc_p: Vector2 = ResponsiveLayoutUtil.zoom_col_pos(portrait, _ma5_zoom_size())
+	var zc_l: Vector2 = ResponsiveLayoutUtil.zoom_col_pos(landscape, _ma5_zoom_size())
+	# Portrait docks zoom to the bottom; landscape centres it vertically -> the
+	# vertical placement must differ meaningfully.
+	_check(abs(zc_p.y - zc_l.y) > 1.0, "zoom column re-flows between orientations")
+	var gp_p: Vector2 = ResponsiveLayoutUtil.control_group_pos(portrait, _ma5_group_size())
+	var gp_l: Vector2 = ResponsiveLayoutUtil.control_group_pos(landscape, _ma5_group_size())
+	_check(abs(gp_p.y - gp_l.y) > 1.0, "control groups re-flow between orientations")
+
+
+# B6: the project must permit free rotation (orientation=sensor), not lock to
+# portrait (the old value "1"), so the game plays in landscape too.
+func test_ma5_project_allows_rotation() -> void:
+	print("test_ma5_project_allows_rotation")
+	var cfg: ConfigFile = ConfigFile.new()
+	var err: int = cfg.load("res://project.godot")
+	_check(err == OK, "project.godot loads")
+	if err != OK:
+		return
+	var orientation = cfg.get_value("display", "window/handheld/orientation", "portrait")
+	# Godot 4 stores this as the string "sensor"; anything that is not a locked
+	# portrait/landscape value means free rotation is allowed.
+	_check(str(orientation) == "sensor", "orientation allows free rotation (got %s)" % str(orientation))
 
 
 # Generic event capture helper used by several Phase 2 tests.
