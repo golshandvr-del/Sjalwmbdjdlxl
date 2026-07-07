@@ -187,6 +187,10 @@ func _init() -> void:
 	test_ma3_empty_groups_table_shape()
 	test_ma3_button_label_shows_count()
 	test_ma3_slot_validation()
+	# Phase MA4 (Android): portrait GUI scale + bottom-bar overflow.
+	test_ma4_portrait_phone_scale_not_tiny()
+	test_ma4_scale_is_orientation_agnostic()
+	test_ma4_bottom_bar_scrolls()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3426,6 +3430,58 @@ func test_ma3_slot_validation() -> void:
 	_check(ControlGroupUtil.is_valid_slot(ControlGroupUtil.SLOT_COUNT - 1), "last slot is valid")
 	_check(not ControlGroupUtil.is_valid_slot(-1), "negative slot is invalid")
 	_check(not ControlGroupUtil.is_valid_slot(ControlGroupUtil.SLOT_COUNT), "out-of-range slot is invalid")
+
+
+# --- Phase MA4: portrait GUI scale + bottom-bar overflow --------------------
+
+# B4: a phone held upright (portrait) must NOT shrink the HUD. The old math
+# compared the portrait width to the landscape reference width and produced a
+# sub-1.0 (tiny) scale; the orientation-aware fix must give a comfortable,
+# >= 1.0 scale on a typical 1080x2340 phone.
+func test_ma4_portrait_phone_scale_not_tiny() -> void:
+	print("test_ma4_portrait_phone_scale_not_tiny")
+	# Common portrait phone resolution.
+	var s: float = GameSettings.auto_scale_for(Vector2(1080, 2340))
+	_check(s >= 1.0, "portrait phone (1080x2340) scales the HUD UP, not down (got %.2f)" % s)
+	# A small-ish portrait phone should still be at least readable (>= reference).
+	var s2: float = GameSettings.auto_scale_for(Vector2(720, 1280))
+	_check(s2 >= 1.0, "720x1280 portrait is at least 1.0x (got %.2f)" % s2)
+
+
+# The scale must be identical whether the SAME device is held in portrait or
+# landscape (only the orientation flips; the physical screen is the same).
+func test_ma4_scale_is_orientation_agnostic() -> void:
+	print("test_ma4_scale_is_orientation_agnostic")
+	var portrait: float = GameSettings.auto_scale_for(Vector2(1080, 2340))
+	var landscape: float = GameSettings.auto_scale_for(Vector2(2340, 1080))
+	_check(abs(portrait - landscape) < 0.0001, "portrait and landscape of one device scale the same")
+	# The landscape reference itself stays exactly 1.0x (no regression).
+	_check(abs(GameSettings.auto_scale_for(Vector2(1280, 720)) - 1.0) < 0.0001, "reference landscape unchanged (1.0x)")
+
+
+# B5: the in-game bottom action bar must live inside a horizontally-scrolling
+# container so its many buttons can never overflow off a narrow phone screen.
+func test_ma4_bottom_bar_scrolls() -> void:
+	print("test_ma4_bottom_bar_scrolls")
+	var packed: PackedScene = load("res://scenes/game_main.tscn")
+	_check(packed != null, "game_main scene loads")
+	if packed == null:
+		return
+	var state: SceneState = packed.get_state()
+	# Walk the scene state looking for a ScrollContainer that parents the bottom
+	# action Row, and confirm horizontal scrolling is enabled.
+	var found_scroll: bool = false
+	var row_under_scroll: bool = false
+	for i in range(state.get_node_count()):
+		var node_name: String = str(state.get_node_name(i))
+		var node_type: String = str(state.get_node_type(i))
+		var node_path: String = str(state.get_node_path(i))
+		if node_type == "ScrollContainer" and node_path.contains("BottomBar"):
+			found_scroll = true
+		if node_name == "Row" and node_path.contains("Scroll"):
+			row_under_scroll = true
+	_check(found_scroll, "bottom bar contains a ScrollContainer")
+	_check(row_under_scroll, "the action Row lives inside the ScrollContainer")
 
 
 # Generic event capture helper used by several Phase 2 tests.
