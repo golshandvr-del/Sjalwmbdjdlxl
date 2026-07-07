@@ -189,7 +189,10 @@ func _on_single() -> void:
 	# P2.1: go to the Match Setup screen where the player picks map / difficulty /
 	# UI style before the skirmish is built. (The old desktop/mobile sub-panel is
 	# now folded into that screen's "UI style" option.)
+	# MA7.4: clear any lingering purpose (host/hotseat) so single-player opens with
+	# its own solo defaults even if the player previously visited another path.
 	_store_locale()
+	Nexus.world_state.get_section("ui_prefs")["setup_purpose"] = ""
 	get_tree().change_scene_to_file(MATCH_SETUP_SCENE)
 
 
@@ -206,12 +209,15 @@ func _on_single_mobile() -> void:
 # --- Multiplayer: offline (local) -------------------------------------------
 
 func _on_offline() -> void:
-	# A local (hot-seat / shared-device) match runs the very same deterministic
-	# core as single-player; it just starts the standard game scene. It shares the
-	# Match Setup screen so the map / difficulty / UI style can be configured. A
-	# richer split-screen lobby is a future enhancement -- the engine path is
-	# identical.
+	# MA7.4 (B8): a local hot-seat / shared-device match is now a DISTINCT path,
+	# not a silent alias of single-player. It runs the very same deterministic
+	# core (so no new game logic) but Match Setup detects the "hotseat" intent and
+	# opens with a hot-seat title + sensible defaults (>=2 humans, 0 AIs) and
+	# stamps match_config.hot_seat = true so the game scene knows this is a shared-
+	# device multiplayer session rather than a solo skirmish.
 	_store_locale()
+	var prefs: Dictionary = Nexus.world_state.get_section("ui_prefs")
+	prefs["setup_purpose"] = "hotseat"
 	get_tree().change_scene_to_file(MATCH_SETUP_SCENE)
 
 
