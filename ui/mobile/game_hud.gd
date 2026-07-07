@@ -538,7 +538,9 @@ func _handle_tap(screen_pos: Vector2) -> void:
 				"unit_ids": _selected_unit_ids.duplicate(),
 			}, 1)
 		TapSelectUtil.ACTION_MOVE:
-			Nexus.issue_command("move_unit", LOCAL_PLAYER, {
+			# Simulation command -> route through player_command so it is lockstep
+			# scheduled when a networked session is active (MA7.1), else immediate.
+			Nexus.player_command("move_unit", {
 				"unit_ids": _selected_unit_ids.duplicate(),
 				"x": tile.x,
 				"y": tile.y,
@@ -603,7 +605,7 @@ func _on_pause_pressed() -> void:
 
 func _on_build_pressed() -> void:
 	# Ask the economy to build a soldier at the local HQ (cost-checked there).
-	Nexus.issue_command("build_unit", LOCAL_PLAYER, {
+	Nexus.player_command("build_unit", {
 		"owner": LOCAL_PLAYER,
 		"building_id": _local_hq_id,
 		"unit_type": "soldier",
@@ -648,7 +650,7 @@ func _on_research_pressed() -> void:
 	var node_id: String = _next_research_node(tech)
 	if node_id == "":
 		return
-	Nexus.issue_command("research_tech", LOCAL_PLAYER, {
+	Nexus.player_command("research_tech", {
 		"owner": LOCAL_PLAYER,
 		"node_id": node_id,
 	}, 1)
@@ -656,7 +658,7 @@ func _on_research_pressed() -> void:
 
 func _on_upgrade_pressed() -> void:
 	# Queue the next HQ upgrade level (cost + time checked by the module).
-	Nexus.issue_command("upgrade_building", LOCAL_PLAYER, {
+	Nexus.player_command("upgrade_building", {
 		"building_id": _local_hq_id,
 	}, 1)
 
@@ -665,7 +667,7 @@ func _on_fuse_pressed() -> void:
 	# Fuse the currently selected units into a hero (recipe matched in module).
 	if _selected_unit_ids.is_empty():
 		return
-	Nexus.issue_command("fuse_units", LOCAL_PLAYER, {
+	Nexus.player_command("fuse_units", {
 		"owner": LOCAL_PLAYER,
 		"unit_ids": _selected_unit_ids.duplicate(),
 	}, 1)
