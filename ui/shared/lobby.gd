@@ -399,6 +399,10 @@ func _ensure_session() -> void:
 	Nexus.subscribe(EnetTransport.EVENT_CONNECTED, self, "_on_connected")
 	Nexus.subscribe(EnetTransport.EVENT_CONNECTION_FAILED, self, "_on_connection_failed")
 	Nexus.subscribe(EnetTransport.EVENT_SERVER_DISCONNECTED, self, "_on_server_disconnected")
+	# MA7.2 (B10): control channel -- the host's "start the match" signal and slot
+	# assignments arrive here so a JOIN client actually leaves the lobby for the
+	# game scene instead of waiting forever.
+	Nexus.subscribe(EnetTransport.EVENT_CONTROL, self, "_on_control")
 	# Do NOT subscribe to EVENT_SESSION_STARTED here; the lobby drives start
 	# explicitly (after mod sync) via _begin_match so it can show the progress bar.
 
@@ -455,14 +459,27 @@ func _on_start_pressed() -> void:
 	_overlay.set_progress(0.5, _loc.t("ui.lobby.syncing_mods"))
 	await get_tree().create_timer(0.2).timeout
 	_overlay.set_progress(1.0, _loc.t("ui.net.connected"))
+	# MA7.2 (B10): tell every JOIN client to start too, and hand them the exact
+	# same match layout (scene + seed + placements) so all peers build an
+	# identical world before the deterministic session takes over. This must go
+	# out BEFORE we begin our own session / change scene, while the transport
+	# (and its RPC peer) is still live on this lobby node.
+	_session.send_control({
+		"type": "start_match",
+		"scene": _game_scene,
+		"seed": LAN_SEED,
+		"placements": _current_placements(),
+		"game_mode": _game_mode,
+	})
 	_session.begin_session()
 	Nexus.world_state.random_seed = LAN_SEED
 	get_tree().change_scene_to_file(_game_scene)
 
 
-# Persist the lobby's team/slot decisions so the game (and victory conditions)
-# use them. Matches the schema in STRUCTURE.md section 9.8.
-func _write_placements() -> void:
+# Build the lobby's team/slot decisions as a placements array. Matches the
+# schema in STRUCTURE.md section 9.8. Pure (no side effects) so it can be reused
+# both to persist locally AND to ship to join clients over the control channel.
+func _current_placements() -> Array:
 	var placements: Array = []
 	for i in range(_slots.size()):
 		var slot: Dictionary = _slots[i]
@@ -472,9 +489,44 @@ func _write_placements() -> void:
 			"team": int(slot["team"]),
 			"flag_index": i,
 		})
+	return placements
+
+
+# Persist the lobby's team/slot decisions so the game (and victory conditions)
+# use them.
+func _write_placements() -> void:
 	var cfg: Dictionary = Nexus.world_state.get_section("match_config")
-	cfg["placements"] = placements
+	cfg["placements"] = _current_placements()
 	cfg["game_mode"] = _game_mode
+
+
+# --- Control channel receiver (MA7.2 / B10) ---------------------------------
+
+# A control message arrived from another peer. On a JOIN client, the host's
+# "start_match" means: adopt the host's seed + placements and switch to the game
+# scene now (the client already began its lockstep session on connect, so the
+# deterministic clock is ready). We trust only messages from the host (id 1).
+func _on_control(_event_name: String, payload: Dictionary) -> void:
+	var msg_type: String = str(payload.get("type", ""))
+	if msg_type != "start_match":
+		return
+	# Host is always multiplayer id 1; ignore anything else for the start signal.
+	if int(payload.get("sender", 0)) != 1:
+		return
+	# The host is authoritative: mirror its scene + seed + placements exactly.
+	var scene: String = str(payload.get("scene", _game_scene))
+	var seed_value: int = int(payload.get("seed", LAN_SEED))
+	var cfg: Dictionary = Nexus.world_state.get_section("match_config")
+	if payload.has("placements"):
+		cfg["placements"] = payload.get("placements")
+	cfg["game_mode"] = str(payload.get("game_mode", _game_mode))
+	Nexus.world_state.random_seed = seed_value
+	# Make sure our lockstep session is running before we hand off to the game.
+	if _session != null:
+		_session.begin_session()
+	if _discovery != null:
+		_discovery.stop()
+	get_tree().change_scene_to_file(scene)
 
 
 func _on_back() -> void:
