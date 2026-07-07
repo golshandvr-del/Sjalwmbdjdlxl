@@ -60,6 +60,13 @@ echo "--> CODE_POLICY lint"
 echo "--> Headless test suite"
 "${GODOT_BIN}" --headless --path . --script res://tests/test_runner.gd
 
+# 3b) Gate: MA6 scene-based touch probe. Runs as a MAIN SCENE (not --script) so
+# the Nexus autoload + live input pipeline exist, proving a real
+# InputEventScreenTouch selects a unit and moves it end-to-end. It quits with a
+# non-zero exit code on failure, so set -e stops the build here.
+echo "--> MA6 scene touch probe"
+"${GODOT_BIN}" --headless --path . res://tests/ma6_touch_probe.tscn
+
 # 4) Export each requested preset.
 for preset in "${PRESETS[@]}"; do
   echo "--> Exporting preset: ${preset}"
