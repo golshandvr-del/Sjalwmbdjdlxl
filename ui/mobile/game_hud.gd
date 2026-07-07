@@ -212,6 +212,15 @@ func _apply_responsive_layout() -> void:
 			# Portrait: bottom-left, above the bottom action bar.
 			_control_group_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 			_control_group_panel.position = Vector2(12, -220)
+	if _select_button != null:
+		# MA2: keep the Select toggle just above the control-group panel in both
+		# orientations so it is always thumb-reachable and never off-screen.
+		if landscape:
+			_select_button.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+			_select_button.position = Vector2(12, -150)
+		else:
+			_select_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+			_select_button.position = Vector2(12, -260)
 
 
 # Phase A.6: a tiny "what am I looking at" overlay so a first-time player is not
