@@ -141,17 +141,29 @@ func _probe_select_and_move(nexus: Node, hud: Node, adapter: Object) -> void:
 		"tapping empty ground with a selection issues a move_unit command")
 
 
-# The viewport pixel at the centre of tile (tx,ty), inverting screen_to_tile.
-# screen_to_tile does: local = (viewport_to_canvas(pos) - camera_offset)/zoom,
-# then floor(local/tile_size). In headless with no content-scale stretch,
-# viewport_to_canvas is identity, so the forward map is:
-#   px = (tile*tile_size + tile_size/2)*zoom + camera_offset
+# The viewport pixel at the centre of tile (tx,ty): the exact inverse of the
+# adapter's screen_to_tile, so the tap lands on the intended tile even though the
+# adapter sits under a transformed parent (WorldLayer) and the window may carry a
+# content_scale_factor. screen_to_tile computes:
+#     local  = (viewport_to_canvas(px) - camera_offset) / zoom
+#     tile   = floor(local / tile_size)
+# with viewport_to_canvas(px) = global_canvas_xform.affine_inverse() * (px/factor).
+# We invert it for the tile centre (local = (tile+0.5)*tile_size):
+#     canvas = local*zoom + camera_offset
+#     px     = factor * (global_canvas_xform * canvas)
 func _tile_centre_px(adapter: Object, tx: int, ty: int) -> Vector2:
 	var ts: int = int(adapter.get("tile_size"))
 	var zoom: float = float(adapter.get("zoom"))
 	var off: Vector2 = adapter.get("camera_offset")
-	var world: Vector2 = Vector2(tx * ts + ts * 0.5, ty * ts + ts * 0.5)
-	return world * zoom + off
+	var local: Vector2 = Vector2((tx + 0.5) * ts, (ty + 0.5) * ts)
+	var canvas: Vector2 = local * zoom + off
+	var xform: Transform2D = (adapter as Node2D).get_global_transform_with_canvas()
+	var px: Vector2 = xform * canvas
+	var factor: float = 1.0
+	var win: Window = (adapter as Node).get_window()
+	if win != null and win.content_scale_factor > 0.0:
+		factor = win.content_scale_factor
+	return px * factor
 
 
 # Inject a genuine (non-emulated) press+release touch through the HUD's real
