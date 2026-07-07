@@ -65,7 +65,7 @@ const _GESTURE_PAN_SPEED: float = 40.0
 # the camera on it); the "Assign" toggle turns a tap into ASSIGN (store the
 # current selection into that slot). Presentation-only: recall just re-issues a
 # normal select_units command, so the simulation stays authoritative.
-var _control_groups: Array = [[], [], [], [], [], [], [], [], []]
+var _control_groups: Array = ControlGroupUtil.empty_groups()
 var _assign_mode: bool = false
 var _group_buttons: Array = []
 var _assign_button: Button = null
@@ -844,10 +844,12 @@ func _build_control_group_panel() -> void:
 # Handle a control-group slot tap: assign the current selection (Assign mode) or
 # recall the stored group (normal mode).
 func _on_control_group_pressed(slot: int) -> void:
-	if slot < 0 or slot >= _control_groups.size():
+	if not ControlGroupUtil.is_valid_slot(slot) or slot >= _control_groups.size():
 		return
 	if _assign_mode:
-		_control_groups[slot] = _selected_unit_ids.duplicate()
+		# Store the current selection as a clean, sorted, de-duplicated group so
+		# recall is deterministic (MA3).
+		_control_groups[slot] = ControlGroupUtil.normalise_ids(_selected_unit_ids)
 		_refresh_control_group_labels()
 		# One-shot assign: turn the toggle back off for convenience.
 		_assign_mode = false
@@ -855,13 +857,12 @@ func _on_control_group_pressed(slot: int) -> void:
 			_assign_button.button_pressed = false
 		return
 	# Recall: drop any units that no longer exist, then select + focus.
-	var group: Array = _control_groups[slot]
-	var living: Array = []
 	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
-	for uid in group:
-		if units.has(str(int(uid))):
-			living.append(int(uid))
+	var living: Array = ControlGroupUtil.prune_living(_control_groups[slot], units)
 	_control_groups[slot] = living
+	# Keep the slot's count label in sync after pruning dead units (MA3 fix:
+	# previously the label went stale once units in a group died).
+	_refresh_control_group_labels()
 	if living.is_empty():
 		return
 	_selected_unit_ids = living.duplicate()
@@ -881,10 +882,7 @@ func _on_control_group_pressed(slot: int) -> void:
 func _refresh_control_group_labels() -> void:
 	for i in range(_group_buttons.size()):
 		var count: int = (_control_groups[i] as Array).size()
-		if count > 0:
-			_group_buttons[i].text = "%d\n(%d)" % [i + 1, count]
-		else:
-			_group_buttons[i].text = str(i + 1)
+		_group_buttons[i].text = ControlGroupUtil.button_label(i, count)
 
 
 # --- P3.4: selection detail panel -------------------------------------------
