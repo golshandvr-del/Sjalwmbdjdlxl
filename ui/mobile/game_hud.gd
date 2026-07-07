@@ -387,10 +387,23 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 			_is_panning = false
 			_pan_last = event.position
 		elif _active_touches.size() == 2:
-			# Begin a pinch: remember the initial finger distance.
+			# Begin a pinch: remember the initial finger distance. A second finger
+			# cancels any in-progress box selection (pinch-zoom takes priority).
 			_pinch_last_dist = _touch_distance()
+			if _is_box_selecting:
+				_is_box_selecting = false
+				if _selection_box != null:
+					_selection_box.visible = false
 	else:
 		_active_touches.erase(event.index)
+		# MA2: finishing a box-selection drag (select mode ON, single finger).
+		if _is_box_selecting and _active_touches.is_empty():
+			if _selection_box != null:
+				_selection_box.visible = false
+			_apply_box_selection(_press_start, event.position)
+			_is_box_selecting = false
+			_press_moved = false
+			return
 		# A quick, non-moving single-finger release is a TAP -> command.
 		# In _unhandled_input the position is already in viewport space, which is
 		# exactly what screen_to_tile() expects, so pass it straight through.
@@ -416,6 +429,13 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
 			_render_adapter.clamp_camera(get_viewport_rect().size)
 		_pinch_last_dist = dist
 		_press_moved = true
+	elif _select_mode:
+		# MA2: single-finger drag in Select mode = draw a box-selection rectangle
+		# (never pans the camera). A pinch (two fingers) above still takes over.
+		if _is_box_selecting or event.position.distance_to(_press_start) > _DRAG_THRESHOLD:
+			_press_moved = true
+			_is_box_selecting = true
+			_update_selection_box(event.position)
 	else:
 		# Single-finger drag = pan once past the drag threshold.
 		if event.position.distance_to(_press_start) > _DRAG_THRESHOLD:
