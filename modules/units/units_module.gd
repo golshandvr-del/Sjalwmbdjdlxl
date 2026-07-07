@@ -204,12 +204,20 @@ func _handle_move_command(data: Dictionary) -> void:
 	var goal: Vector2i = Vector2i(gx, gy)
 	if not _map_walkable(goal.x, goal.y):
 		goal = _nearest_walkable(goal)
-	for raw_id in ids:
-		var key: String = str(int(raw_id))
-		if not _units().has(key):
-			continue
+	# BUG-MA1 fix (Android): when MORE THAN ONE unit is ordered to the same tile,
+	# do NOT send them all to the identical goal (that stacks every unit into a
+	# single block -- the reported bug). Instead spread the group into a FORMATION:
+	# assign each unit its own unique, walkable destination tile clustered around
+	# the requested goal. The assignment is fully deterministic (units sorted by
+	# id, destinations picked by a stable BFS ring out from the goal) so lockstep
+	# peers compute identical results.
+	var valid_ids: Array = _sorted_living_ids(ids)
+	var goals: Array = _formation_goals(goal, valid_ids.size())
+	for i in range(valid_ids.size()):
+		var key: String = str(valid_ids[i])
 		var unit: Dictionary = _units()[key]
-		var path: Array = _compute_path(Vector2i(int(unit["x"]), int(unit["y"])), goal)
+		var my_goal: Vector2i = goals[i] if i < goals.size() else goal
+		var path: Array = _compute_path(Vector2i(int(unit["x"]), int(unit["y"])), my_goal)
 		# Drop the first node (current tile) so the unit steps forward.
 		if path.size() > 0:
 			path.remove_at(0)
@@ -217,7 +225,71 @@ func _handle_move_command(data: Dictionary) -> void:
 		unit["target_id"] = -1
 		# Record the move goal so the renderer can draw a destination marker
 		# (cosmetic feedback for BUG-3). Cleared implicitly when the path empties.
-		unit["move_goal"] = [goal.x, goal.y]
+		unit["move_goal"] = [my_goal.x, my_goal.y]
+
+
+# BUG-MA1: return the requested unit ids that still exist, sorted ascending by
+# id so the formation assignment below is deterministic (lockstep-safe).
+func _sorted_living_ids(ids: Array) -> Array:
+	var out: Array = []
+	for raw_id in ids:
+		var uid: int = int(raw_id)
+		if _units().has(str(uid)):
+			out.append(uid)
+	out.sort()
+	return out
+
+
+# BUG-MA1: pick `count` UNIQUE walkable destination tiles clustered around
+# `center`, so a multi-unit move spreads the group into a formation instead of
+# stacking every unit onto one tile. Deterministic BFS ring-out with a stable
+# neighbour order; the center tile itself is used first when walkable. Returns a
+# list of Vector2i of length `count` (falls back to `center` if the map is tiny).
+func _formation_goals(center: Vector2i, count: int) -> Array:
+	var goals: Array = []
+	if count <= 0:
+		return goals
+	# A single unit keeps the exact requested tile (no behaviour change).
+	if count == 1:
+		goals.append(center)
+		return goals
+	var taken: Dictionary = {}
+	var visited: Dictionary = {}
+	var frontier: Array = [center]
+	visited["%d,%d" % [center.x, center.y]] = true
+	# Stable 4-neighbour order (N, E, S, W) keeps expansion deterministic.
+	var offsets: Array = [
+		Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0),
+	]
+	var guard: int = 0
+	while goals.size() < count and not frontier.is_empty() and guard < 8192:
+		guard += 1
+		var next_frontier: Array = []
+		for tile in frontier:
+			var tk: String = "%d,%d" % [tile.x, tile.y]
+			if _map_walkable(tile.x, tile.y) and not taken.has(tk):
+				taken[tk] = true
+				goals.append(tile)
+				if goals.size() >= count:
+					break
+			for off in offsets:
+				var n: Vector2i = tile + off
+				var k: String = "%d,%d" % [n.x, n.y]
+				if visited.has(k):
+					continue
+				visited[k] = true
+				next_frontier.append(n)
+		# Sort the next ring by (y, x) so the fill order is stable + predictable.
+		next_frontier.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			if a.y != b.y:
+				return a.y < b.y
+			return a.x < b.x)
+		frontier = next_frontier
+	# If the map could not supply enough unique tiles, pad with the center so the
+	# caller always gets `count` entries (rare; only on very small/blocked maps).
+	while goals.size() < count:
+		goals.append(center)
+	return goals
 
 
 # BUG-3 fix (P0.3): deterministic BFS out from a blocked goal to the closest
