@@ -213,6 +213,7 @@
 		"ui.net.disconnected": "قطع شد",
 		"ui.net.host": "میزبانی بازی",
 		"ui.net.join": "پیوستن به بازی",
+		"ui.net.player_joined": "یک بازیکن وصل شد ({0}/{1})",
 		"ui.net.waiting_for_players": "در انتظار بازیکنان...",
 		"ui.objecteditor.extractable": "منبع قابل‌استخراج",
 		"ui.objecteditor.placement": "محل قرارگیری",

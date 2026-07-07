@@ -213,6 +213,7 @@
 		"ui.net.disconnected": "Disconnected",
 		"ui.net.host": "Host Game",
 		"ui.net.join": "Join Game",
+		"ui.net.player_joined": "A player joined ({0}/{1})",
 		"ui.net.waiting_for_players": "Waiting for players...",
 		"ui.objecteditor.extractable": "Extractable resource",
 		"ui.objecteditor.placement": "Placement",
