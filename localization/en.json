@@ -291,6 +291,7 @@
 		"ui.setup.start": "Start Match",
 		"ui.setup.starting": "Starting match",
 		"ui.setup.title": "Match Setup",
+		"ui.setup.title_hotseat": "Local Multiplayer (Hot-Seat)",
 		"ui.setup.ui_style": "UI Style",
 		"ui.stat.add": "Add Attribute",
 		"ui.stat.group": "Group",
