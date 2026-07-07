@@ -361,18 +361,38 @@ func _on_team_changed(index: int, team: int) -> void:
 
 
 func _on_ready_toggled() -> void:
-	# Mark our own slot ready (host = slot 0; a join's own slot after assignment).
-	var my_index: int = 0 if _role == "host" else _my_join_slot()
+	# Mark our own slot ready (host = slot 0; a join's own assigned slot).
+	var my_index: int = _my_slot_index()
 	if my_index >= 0 and my_index < _slots.size():
 		_slots[my_index]["ready"] = _ready_button.button_pressed
 	_rebuild_slot_rows()
-	_update_start_enabled()
+	if _role == "host":
+		_update_start_enabled()
+		_broadcast_slots()
+	else:
+		# MA7.3 (B9): report our ready state back to the host so its start button
+		# can enable once every human slot is ready.
+		if _session != null:
+			_session.send_control({
+				"type": "ready_state",
+				"peer": _session.transport().local_peer_id(),
+				"ready": _ready_button.button_pressed,
+			})
 
 
-func _my_join_slot() -> int:
-	# A join controls the first still-open human slot it was assigned. For the
-	# simple LAN flow we let it toggle slot index matching its local peer id order.
-	return 1 if _slots.size() > 1 else -1
+# The index of the slot this peer controls: the host owns slot 0; a join owns
+# the slot whose peer id matches its local multiplayer id (MA7.3). Returns -1 if
+# not yet assigned.
+func _my_slot_index() -> int:
+	if _role == "host":
+		return 0
+	if _session == null or _session.transport() == null:
+		return -1
+	var me: int = _session.transport().local_peer_id()
+	for i in range(_slots.size()):
+		if int(_slots[i].get("peer", -1)) == me:
+			return i
+	return -1
 
 
 func _update_start_enabled() -> void:
@@ -419,16 +439,21 @@ func _on_peer_connected(_event_name: String, payload: Dictionary) -> void:
 			_discovery.set_info(_beacon_info())
 		_rebuild_slot_rows()
 		_update_start_enabled()
-		_status_label.text = _loc.t("ui.net.connected")
+		# MA7.3 (B9): concrete "a player joined (n/total)" feedback instead of a
+		# generic "connected", and push the authoritative slot layout to every
+		# client so their lobby (and each client's own slot/team) matches the host.
+		_status_label.text = _loc.t("ui.net.player_joined").format([_filled_human_slots(), _human_players])
+		_broadcast_slots()
 
 
 func _on_connected(_event_name: String, _payload: Dictionary) -> void:
-	# Join side: we reached the host. Wait for start (host drives it).
+	# Join side: we reached the host. Wait for the host's authoritative slot
+	# layout (MA7.3 slots_update) and then for the start signal (MA7.2). We show a
+	# provisional single-row view until the real layout arrives so the screen is
+	# never blank.
 	_status_label.text = _loc.t("ui.lobby.waiting_host")
-	# Show a minimal slot view so the join can press Ready.
 	if _slots.is_empty():
 		_slots.append({ "kind": "human", "team": 0, "ready": false, "peer": 1 })
-		_slots.append({ "kind": "human", "team": 1, "ready": false, "peer": _session.transport().local_peer_id() })
 	_rebuild_slot_rows()
 
 
@@ -507,11 +532,33 @@ func _write_placements() -> void:
 # scene now (the client already began its lockstep session on connect, so the
 # deterministic clock is ready). We trust only messages from the host (id 1).
 func _on_control(_event_name: String, payload: Dictionary) -> void:
+	var sender: int = int(payload.get("sender", 0))
 	var msg_type: String = str(payload.get("type", ""))
+	# Messages a JOIN client accepts only FROM the host (multiplayer id 1):
+	if msg_type == "slots_update":
+		# MA7.3 (B9): adopt the host's authoritative slot layout so this client
+		# sees the real players/teams and knows which slot is its own (for Ready).
+		if _role == "join" and sender == 1:
+			_apply_slot_snapshot(payload.get("slots", []))
+			_status_label.text = _loc.t("ui.lobby.waiting_host")
+		return
+	if msg_type == "ready_state":
+		# Host side: a client toggled Ready. Update that peer's slot and re-check
+		# whether the match can start (MA7.3).
+		if _role == "host":
+			var peer: int = int(payload.get("peer", -1))
+			for slot in _slots:
+				if int(slot.get("peer", -1)) == peer:
+					slot["ready"] = bool(payload.get("ready", false))
+					break
+			_rebuild_slot_rows()
+			_update_start_enabled()
+			_broadcast_slots()
+		return
 	if msg_type != "start_match":
 		return
-	# Host is always multiplayer id 1; ignore anything else for the start signal.
-	if int(payload.get("sender", 0)) != 1:
+	# start_match is accepted only from the host, and only by a join client.
+	if sender != 1 or _role != "join":
 		return
 	# The host is authoritative: mirror its scene + seed + placements exactly.
 	var scene: String = str(payload.get("scene", _game_scene))
@@ -527,6 +574,56 @@ func _on_control(_event_name: String, payload: Dictionary) -> void:
 	if _discovery != null:
 		_discovery.stop()
 	get_tree().change_scene_to_file(scene)
+
+
+# --- Slot snapshot sync (MA7.3 / B9) ----------------------------------------
+
+# How many human slots currently have a peer assigned (host counts as slot 0).
+func _filled_human_slots() -> int:
+	var n: int = 0
+	for slot in _slots:
+		if slot["kind"] == "human" and int(slot.get("peer", -1)) >= 0:
+			n += 1
+	return n
+
+
+# A plain, serializable copy of the slot layout for the control channel (no
+# engine objects, only ints/strings/bools) so it survives RPC/loopback intact.
+func _slot_snapshot() -> Array:
+	var out: Array = []
+	for slot in _slots:
+		out.append({
+			"kind": str(slot.get("kind", "human")),
+			"team": int(slot.get("team", 0)),
+			"ready": bool(slot.get("ready", false)),
+			"peer": int(slot.get("peer", -1)),
+		})
+	return out
+
+
+# Host: push the authoritative slot layout to all clients.
+func _broadcast_slots() -> void:
+	if _role != "host" or _session == null:
+		return
+	_session.send_control({ "type": "slots_update", "slots": _slot_snapshot() })
+
+
+# Join: replace the local slot model with the host's snapshot and refresh the UI.
+func _apply_slot_snapshot(snapshot: Array) -> void:
+	_slots.clear()
+	for entry in snapshot:
+		var e: Dictionary = entry
+		_slots.append({
+			"kind": str(e.get("kind", "human")),
+			"team": int(e.get("team", 0)),
+			"ready": bool(e.get("ready", false)),
+			"peer": int(e.get("peer", -1)),
+		})
+	# Keep our own Ready toggle visually consistent with the assigned slot.
+	var mine: int = _my_slot_index()
+	if mine >= 0 and mine < _slots.size():
+		_ready_button.button_pressed = bool(_slots[mine].get("ready", false))
+	_rebuild_slot_rows()
 
 
 func _on_back() -> void:
