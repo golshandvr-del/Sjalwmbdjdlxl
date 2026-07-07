@@ -28,6 +28,10 @@ mono_crash.*.json
 # User data / local saves
 user://
 
+# Local test/lint run logs (agent scratch)
+tests/_lastrun.log
+tests/_lint.log
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
