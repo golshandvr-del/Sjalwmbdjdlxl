@@ -538,21 +538,31 @@ func _update_select_button() -> void:
 	_select_button.text = _local_text("ui.game.select_mode")
 
 
-# Pure helper (headless-testable): return the ids of every unit owned by
-# `owner_filter` whose tile lies inside the screen-space rectangle defined by the
-# two corner points. Corners may be given in any order. Ids are returned sorted
-# ascending so the resulting selection is deterministic.
+# Return the ids of every unit owned by `owner_filter` whose tile lies inside the
+# screen-space rectangle defined by the two corner points. Thin wrapper that
+# reads the live world state + adapter, then delegates to the pure static helper
+# below (which the headless tests exercise directly, without the Nexus autoload).
 func _units_in_screen_rect(p1: Vector2, p2: Vector2, owner_filter: int) -> Array:
-	var out: Array = []
 	if _render_adapter == null:
+		return []
+	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
+	return units_in_screen_rect(_render_adapter, units, p1, p2, owner_filter)
+
+
+# Pure, static, headless-testable core of box selection. Given a render adapter
+# (for screen->tile conversion), the units section dictionary, two screen-space
+# corner points (any order) and an owner filter, return the matching unit ids
+# sorted ascending (deterministic -> lockstep-safe).
+static func units_in_screen_rect(adapter: Object, units: Dictionary, p1: Vector2, p2: Vector2, owner_filter: int) -> Array:
+	var out: Array = []
+	if adapter == null:
 		return out
-	var tl: Vector2i = _render_adapter.screen_to_tile(Vector2(minf(p1.x, p2.x), minf(p1.y, p2.y)))
-	var br: Vector2i = _render_adapter.screen_to_tile(Vector2(maxf(p1.x, p2.x), maxf(p1.y, p2.y)))
+	var tl: Vector2i = adapter.screen_to_tile(Vector2(minf(p1.x, p2.x), minf(p1.y, p2.y)))
+	var br: Vector2i = adapter.screen_to_tile(Vector2(maxf(p1.x, p2.x), maxf(p1.y, p2.y)))
 	var min_x: int = mini(tl.x, br.x)
 	var max_x: int = maxi(tl.x, br.x)
 	var min_y: int = mini(tl.y, br.y)
 	var max_y: int = maxi(tl.y, br.y)
-	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
 	var keys: Array = units.keys()
 	keys.sort_custom(func(a, b): return int(a) < int(b))
 	for key in keys:
