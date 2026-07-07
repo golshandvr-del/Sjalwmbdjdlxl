@@ -201,6 +201,7 @@ func _init() -> void:
 	test_ma5_oversized_widget_pinned_not_offscreen()
 	test_ma5_orientation_changes_placement()
 	test_ma5_project_allows_rotation()
+	test_ma5_hud_reapplies_scale_on_resize()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3647,6 +3648,30 @@ func test_ma5_project_allows_rotation() -> void:
 	# Godot 4 stores this as the string "sensor"; anything that is not a locked
 	# portrait/landscape value means free rotation is allowed.
 	_check(str(orientation) == "sensor", "orientation allows free rotation (got %s)" % str(orientation))
+
+
+# B6 regression guard: the HUD's resize handler MUST re-apply the GUI content
+# scale. Without it, a portrait<->landscape rotation freezes the scale at the
+# launch orientation and pushes overlay widgets off-screen (verified with a live
+# SceneTree probe during MA5). We assert it statically here because a full HUD
+# instance needs the Nexus autoload, which the --script harness does not load.
+func test_ma5_hud_reapplies_scale_on_resize() -> void:
+	print("test_ma5_hud_reapplies_scale_on_resize")
+	var src: String = FileAccess.get_file_as_string("res://ui/mobile/game_hud.gd")
+	_check(src != "", "game_hud.gd source is readable")
+	var resize_at: int = src.find("func _on_viewport_resized")
+	_check(resize_at != -1, "game_hud has _on_viewport_resized")
+	if resize_at == -1:
+		return
+	# Look at the body of the resize handler (up to the next top-level func).
+	var next_func: int = src.find("\nfunc ", resize_at + 1)
+	if next_func == -1:
+		next_func = src.length()
+	var body: String = src.substr(resize_at, next_func - resize_at)
+	_check(body.contains("UiScale.apply_from_settings"),
+		"_on_viewport_resized re-applies the GUI scale (rotation-safe)")
+	_check(body.contains("_apply_responsive_layout"),
+		"_on_viewport_resized re-flows the overlay widgets")
 
 
 # Generic event capture helper used by several Phase 2 tests.
