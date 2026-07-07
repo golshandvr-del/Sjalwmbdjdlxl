@@ -178,49 +178,54 @@ func _on_viewport_resized() -> void:
 	_apply_responsive_layout()
 
 
-# P3.5 (R12.1/R12.2): reposition the P3 overlay widgets for portrait vs
-# landscape so the game is comfortably playable in either orientation.
+# P3.5 (R12.1/R12.2) + MA5 (B6): reposition the floating overlay widgets for
+# portrait vs landscape so the game is comfortably playable in either
+# orientation and NOTHING ever leaves the screen or sits under the top/bottom
+# bars (the MA5 bug: hard-coded anchor offsets pushed widgets off-screen on some
+# aspect ratios / after rotation).
 #
-#   - Portrait  (tall): minimap top-right, zoom buttons on the right edge,
-#     control groups bottom-left (stacked above the bottom action bar).
-#   - Landscape (wide): controls hug the LEFT and RIGHT edges so both thumbs
-#     can reach them and the centre of the screen stays clear for the map.
+#   - Portrait  (tall): minimap top-right, zoom buttons docked bottom-right,
+#     control groups bottom-left (both stacked above the bottom action bar).
+#   - Landscape (wide): zoom hugs the RIGHT edge and control groups the LEFT
+#     edge, both vertically centred so each thumb reaches one, keeping the
+#     centre clear for the map.
 #
-# This is presentation-only: it moves Control nodes, never WorldState.
+# All geometry is computed by the pure, headless-tested ResponsiveLayoutUtil in
+# ABSOLUTE viewport pixels; every widget is anchored TOP_LEFT and positioned
+# from the clamped result, so there is one testable source of truth. This is
+# presentation-only: it moves Control nodes, never WorldState.
 func _apply_responsive_layout() -> void:
 	var vp: Vector2 = get_viewport_rect().size
-	var landscape: bool = vp.x >= vp.y
 	if _minimap != null:
-		# Minimap always top-right; nudge it in a little on very wide screens.
-		_minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-		_minimap.position = Vector2(-_minimap.size.x - 16, 64)
+		_minimap.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_minimap.position = ResponsiveLayoutUtil.minimap_pos(vp, _widget_size(_minimap))
 	if _zoom_col != null:
-		if landscape:
-			# Right edge, vertically centred (right thumb).
-			_zoom_col.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-			_zoom_col.position = Vector2(-64, -40)
-		else:
-			# Portrait: tuck the zoom buttons above the bottom bar on the right.
-			_zoom_col.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-			_zoom_col.position = Vector2(-64, -240)
+		_zoom_col.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_zoom_col.position = ResponsiveLayoutUtil.zoom_col_pos(vp, _widget_size(_zoom_col))
+	var group_pos: Vector2 = Vector2.ZERO
+	var group_size: Vector2 = Vector2.ZERO
 	if _control_group_panel != null:
-		if landscape:
-			# Left edge, vertically centred (left thumb).
-			_control_group_panel.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-			_control_group_panel.position = Vector2(12, -110)
-		else:
-			# Portrait: bottom-left, above the bottom action bar.
-			_control_group_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-			_control_group_panel.position = Vector2(12, -220)
+		group_size = _widget_size(_control_group_panel)
+		group_pos = ResponsiveLayoutUtil.control_group_pos(vp, group_size)
+		_control_group_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_control_group_panel.position = group_pos
 	if _select_button != null:
-		# MA2: keep the Select toggle just above the control-group panel in both
-		# orientations so it is always thumb-reachable and never off-screen.
-		if landscape:
-			_select_button.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-			_select_button.position = Vector2(12, -150)
-		else:
-			_select_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-			_select_button.position = Vector2(12, -260)
+		# MA2/MA5: keep the Select toggle just above the control-group panel in
+		# both orientations so it is always thumb-reachable and never off-screen.
+		_select_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_select_button.position = ResponsiveLayoutUtil.select_button_pos(
+			vp, _widget_size(_select_button), group_pos, group_size)
+
+
+# Best-effort measured size of a floating widget. `size` is authoritative once
+# the node has been laid out; before that (or for auto-sizing containers) fall
+# back to the combined minimum size so the responsive math still has real
+# dimensions to clamp against.
+func _widget_size(node: Control) -> Vector2:
+	var s: Vector2 = node.size
+	if s.x <= 0.0 or s.y <= 0.0:
+		s = node.get_combined_minimum_size()
+	return s
 
 
 # Phase A.6: a tiny "what am I looking at" overlay so a first-time player is not
