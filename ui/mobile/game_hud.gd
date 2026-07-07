@@ -170,11 +170,18 @@ func _apply_tooltips() -> void:
 	_style_button.tooltip_text = _local_text("ui.game.tip.style")
 
 
-# Phase A.3: keep the whole map fitted on every viewport size change.
+# Phase A.3 + MA5 (B6): keep everything correct on every viewport size change --
+# crucially including DEVICE ROTATION, where the window's width/height swap.
 func _on_viewport_resized() -> void:
+	# MA5: re-resolve the GUI content scale for the NEW screen size/orientation.
+	# Without this the auto scale stays frozen at the value computed for the
+	# launch orientation, so after a portrait<->landscape flip the HUD renders at
+	# the wrong scale and the responsive math (which reads the post-scale viewport
+	# rect) places widgets off-screen. Re-applying keeps the scale honest.
+	UiScale.apply_from_settings(self, Nexus.world_state)
 	if _render_adapter != null:
 		_render_adapter.fit_map_to_viewport(get_viewport_rect().size)
-	# P3.5: re-flow the P3 overlay widgets for the new orientation/size.
+	# P3.5/MA5: re-flow the overlay widgets for the new orientation/size.
 	_apply_responsive_layout()
 
 
