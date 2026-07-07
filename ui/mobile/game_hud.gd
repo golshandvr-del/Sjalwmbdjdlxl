@@ -71,6 +71,17 @@ var _group_buttons: Array = []
 var _assign_button: Button = null
 var _minimap: Control = null
 
+# MA2 (Android): box / drag selection on touch. When _select_mode is ON a
+# single-finger drag draws a selection rectangle (instead of panning the camera)
+# and, on release, selects every friendly unit whose tile falls inside it. A
+# toggle button flips the mode; a translucent ColorRect ("SelectionBox") shows
+# the live rectangle. Two-finger pinch-zoom still works in either mode. This is
+# pure presentation -> selection is still applied via the select_units command.
+var _select_mode: bool = false
+var _select_button: Button = null
+var _selection_box: ColorRect = null
+var _is_box_selecting: bool = false
+
 # P3.5 (R12.1/R12.2): references to the P3 overlay containers so the responsive
 # layout pass can reposition them for portrait vs landscape. In landscape the
 # action controls hug the left/right edges (thumb-reachable); in portrait they
