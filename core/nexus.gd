@@ -86,6 +86,42 @@ func issue_command(type: String, issuer: int, data: Dictionary = {}, delay_ticks
 	return cmd_id
 
 
+# Issue a LOCAL PLAYER command (the single entry point every HUD must use for
+# any command the local human triggers). This is the seam that makes online +
+# local multiplayer identical (MA7.1 / B11):
+#
+#   * When a networked lockstep session is ACTIVE, the command is handed to
+#     submit_local_command(): it is buffered, packed into this peer's turn for
+#     tick (current + input_delay), broadcast to every peer, and executed on the
+#     SAME tick everywhere -> no desync, no direct issue_command race.
+#   * Otherwise (single-player / hot-seat with no session) it falls straight
+#     through to issue_command() on the next tick, exactly as before.
+#
+# NOTE: pure-UI actions such as "select_units" must NOT go through here -- unit
+# selection is a local presentation concern (see STRUCTURE.md golden rule #1 /
+# MA6) and stays an immediate issue_command so the tap feels instant and never
+# waits on the network.
+func player_command(type: String, data: Dictionary = {}, delay_ticks: int = 1) -> void:
+	var lockstep: Object = _networked_lockstep()
+	if lockstep != null:
+		lockstep.submit_local_command(type, data)
+		return
+	# Local play: keep the issuer as the local human player (0) for compatibility
+	# with the existing single-player command handlers.
+	issue_command(type, 0, data, delay_ticks)
+
+
+# Return the multiplayer/lockstep module ONLY when a session is active, else
+# null (so player_command uses the direct single-player path). Shared with the
+# tick loop's _active_lockstep(); kept as a separate tiny helper so callers that
+# just need the "is this networked?" answer do not depend on can_simulate_tick.
+func _networked_lockstep() -> Object:
+	var m: Object = module_registry.get_module("multiplayer")
+	if m != null and bool(m.get("active")):
+		return m
+	return null
+
+
 # --- Simulation lifecycle ---------------------------------------------------
 
 func start_simulation(seed_value: int = 0) -> void:
