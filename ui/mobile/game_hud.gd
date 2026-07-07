@@ -501,6 +501,71 @@ func _handle_tap(screen_pos: Vector2) -> void:
 		}, 1)
 
 
+# --- MA2: box / drag selection (mobile) -------------------------------------
+
+# Toggle the "Select" mode. While ON a single-finger drag draws a selection
+# rectangle instead of panning; a tap still works as before.
+func _on_select_mode_pressed() -> void:
+	_select_mode = not _select_mode
+	_update_select_button()
+
+
+func _update_select_button() -> void:
+	if _select_button == null:
+		return
+	_select_button.button_pressed = _select_mode
+	# Keep the label stable; a pressed/toggled look communicates the state.
+	_select_button.text = _local_text("ui.game.select_mode")
+
+
+# Pure helper (headless-testable): return the ids of every unit owned by
+# `owner_filter` whose tile lies inside the screen-space rectangle defined by the
+# two corner points. Corners may be given in any order. Ids are returned sorted
+# ascending so the resulting selection is deterministic.
+func _units_in_screen_rect(p1: Vector2, p2: Vector2, owner_filter: int) -> Array:
+	var out: Array = []
+	if _render_adapter == null:
+		return out
+	var tl: Vector2i = _render_adapter.screen_to_tile(Vector2(minf(p1.x, p2.x), minf(p1.y, p2.y)))
+	var br: Vector2i = _render_adapter.screen_to_tile(Vector2(maxf(p1.x, p2.x), maxf(p1.y, p2.y)))
+	var min_x: int = mini(tl.x, br.x)
+	var max_x: int = maxi(tl.x, br.x)
+	var min_y: int = mini(tl.y, br.y)
+	var max_y: int = maxi(tl.y, br.y)
+	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
+	var keys: Array = units.keys()
+	keys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in keys:
+		var u: Dictionary = units[key]
+		if int(u.get("owner", -1)) != owner_filter:
+			continue
+		var ux: int = int(u["x"])
+		var uy: int = int(u["y"])
+		if ux >= min_x and ux <= max_x and uy >= min_y and uy <= max_y:
+			out.append(int(u["id"]))
+	return out
+
+
+# Apply a box selection: replace the current selection with everything inside the
+# screen rectangle and push it through the authoritative select_units command.
+func _apply_box_selection(p1: Vector2, p2: Vector2) -> void:
+	_selected_unit_ids = _units_in_screen_rect(p1, p2, LOCAL_PLAYER)
+	Nexus.issue_command("select_units", LOCAL_PLAYER, {
+		"owner": LOCAL_PLAYER,
+		"unit_ids": _selected_unit_ids.duplicate(),
+	}, 1)
+
+
+func _update_selection_box(current: Vector2) -> void:
+	if _selection_box == null:
+		return
+	var top_left: Vector2 = Vector2(minf(_press_start.x, current.x), minf(_press_start.y, current.y))
+	var size: Vector2 = (current - _press_start).abs()
+	_selection_box.visible = true
+	_selection_box.position = top_left
+	_selection_box.size = size
+
+
 # --- Buttons ----------------------------------------------------------------
 
 func _on_pause_pressed() -> void:
