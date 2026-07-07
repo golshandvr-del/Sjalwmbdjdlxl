@@ -29,6 +29,13 @@ extends RefCounted
 # peer_id (int) -> LockstepModule instance for that peer.
 var _peers: Dictionary = {}
 
+# MA7.2 (B10): peer_id (int) -> that peer's own EventBus, captured in attach().
+# Used by send_control() to re-publish a control message on every OTHER peer's
+# bus, mirroring EnetTransport.send_control() in a single process so the lobby /
+# session-orchestration code behaves identically for local and online play.
+const EVENT_CONTROL: String = "net.control"
+var _buses: Dictionary = {}
+
 
 # Register a peer's lockstep module with the shared loopback bus.
 func add_peer(peer_id: int, lockstep: Object) -> void:
@@ -63,8 +70,24 @@ func broadcast_checksum(tick: int, author: int, hash_value: int) -> void:
 # `event_bus` is the peer's own bus.
 func attach(peer_id: int, lockstep: Object, event_bus: Object) -> void:
 	add_peer(peer_id, lockstep)
+	_buses[peer_id] = event_bus
 	event_bus.subscribe(LockstepModule.EVENT_TURN_READY, self, "_on_turn_ready")
 	event_bus.subscribe(LockstepModule.EVENT_CHECKSUM, self, "_on_checksum")
+
+
+# --- Control channel (MA7.2 / B10) ------------------------------------------
+# Re-publish a control message on every OTHER peer's bus. `sender` must be the
+# id of the peer sending it (the lobby stamps this); receivers use it to trust
+# only the host. Deterministic: peers iterated in ascending id order.
+func send_control(sender: int, msg: Dictionary) -> void:
+	var out: Dictionary = msg.duplicate(true)
+	out["sender"] = sender
+	var ids: Array = _buses.keys()
+	ids.sort()
+	for pid in ids:
+		if int(pid) == sender:
+			continue
+		(_buses[pid] as Object).emit(EVENT_CONTROL, out.duplicate(true))
 
 
 func _on_turn_ready(_event_name: String, payload: Dictionary) -> void:
