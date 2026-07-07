@@ -176,6 +176,10 @@ func _init() -> void:
 	test_ma1_multi_unit_move_spreads_into_formation()
 	test_ma1_single_unit_move_keeps_exact_goal()
 	test_ma1_formation_goals_are_deterministic()
+	test_ma2_box_select_picks_units_inside_rect()
+	test_ma2_box_select_filters_by_owner()
+	test_ma2_box_select_corner_order_independent()
+	test_ma2_box_select_ids_sorted_deterministic()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3284,6 +3288,64 @@ func test_ma1_formation_goals_are_deterministic() -> void:
 		uniq["%d,%d" % [g1[i].x, g1[i].y]] = true
 	_check(same, "formation goals are identical across calls (deterministic)")
 	_check(uniq.size() == 5, "formation goals are all unique")
+
+
+# --- Phase MA2: box / drag selection (mobile) -------------------------------
+
+# Build a minimal units section dictionary for box-select tests. Each entry is
+# a {id,x,y,owner} record keyed by id string, matching WorldState's shape.
+func _ma2_units() -> Dictionary:
+	var d: Dictionary = {}
+	# owner 0 units
+	d["1"] = { "id": 1, "x": 2, "y": 2, "owner": 0 }
+	d["2"] = { "id": 2, "x": 3, "y": 3, "owner": 0 }
+	d["3"] = { "id": 3, "x": 10, "y": 10, "owner": 0 }   # far outside a small box
+	# enemy unit inside the box (must be excluded by owner filter)
+	d["4"] = { "id": 4, "x": 2, "y": 3, "owner": 1 }
+	return d
+
+func _ma2_adapter() -> RenderAdapter:
+	var a: RenderAdapter = RenderAdapter.new()
+	a.tile_size = 24
+	a.zoom = 1.0
+	a.camera_offset = Vector2.ZERO
+	return a
+
+# A box covering tiles (0,0)..(4,4) in screen space (0..120 px at 24px/tile)
+# must pick the two friendly units inside and skip the far one.
+func test_ma2_box_select_picks_units_inside_rect() -> void:
+	print("test_ma2_box_select_picks_units_inside_rect")
+	var adapter: RenderAdapter = _ma2_adapter()
+	var ids: Array = SelectionUtil.units_in_screen_rect(adapter, _ma2_units(), Vector2(0, 0), Vector2(119, 119), 0)
+	_check(ids.has(1) and ids.has(2), "box picks the two friendly units inside")
+	_check(not ids.has(3), "box excludes the far-away friendly unit")
+
+
+# The owner filter must exclude enemy units even when they sit inside the box.
+func test_ma2_box_select_filters_by_owner() -> void:
+	print("test_ma2_box_select_filters_by_owner")
+	var adapter: RenderAdapter = _ma2_adapter()
+	var ids: Array = SelectionUtil.units_in_screen_rect(adapter, _ma2_units(), Vector2(0, 0), Vector2(119, 119), 0)
+	_check(not ids.has(4), "enemy unit inside the box is excluded by owner filter")
+
+
+# The two corner points may be given in any order (drag up-left or down-right).
+func test_ma2_box_select_corner_order_independent() -> void:
+	print("test_ma2_box_select_corner_order_independent")
+	var adapter: RenderAdapter = _ma2_adapter()
+	var a: Array = SelectionUtil.units_in_screen_rect(adapter, _ma2_units(), Vector2(0, 0), Vector2(119, 119), 0)
+	var b: Array = SelectionUtil.units_in_screen_rect(adapter, _ma2_units(), Vector2(119, 119), Vector2(0, 0), 0)
+	_check(a == b, "corner order does not change the selection")
+
+
+# Ids must come back sorted ascending (deterministic -> lockstep-safe).
+func test_ma2_box_select_ids_sorted_deterministic() -> void:
+	print("test_ma2_box_select_ids_sorted_deterministic")
+	var adapter: RenderAdapter = _ma2_adapter()
+	var ids: Array = SelectionUtil.units_in_screen_rect(adapter, _ma2_units(), Vector2(0, 0), Vector2(240, 240), 0)
+	var sorted_copy: Array = ids.duplicate()
+	sorted_copy.sort()
+	_check(ids == sorted_copy, "box-select ids are returned sorted ascending")
 
 
 # Generic event capture helper used by several Phase 2 tests.
