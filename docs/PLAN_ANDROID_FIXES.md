@@ -73,12 +73,38 @@
   با هر مقیاسی هرگز از صفحه بیرون نزند.
 **تست:** `auto_scale_for` برای چند اندازه‌ی صفحه‌ی موبایل مقدارِ منطقی (نه ریز) بدهد.
 
-### فاز MA5 — پشتیبانی از چرخش/landscape + بازچینشِ واکنش‌گرا 🔴
-**فایل‌ها:** `project.godot` (orientation=sensor)، `ui/mobile/game_hud.gd::_apply_responsive_layout`، تست.
+### فاز MA5 — پشتیبانی از چرخش/landscape + بازچینشِ واکنش‌گرا ✅ (انجام شد)
+**فایل‌ها:** `project.godot` (orientation=sensor)، `ui/mobile/game_hud.gd::_apply_responsive_layout`،
+`ui/shared/responsive_layout_util.gd` (جدید)، تست.
 **کار:** اجازه‌ی چرخشِ آزاد (sensor). با هر تغییرِ اندازه/چرخش، کلِ HUD (نوار بالا، نوار
 پایین، مینی‌مپ، دکمه‌های زوم، پنلِ گروه) برای portrait و landscape درست بازچینش شود و
 هیچ عنصری بیرون/روی‌هم نیفتد.
 **تست:** فراخوانیِ منطقِ layout در دو حالت → موقعیت‌ها در محدوده‌ی صفحه بمانند.
+
+**آنچه انجام شد:**
+1. **`project.godot`**: `window/handheld/orientation` از `1` (قفلِ portrait) به `"sensor"`
+   (چرخشِ آزاد) تغییر کرد؛ حالا بازی در landscape هم اجرا می‌شود.
+2. **`ResponsiveLayoutUtil` (جدید، خالص و بدون‌وابستگی):** هندسه‌ی چیدمانِ همه‌ی widgetهای
+   شناور را در **پیکسل‌های مطلقِ viewport** حساب می‌کند. یک `safe_area()` تعریف می‌کند که از
+   حاشیه‌ی بیرونی و از ارتفاعِ نوارِ بالا/پایین فاصله می‌گیرد، و `clamp_into_safe_area()` تضمین
+   می‌کند هیچ widgetی از صفحه بیرون نزند (widgetِ بزرگ‌تر از safe area به گوشه‌ی بالا-چپِ آن
+   pin می‌شود، نه بیرونِ صفحه). برای هر widget تابعِ جداگانه‌ی portrait/landscape دارد.
+3. **`game_hud.gd::_apply_responsive_layout` بازنویسی شد:** همه‌ی widgetها با anchorِ `TOP_LEFT`
+   و موقعیتِ مطلقِ برگشتی از util قرار می‌گیرند (به‌جای مخلوطِ preset+offsetِ hard-coded که
+   روی برخی نسبت‌های صفحه از صفحه بیرون می‌زد).
+4. **رفعِ باگِ بحرانیِ چرخش (کشف‌شده با probeِ زنده روی صحنه‌ی واقعی):**
+   `_on_viewport_resized` حالا **`UiScale.apply_from_settings` را دوباره اعمال می‌کند**. بدونِ
+   این، auto GUI scale روی جهتِ راه‌اندازی «یخ» می‌زد و پس از چرخشِ portrait↔landscape کلِ HUD
+   با مقیاسِ اشتباه رندر می‌شد و widgetها بیرونِ صفحه می‌افتادند (`pos.x=2364` روی صفحه‌ی
+   1080-عرض). پس از رفع، probe روی هر ۴ حالت `OK`/`PASS` داد.
+
+**تأیید:**
+- **probeِ زمان‌اجرا** (موقت، حذف‌شده) با autoloadها روی `scenes/game_main.tscn`: هر ۴ اندازه‌ی
+  صفحه (portrait/landscape، کوچک/بزرگ) → همه‌ی widgetها `OK` (کاملاً روی صفحه). `MA5 PROBE: PASS`.
+- **تست‌های headless:** ۹ تستِ MA5 (تشخیصِ جهت، safe-area، on-screen بودن در هر دو جهت،
+  دوری از نوارها، select بالای گروه، pin‌شدنِ widgetِ بزرگ، بازچینش با چرخش، orientation=sensor،
+  گاردِ رگرسیونِ re-apply-scale). کل مجموعه: `Total: 868 | Passed: 868 | Failed: 0 | Skipped: 2` ✅
+- **لینتر CODE_POLICY:** بدون نقض ✅
 
 ### فاز MA6 — تأییدِ انتخابِ نیرو روی موبایل 🟡
 **کار:** با تست‌های headmless روی مسیرِ واقعیِ ورودی (تزریقِ `InputEventScreenTouch`)
@@ -108,7 +134,7 @@
 ---
 
 ## ترتیب اجرا
-MA1 → MA2 → MA3 → MA4 → MA5 → MA6 → MA7 → به‌روزرسانیِ اسناد.
+MA1 ✅ → MA2 ✅ → MA3 ✅ → MA4 ✅ → MA5 ✅ → MA6 (بعدی) → MA7 → به‌روزرسانیِ اسناد.
 هر فاز: کد → تست‌ها سبز → commit → (هر ۲–۳ تغییر) push.
 
 ## معیارِ «انجام‌شده» برای کل کار
