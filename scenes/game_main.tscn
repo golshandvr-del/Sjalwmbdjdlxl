@@ -77,41 +77,46 @@ theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 10
 
-[node name="Row" type="HBoxContainer" parent="BottomBar/Margin"]
+[node name="Scroll" type="ScrollContainer" parent="BottomBar/Margin"]
+layout_mode = 2
+horizontal_scroll_mode = 2
+vertical_scroll_mode = 0
+
+[node name="Row" type="HBoxContainer" parent="BottomBar/Margin/Scroll"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="PauseButton" type="Button" parent="BottomBar/Margin/Row"]
+[node name="PauseButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(120, 52)
 layout_mode = 2
 text = "Pause"
 
-[node name="BuildButton" type="Button" parent="BottomBar/Margin/Row"]
+[node name="BuildButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(160, 52)
 layout_mode = 2
 text = "Build Soldier"
 
-[node name="SpeedButton" type="Button" parent="BottomBar/Margin/Row"]
+[node name="SpeedButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(120, 52)
 layout_mode = 2
 text = "Speed x1"
 
-[node name="ResearchButton" type="Button" parent="BottomBar/Margin/Row"]
+[node name="ResearchButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(150, 52)
 layout_mode = 2
 text = "Research"
 
-[node name="UpgradeButton" type="Button" parent="BottomBar/Margin/Row"]
+[node name="UpgradeButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(150, 52)
 layout_mode = 2
 text = "Upgrade HQ"
 
-[node name="FuseButton" type="Button" parent="BottomBar/Margin/Row"]
+[node name="FuseButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(150, 52)
 layout_mode = 2
 text = "Fuse Hero"
 
-[node name="StyleButton" type="Button" parent="BottomBar/Margin/Row"]
+[node name="StyleButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(150, 52)
 layout_mode = 2
 text = "Style: Simple"
