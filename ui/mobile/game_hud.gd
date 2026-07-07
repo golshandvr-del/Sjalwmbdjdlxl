@@ -738,8 +738,34 @@ func _build_p3_widgets() -> void:
 	_build_zoom_buttons()
 	_build_control_group_panel()
 	_build_selection_panel()
+	_build_select_mode_widgets()
 	# Apply the initial responsive placement for the current orientation.
 	_apply_responsive_layout()
+
+
+# MA2: build the "Select" toggle button and the translucent selection rectangle.
+# The button sits with the control-group panel (bottom-left, thumb-reachable);
+# the SelectionBox is a full-screen overlay child drawn only while dragging.
+func _build_select_mode_widgets() -> void:
+	# The selection rectangle overlay (hidden until a box drag starts).
+	_selection_box = ColorRect.new()
+	_selection_box.name = "SelectionBox"
+	_selection_box.color = Color(0.3, 0.8, 1.0, 0.25)
+	_selection_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_selection_box.visible = false
+	add_child(_selection_box)
+
+	# The Select-mode toggle button. Placed just above the control-group panel.
+	_select_button = Button.new()
+	_select_button.name = "SelectModeButton"
+	_select_button.text = _local_text("ui.game.select_mode")
+	_select_button.tooltip_text = _local_text("ui.game.select_mode_hint")
+	_select_button.toggle_mode = true
+	_select_button.custom_minimum_size = Vector2(0, 34)
+	_select_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_select_button.position = Vector2(12, -260)
+	_select_button.pressed.connect(_on_select_mode_pressed)
+	add_child(_select_button)
 
 
 # P3.3 (R12.3): a corner minimap. Anchored bottom-right, above the bottom bar.
