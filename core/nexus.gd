@@ -111,10 +111,56 @@ func toggle_pause() -> void:
 
 
 # Godot main loop: convert real time into discrete simulation ticks.
+#
+# Two paths:
+#   * Single-player / inactive lockstep: run every tick the clock produced.
+#   * Networked lockstep (session active): run ticks under the lockstep GATE so
+#     all peers stay in step (MA7.1 / B11). See _run_networked_ticks().
 func _process(delta: float) -> void:
 	var ticks_to_run: int = sim_clock.advance(delta)
+	if ticks_to_run <= 0:
+		return
+	var lockstep: Object = _active_lockstep()
+	if lockstep == null:
+		for _i in range(ticks_to_run):
+			_run_single_tick()
+	else:
+		_run_networked_ticks(lockstep, ticks_to_run)
+
+
+# Return the multiplayer/lockstep module IFF it exists AND a session is active;
+# otherwise null so the fast single-player path is used. Kept tiny + allocation
+# free so it is cheap to call every frame.
+func _active_lockstep() -> Object:
+	var m: Object = module_registry.get_module("multiplayer")
+	if m != null and m.has_method("can_simulate_tick") and bool(m.get("active")):
+		return m
+	return null
+
+
+# Networked tick loop (MA7.1). For each tick the clock wants to advance:
+#   1) Flush THIS peer's local turn for tick (current + input_delay) and an
+#      explicit empty-turn confirmation, so other peers are never left waiting.
+#   2) Ask the lockstep module whether the NEXT tick is fully confirmed by every
+#      peer. If not, STALL (emit lockstep.stall) and stop advancing this frame.
+#   3) If confirmed, inject that tick's commands from all peers (deterministic
+#      order) and run exactly that one tick, then emit lockstep.resume.
+func _run_networked_ticks(lockstep: Object, ticks_to_run: int) -> void:
 	for _i in range(ticks_to_run):
+		# (1) Ship our local input for the future tick BEFORE trying to advance,
+		# so peers can confirm the tick we are about to gate on.
+		if lockstep.has_method("flush_local_turn"):
+			lockstep.flush_local_turn()
+		# (2) Gate: may we run the next tick yet?
+		if not lockstep.can_simulate_tick():
+			emit_event(LockstepModule.EVENT_STALL, { "tick": world_state.current_tick + 1 })
+			return
+		# (3) Inject the confirmed tick's commands, then simulate exactly it.
+		var next_tick: int = world_state.current_tick + 1
+		if lockstep.has_method("inject_commands_for_tick"):
+			lockstep.inject_commands_for_tick(next_tick)
 		_run_single_tick()
+		emit_event(LockstepModule.EVENT_RESUME, { "tick": next_tick })
 
 
 # Run exactly one deterministic simulation tick.
