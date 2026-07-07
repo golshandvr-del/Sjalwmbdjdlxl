@@ -214,14 +214,28 @@ const REFERENCE_HEIGHT: float = 720.0
 
 
 # Compute the automatic GUI scale for a given screen size (in physical pixels).
-# Uses the smaller of the width/height ratios so the whole interface always
-# fits, rounds to a tidy step, and clamps into [UI_SCALE_MIN, UI_SCALE_MAX].
+#
+# MA4 (Android B4 fix): the reference (1280x720) is a LANDSCAPE ratio, but a
+# phone held upright is PORTRAIT (e.g. 1080x2340). Comparing the portrait width
+# (1080) against the landscape reference width (1280) gave ratio < 1, so the
+# whole HUD shrank to a barely-tappable size on exactly the devices we target
+# first. The fix is orientation-agnostic: compare the screen's SHORT edge to the
+# reference short edge (720) and its LONG edge to the reference long edge (1280),
+# then take the smaller ratio so the interface always fits. This yields a
+# sensible, finger-friendly scale in BOTH portrait and landscape.
+#
+# It stays backward compatible with landscape screens: for 1280x720 the short
+# edge is 720 and the long edge is 1280, so both ratios are 1.0 -> 1.0x exactly.
 static func auto_scale_for(screen_size: Vector2) -> float:
 	if screen_size.x <= 0.0 or screen_size.y <= 0.0:
 		return 1.0
-	var ratio_w: float = screen_size.x / REFERENCE_WIDTH
-	var ratio_h: float = screen_size.y / REFERENCE_HEIGHT
-	var ratio: float = min(ratio_w, ratio_h)
+	var short_edge: float = minf(screen_size.x, screen_size.y)
+	var long_edge: float = maxf(screen_size.x, screen_size.y)
+	var ref_short: float = minf(REFERENCE_WIDTH, REFERENCE_HEIGHT)
+	var ref_long: float = maxf(REFERENCE_WIDTH, REFERENCE_HEIGHT)
+	var ratio_short: float = short_edge / ref_short
+	var ratio_long: float = long_edge / ref_long
+	var ratio: float = min(ratio_short, ratio_long)
 	# Round to the nearest 0.05 so the scale is stable across tiny size jitter.
 	ratio = round(ratio / 0.05) * 0.05
 	return clampf(ratio, UI_SCALE_MIN, UI_SCALE_MAX)
