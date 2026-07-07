@@ -58,6 +58,10 @@ var _layouts: Array = ["clustered", "random"]
 # Whether this setup screen is configuring a LAN host (routes to the lobby) or a
 # single-player / local match (routes straight into the game). Read in _ready.
 var _is_host_setup: bool = false
+# MA7.4 (B8): whether this is the DISTINCT local hot-seat path (shared-device
+# multiplayer). It still routes straight into the game like single-player, but
+# opens with a hot-seat title + defaults and tags match_config.hot_seat = true.
+var _is_hotseat_setup: bool = false
 
 
 func _ready() -> void:
@@ -71,7 +75,10 @@ func _ready() -> void:
 
 	# P5 (R6): if the main menu entered here via "Host", the final button hosts a
 	# LAN match (routes to the lobby) instead of starting a single-player match.
-	_is_host_setup = str(Nexus.world_state.get_section("ui_prefs").get("setup_purpose", "")) == "host"
+	# MA7.4 (B8): "hotseat" is the distinct local-multiplayer intent.
+	var purpose: String = str(Nexus.world_state.get_section("ui_prefs").get("setup_purpose", ""))
+	_is_host_setup = purpose == "host"
+	_is_hotseat_setup = purpose == "hotseat"
 
 	# The scenario catalog must exist before we can list maps; loading the base
 	# catalogs is cheap and idempotent (GameBootstrap guards re-registration).
@@ -122,6 +129,11 @@ func _build_ui() -> void:
 	for a in range(0, 8):
 		_ai_option.add_item(str(a))
 	_ai_option.selected = 3  # a sensible default: 3 AIs for single-player
+	# MA7.4 (B8): hot-seat is local multiplayer, so open with >=2 humans and 0 AIs
+	# by default -- a meaningfully different starting point from a solo skirmish.
+	if _is_hotseat_setup:
+		_humans_option.selected = 1  # option index 1 => 2 humans
+		_ai_option.selected = 0      # option index 0 => 0 AIs
 
 	# R1.5: game mode (team / ffa / ctf; data-extensible later).
 	_mode_option = _add_labeled_option(box, "ui.setup.game_mode")
@@ -225,7 +237,9 @@ func _populate_difficulties(default_difficulty: String) -> void:
 
 
 func _apply_labels() -> void:
-	_title_label.text = _loc.t("ui.setup.title")
+	# MA7.4 (B8): a hot-seat setup announces itself with a distinct title so the
+	# player can tell this is the local-multiplayer path, not a solo skirmish.
+	_title_label.text = _loc.t("ui.setup.title_hotseat") if _is_hotseat_setup else _loc.t("ui.setup.title")
 	_start_button.text = _loc.t("ui.setup.start")
 	_back_button.text = _loc.t("ui.menu.back")
 
@@ -253,6 +267,10 @@ func _on_start() -> void:
 	config["game_mode"] = str(_modes[m_idx])
 	var l_idx: int = clampi(_layout_option.selected, 0, _layouts.size() - 1)
 	config["team_layout"] = str(_layouts[l_idx])
+	# MA7.4 (B8): tag a shared-device hot-seat session so the game scene can adapt
+	# (e.g. show a "local multiplayer" banner / per-turn hand-off later). It is a
+	# pure UI hint -- the deterministic core treats every human player the same.
+	config["hot_seat"] = _is_hotseat_setup
 
 	var game_scene: String = MOBILE_SCENE if _style_option.selected == 1 else DESKTOP_SCENE
 
@@ -269,8 +287,10 @@ func _on_start() -> void:
 		get_tree().change_scene_to_file(LOBBY_SCENE)
 		return
 
-	# Single-player / local: show the shared progress overlay while the (fast)
-	# build runs, then enter the game scene.
+	# Single-player / local (incl. hot-seat): consume the intent so a later visit
+	# starts clean, then show the shared progress overlay while the (fast) build
+	# runs, then enter the game scene.
+	prefs["setup_purpose"] = ""
 	var overlay = ProgressOverlayScript.new()
 	add_child(overlay)
 	overlay.begin(_loc.t("ui.setup.starting"), _loc.t("ui.setup.loading_catalogs"))
