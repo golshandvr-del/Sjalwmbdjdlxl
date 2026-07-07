@@ -138,29 +138,34 @@ func _active_lockstep() -> Object:
 	return null
 
 
-# Networked tick loop (MA7.1). For each tick the clock wants to advance:
-#   1) Flush THIS peer's local turn for tick (current + input_delay) and an
-#      explicit empty-turn confirmation, so other peers are never left waiting.
-#   2) Ask the lockstep module whether the NEXT tick is fully confirmed by every
-#      peer. If not, STALL (emit lockstep.stall) and stop advancing this frame.
-#   3) If confirmed, inject that tick's commands from all peers (deterministic
-#      order) and run exactly that one tick, then emit lockstep.resume.
+# Networked tick loop (MA7.1). The flush/gate/inject/simulate ORDERING is the
+# pure, headless-tested policy in LockstepGateUtil; here we just bind the real
+# lockstep + tick callbacks to it and translate the report into bus events (the
+# util stays free of any engine singletons). Per tick it:
+#   1) flushes THIS peer's local turn for (current + input_delay) so other peers
+#      can confirm the tick we are about to gate on,
+#   2) STALLS (emits lockstep.stall) if the next tick is not fully confirmed,
+#   3) otherwise injects that tick's commands and simulates exactly it.
 func _run_networked_ticks(lockstep: Object, ticks_to_run: int) -> void:
-	for _i in range(ticks_to_run):
-		# (1) Ship our local input for the future tick BEFORE trying to advance,
-		# so peers can confirm the tick we are about to gate on.
-		if lockstep.has_method("flush_local_turn"):
-			lockstep.flush_local_turn()
-		# (2) Gate: may we run the next tick yet?
-		if not lockstep.can_simulate_tick():
-			emit_event(LockstepModule.EVENT_STALL, { "tick": world_state.current_tick + 1 })
-			return
-		# (3) Inject the confirmed tick's commands, then simulate exactly it.
-		var next_tick: int = world_state.current_tick + 1
-		if lockstep.has_method("inject_commands_for_tick"):
-			lockstep.inject_commands_for_tick(next_tick)
-		_run_single_tick()
-		emit_event(LockstepModule.EVENT_RESUME, { "tick": next_tick })
+	var gate: Dictionary = {
+		"flush": func() -> void:
+			if lockstep.has_method("flush_local_turn"):
+				lockstep.flush_local_turn(),
+		"can_simulate": func() -> bool:
+			return lockstep.can_simulate_tick(),
+		"inject": func(next_tick: int) -> void:
+			if lockstep.has_method("inject_commands_for_tick"):
+				lockstep.inject_commands_for_tick(next_tick),
+		"simulate": func() -> void:
+			_run_single_tick(),
+		"current_tick": func() -> int:
+			return world_state.current_tick,
+	}
+	var report: Dictionary = LockstepGateUtil.run_frame(gate, ticks_to_run)
+	if bool(report.get("stalled", false)):
+		emit_event(LockstepModule.EVENT_STALL, { "tick": int(report.get("stall_tick", world_state.current_tick + 1)) })
+	elif int(report.get("simulated", 0)) > 0:
+		emit_event(LockstepModule.EVENT_RESUME, { "tick": world_state.current_tick })
 
 
 # Run exactly one deterministic simulation tick.
