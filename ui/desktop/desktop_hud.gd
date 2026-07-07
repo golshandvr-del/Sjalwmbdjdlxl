@@ -304,7 +304,8 @@ func _issue_move(screen_pos: Vector2) -> void:
 	if _selected_unit_ids.is_empty():
 		return
 	var tile: Vector2i = _render_adapter.screen_to_tile(screen_pos)
-	Nexus.issue_command("move_unit", LOCAL_PLAYER, {
+	# Simulation command -> lockstep when networked (MA7.1), immediate otherwise.
+	Nexus.player_command("move_unit", {
 		"unit_ids": _selected_unit_ids.duplicate(),
 		"x": tile.x,
 		"y": tile.y,
@@ -325,7 +326,7 @@ func _on_pause_pressed() -> void:
 
 
 func _on_build_pressed() -> void:
-	Nexus.issue_command("build_unit", LOCAL_PLAYER, {
+	Nexus.player_command("build_unit", {
 		"owner": LOCAL_PLAYER,
 		"building_id": _local_hq_id,
 		"unit_type": "soldier",
@@ -347,14 +348,14 @@ func _on_research_pressed() -> void:
 	var node_id: String = _next_research_node(tech)
 	if node_id == "":
 		return
-	Nexus.issue_command("research_tech", LOCAL_PLAYER, {
+	Nexus.player_command("research_tech", {
 		"owner": LOCAL_PLAYER,
 		"node_id": node_id,
 	}, 1)
 
 
 func _on_upgrade_pressed() -> void:
-	Nexus.issue_command("upgrade_building", LOCAL_PLAYER, {
+	Nexus.player_command("upgrade_building", {
 		"building_id": _local_hq_id,
 	}, 1)
 
@@ -362,7 +363,7 @@ func _on_upgrade_pressed() -> void:
 func _on_fuse_pressed() -> void:
 	if _selected_unit_ids.is_empty():
 		return
-	Nexus.issue_command("fuse_units", LOCAL_PLAYER, {
+	Nexus.player_command("fuse_units", {
 		"owner": LOCAL_PLAYER,
 		"unit_ids": _selected_unit_ids.duplicate(),
 	}, 1)
