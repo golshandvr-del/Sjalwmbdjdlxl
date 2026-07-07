@@ -172,6 +172,10 @@ func _init() -> void:
 	test_070_p7_placement_flags_are_distinct_cells()
 	test_070_p7_team_assignment_per_mode()
 	test_070_p7_setup_keys_localized_in_all_locales()
+	# Phase MA (Android fixes).
+	test_ma1_multi_unit_move_spreads_into_formation()
+	test_ma1_single_unit_move_keeps_exact_goal()
+	test_ma1_formation_goals_are_deterministic()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3210,6 +3214,76 @@ func test_070_p7_setup_keys_localized_in_all_locales() -> void:
 	for key in required:
 		_check(en.has(key), "en has '%s'" % key)
 		_check(fa.has(key), "fa has '%s'" % key)
+
+
+# --- Phase MA1: multi-unit move formation (no more stacking) ----------------
+
+# Ordering several units to the same tile must NOT stack them onto one tile; each
+# must get a unique, walkable destination clustered around the requested goal.
+func test_ma1_multi_unit_move_spreads_into_formation() -> void:
+	print("test_ma1_multi_unit_move_spreads_into_formation")
+	var nexus: TickHarness = TickHarness.new()
+	GameBootstrap.register_modules(nexus)
+	GameBootstrap.load_catalogs(nexus)
+	var map: Object = nexus.get_module("map")
+	map.create_grid(12, 12)
+	var units: Object = nexus.get_module("units")
+	var a: int = units.spawn_unit("soldier", 0, 0, 0)
+	var b: int = units.spawn_unit("soldier", 0, 1, 0)
+	var c: int = units.spawn_unit("soldier", 0, 2, 0)
+	# All three ordered to the exact same tile (6,6).
+	nexus.issue_command("move_unit", 0, { "unit_ids": [a, b, c], "x": 6, "y": 6 }, 1)
+	nexus.run_ticks(80)
+	var ua: Dictionary = units.get_unit(a)
+	var ub: Dictionary = units.get_unit(b)
+	var uc: Dictionary = units.get_unit(c)
+	var pa: String = "%d,%d" % [int(ua["x"]), int(ua["y"])]
+	var pb: String = "%d,%d" % [int(ub["x"]), int(ub["y"])]
+	var pc: String = "%d,%d" % [int(uc["x"]), int(uc["y"])]
+	_check(pa != pb and pa != pc and pb != pc, "three units end on three distinct tiles (no stacking)")
+	# Every unit should end up clustered near the requested goal (within a few tiles).
+	var near := func(u: Dictionary) -> bool:
+		return absi(int(u["x"]) - 6) <= 3 and absi(int(u["y"]) - 6) <= 3
+	_check(near.call(ua) and near.call(ub) and near.call(uc), "all units cluster around the requested goal")
+
+
+# A single-unit move must keep the EXACT requested tile (no behaviour change).
+func test_ma1_single_unit_move_keeps_exact_goal() -> void:
+	print("test_ma1_single_unit_move_keeps_exact_goal")
+	var nexus: TickHarness = TickHarness.new()
+	GameBootstrap.register_modules(nexus)
+	GameBootstrap.load_catalogs(nexus)
+	var map: Object = nexus.get_module("map")
+	map.create_grid(10, 3)
+	var units: Object = nexus.get_module("units")
+	var uid: int = units.spawn_unit("soldier", 0, 0, 1)
+	nexus.issue_command("move_unit", 0, { "unit_ids": [uid], "x": 8, "y": 1 }, 1)
+	nexus.run_ticks(60)
+	var u: Dictionary = units.get_unit(uid)
+	_check(int(u["x"]) == 8 and int(u["y"]) == 1, "single unit reaches the exact requested tile")
+
+
+# The formation assignment must be deterministic: same input -> same goals, so
+# lockstep peers stay in sync.
+func test_ma1_formation_goals_are_deterministic() -> void:
+	print("test_ma1_formation_goals_are_deterministic")
+	var nexus: TickHarness = TickHarness.new()
+	GameBootstrap.register_modules(nexus)
+	GameBootstrap.load_catalogs(nexus)
+	var map: Object = nexus.get_module("map")
+	map.create_grid(12, 12)
+	var units: Object = nexus.get_module("units")
+	var g1: Array = units._formation_goals(Vector2i(6, 6), 5)
+	var g2: Array = units._formation_goals(Vector2i(6, 6), 5)
+	_check(g1.size() == 5 and g2.size() == 5, "formation returns the requested count")
+	var same: bool = true
+	var uniq: Dictionary = {}
+	for i in range(g1.size()):
+		if g1[i] != g2[i]:
+			same = false
+		uniq["%d,%d" % [g1[i].x, g1[i].y]] = true
+	_check(same, "formation goals are identical across calls (deterministic)")
+	_check(uniq.size() == 5, "formation goals are all unique")
 
 
 # Generic event capture helper used by several Phase 2 tests.
