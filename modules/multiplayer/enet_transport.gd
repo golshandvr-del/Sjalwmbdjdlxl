@@ -155,6 +155,16 @@ func broadcast_checksum(tick: int, author: int, hash_value: int) -> void:
 	_rpc_receive_checksum.rpc(tick, author, hash_value)
 
 
+# --- Control channel (MA7.2 / B10) ------------------------------------------
+# Send a lobby/session control message to every OTHER peer. Used by the host to
+# tell clients "the match is starting -- switch to the game scene now", and for
+# slot assignments (MA7.3). It is deliberately separate from the turn channel:
+# it carries no simulation data, so ordering relative to turns does not matter
+# and it can never affect determinism. Delivered reliably so it is never lost.
+func send_control(msg: Dictionary) -> void:
+	_rpc_receive_control.rpc(msg)
+
+
 # --- Incoming RPCs ----------------------------------------------------------
 # `call_remote` so we never deliver to ourselves; `reliable` for ordered, lossless
 # delivery; `any_peer` so both host->client and client->host flow.
@@ -169,6 +179,16 @@ func _rpc_receive_turn(packet: Dictionary) -> void:
 func _rpc_receive_checksum(tick: int, author: int, hash_value: int) -> void:
 	if _lockstep != null:
 		_lockstep.receive_checksum(tick, author, hash_value)
+
+
+# Control messages are re-published on the LOCAL event bus so the lobby/session
+# layer (not the simulation) can react. `sender` is stamped from the RPC context
+# so receivers can tell who sent it (e.g. trust only the host id 1).
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_receive_control(msg: Dictionary) -> void:
+	var out: Dictionary = msg.duplicate(true)
+	out["sender"] = multiplayer.get_remote_sender_id()
+	_emit(EVENT_CONTROL, out)
 
 
 # --- Local lockstep -> network bridge ---------------------------------------
