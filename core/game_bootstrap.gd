@@ -158,6 +158,14 @@ static func setup_skirmish() -> void:
 	# Apply the chosen default AI difficulty (if any) after the scenario loaded,
 	# then consume the config so it does not leak into the next match.
 	_apply_match_difficulty(nexus, str(match_config.get("difficulty", "")))
+	# MA7.4 (B8): before clearing the one-shot match_config, carry the session-
+	# level facts the running game may want to surface (hot-seat local MP flag +
+	# human count) into a persistent `session_info` section. match_config is a
+	# transient setup hand-off; session_info survives for the whole match so a HUD
+	# can, e.g., show a "local multiplayer" banner without re-reading setup data.
+	var session_info: Dictionary = nexus.world_state.get_section("session_info")
+	session_info["hot_seat"] = bool(match_config.get("hot_seat", false))
+	session_info["human_players"] = int(match_config.get("human_players", 1))
 	match_config.clear()
 	nexus.start_simulation(nexus.world_state.random_seed)
 
