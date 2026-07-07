@@ -3998,3 +3998,32 @@ class StubTransport extends RefCounted:
 
 	func is_host() -> bool:
 		return _local == _peers.min() if not _peers.is_empty() else true
+
+
+# Collects EVENT_CONTROL payloads off an EventBus so a test can assert what the
+# control channel delivered to a given peer (MA7.2 / B10).
+class ControlCollector extends RefCounted:
+	var received: Array = []
+
+	func on_control(_event_name: String, payload: Dictionary) -> void:
+		received.append(payload.duplicate(true))
+
+
+# A transport stub that just records the last send_control() call, used to prove
+# NetworkSession.send_control() delegates to its transport (MA7.2 / B10).
+class RecordingTransport extends RefCounted:
+	var last_control: Dictionary = {}
+	var control_calls: int = 0
+
+	func send_control(msg: Dictionary) -> void:
+		last_control = msg.duplicate(true)
+		control_calls += 1
+
+	func peer_ids() -> Array:
+		return [0, 1]
+
+	func local_peer_id() -> int:
+		return 0
+
+	func is_host() -> bool:
+		return true
