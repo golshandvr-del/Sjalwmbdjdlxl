@@ -42,6 +42,8 @@
 		"ui.game.resources": "منابع",
 		"ui.game.resume": "ادامه",
 		"ui.game.running": "در حال اجرا",
+		"ui.game.select_mode": "انتخاب",
+		"ui.game.select_mode_hint": "برای انتخاب کادری، انگشت را بکشید",
 		"ui.game.selected": "انتخاب‌شده",
 		"ui.game.speed": "سرعت",
 		"ui.game.style": "سبک",
