@@ -23,7 +23,7 @@
 | B4 | GUI scale=auto روی گوشی دکمه‌ها را ریز می‌کند | `core/game_settings.gd::auto_scale_for` روی نسبت portrait اشتباه حساب می‌کند | MA4 |
 | B5 | با scale دستیِ بزرگ، دکمه‌های پایینِ بازی از صفحه بیرون می‌زنند | `scenes/game_main.tscn` نوار پایین `HBoxContainer` بدون اسکرول/wrap | MA4 |
 | B6 | بازی افقی (landscape) نمی‌شود؛ باید با چرخش گوشی بازچینش شود | `project.godot` → `handheld/orientation=1` (قفلِ portrait)؛ layout واکنش‌گرا ناقص | MA5 |
-| B7 | در حالت موبایل، نیروها انتخاب نمی‌شوند (نیازمند تأیید) | مسیرِ لمس در `_unhandled_input`/`_handle_tap` — نیاز به بازبینی روی دستگاه واقعی | MA6 |
+| B7 | در حالت موبایل، نیروها انتخاب نمی‌شوند (نیازمند تأیید) | مسیرِ لمس در `_unhandled_input`/`_handle_tap` — نیاز به بازبینی روی دستگاه واقعی | MA6 ✅ |
 | B8 | «offline» در منوی مولتی‌پلیر با تک‌نفره فرقی ندارد | `ui/shared/main_menu.gd::_on_offline` → همان `MATCH_SETUP_SCENE` | MA7 |
 | B9 | host علامتی برای join‌شدنِ یک نفر نمی‌بیند | `ui/shared/lobby.gd::_on_peer_connected` + وضعیت beacon/slot | MA7 |
 | B10 | بعد از start توسطِ host، بازیِ join اجرا نمی‌شود | هیچ RPC «شروع بازی/عوض‌کردن صحنه» به کلاینت‌ها فرستاده نمی‌شود | MA7 |
@@ -106,10 +106,31 @@
   گاردِ رگرسیونِ re-apply-scale). کل مجموعه: `Total: 868 | Passed: 868 | Failed: 0 | Skipped: 2` ✅
 - **لینتر CODE_POLICY:** بدون نقض ✅
 
-### فاز MA6 — تأییدِ انتخابِ نیرو روی موبایل 🟡
-**کار:** با تست‌های headmless روی مسیرِ واقعیِ ورودی (تزریقِ `InputEventScreenTouch`)
+### فاز MA6 — تأییدِ انتخابِ نیرو روی موبایل ✅ (انجام شد)
+**کار:** با تست‌های headless روی مسیرِ واقعیِ ورودی (تزریقِ `InputEventScreenTouch`)
 تأیید شود که یک tap واحد نیرو را انتخاب می‌کند و tap روی زمین حرکت می‌دهد. اگر رگرسیونی
 از فازهای قبل ایجاد شد، رفع شود.
+
+**آنچه انجام شد:**
+- **متمرکزسازیِ منطقِ tap:** یک util خالص و بدونِ‌وابستگی `ui/shared/tap_select_util.gd`
+  افزوده شد که تصمیمِ یک tap را برمی‌گرداند (`select` / `move` / `none`)، به‌همراه
+  `unit_at_tile` قطعی (کمترین id هنگامِ هم‌تایلی) با فیلترِ مالک. تابع خالص است و آرایه‌ی
+  ورودیِ فراخوان را تغییر نمی‌دهد.
+- **HUD موبایل:** `ui/mobile/game_hud.gd::_handle_tap` و `_unit_at_tile` به این util
+  واگذار شدند تا رفتارِ تست‌شده دقیقاً همان چیزی باشد که بازی ارسال می‌کند.
+- **تست‌های واحد (`--script`):** ۸ تستِ MA6 (۱۹ assert) در `tests/test_runner.gd`:
+  noop روی زمینِ خالی بدونِ انتخاب، انتخابِ نیروی دوست، toggle، ساختِ squad با tapهای
+  متوالی، move روی زمینِ خالی، قطعی‌بودنِ `unit_at_tile` + فیلترِ مالک، عدمِ تغییرِ ورودی،
+  و گاردِ استاتیک که HUD از `TapSelectUtil` عبور می‌کند.
+- **تستِ یکپارچگیِ صحنه‌محور (end-to-end):** `tests/ma6_touch_probe.tscn` (+ `.gd`) به‌عنوان
+  **صحنه‌ی اصلی** اجرا می‌شود تا autoloadِ `Nexus` و خطِ لوله‌ی ورودیِ زنده حاضر باشند؛ HUD
+  واقعی را می‌سازد، یک `InputEventScreenTouch` واقعی (press+release، `device>=0` تا به‌عنوان
+  emulated دور ریخته نشود) را از مسیرِ واقعیِ `_unhandled_input → _handle_touch → _handle_tap`
+  تزریق می‌کند و تأیید می‌کند که (۱) نیرو انتخاب و `select_units` صادر می‌شود و (۲) tap روی
+  زمینِ خالی `move_unit` صادر می‌کند. پیکسلِ tap با معکوسِ دقیقِ `screen_to_tile`
+  (canvas transform + content-scale) محاسبه می‌شود. `MA6 PROBE: 11/11 PASS`.
+- **گیتِ build:** پروب به `tools/build_release.sh` به‌عنوان یک gate افزوده شد (شکست ⇒ توقفِ build).
+- کل مجموعه: `Total: 887 | Passed: 887 | Failed: 0 | Skipped: 2` ✅ — لینترِ CODE_POLICY بدون نقض ✅
 
 ### فاز MA7 — بازبینیِ جدیِ مولتی‌پلیر 🔴
 **فایل‌ها:** `core/nexus.gd`، هر دو HUD، `modules/multiplayer/*`، `ui/shared/lobby.gd`،
@@ -134,7 +155,7 @@
 ---
 
 ## ترتیب اجرا
-MA1 ✅ → MA2 ✅ → MA3 ✅ → MA4 ✅ → MA5 ✅ → MA6 (بعدی) → MA7 → به‌روزرسانیِ اسناد.
+MA1 ✅ → MA2 ✅ → MA3 ✅ → MA4 ✅ → MA5 ✅ → MA6 ✅ → MA7 (بعدی) → به‌روزرسانیِ اسناد.
 هر فاز: کد → تست‌ها سبز → commit → (هر ۲–۳ تغییر) push.
 
 ## معیارِ «انجام‌شده» برای کل کار
