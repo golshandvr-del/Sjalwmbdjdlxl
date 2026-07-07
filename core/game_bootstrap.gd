@@ -163,11 +163,20 @@ static func setup_skirmish() -> void:
 	# human count) into a persistent `session_info` section. match_config is a
 	# transient setup hand-off; session_info survives for the whole match so a HUD
 	# can, e.g., show a "local multiplayer" banner without re-reading setup data.
-	var session_info: Dictionary = nexus.world_state.get_section("session_info")
-	session_info["hot_seat"] = bool(match_config.get("hot_seat", false))
-	session_info["human_players"] = int(match_config.get("human_players", 1))
+	carry_session_info(nexus.world_state)
 	match_config.clear()
 	nexus.start_simulation(nexus.world_state.random_seed)
+
+
+# MA7.4 (B8): copy the session-level facts from the transient `match_config` into
+# the persistent `session_info` section. Extracted as a pure static helper so it
+# is unit-testable without the full autoload/scene stack, and so any other entry
+# path (tests, tools) can produce the same session_info deterministically.
+static func carry_session_info(world_state: Object) -> void:
+	var match_config: Dictionary = world_state.get_section("match_config")
+	var session_info: Dictionary = world_state.get_section("session_info")
+	session_info["hot_seat"] = bool(match_config.get("hot_seat", false))
+	session_info["human_players"] = int(match_config.get("human_players", 1))
 
 
 # P7 (R1.3/R1.4/R1.5/R10.2): reshape a base scenario to honour the Match Setup
