@@ -521,25 +521,30 @@ func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 func _handle_tap(screen_pos: Vector2) -> void:
 	var tile: Vector2i = _render_adapter.screen_to_tile(screen_pos)
 	var tapped_unit: int = _unit_at_tile(tile, LOCAL_PLAYER)
-	if tapped_unit != -1:
-		# Tapping an already-selected unit toggles it off; otherwise add it to the
-		# selection. Holding Shift/Ctrl is not assumed (touch-friendly): repeated
-		# taps build a squad, which is exactly what Hero Fusion needs.
-		if _selected_unit_ids.has(tapped_unit):
-			_selected_unit_ids.erase(tapped_unit)
-		else:
-			_selected_unit_ids.append(tapped_unit)
-		Nexus.issue_command("select_units", LOCAL_PLAYER, {
-			"owner": LOCAL_PLAYER,
-			"unit_ids": _selected_unit_ids.duplicate(),
-		}, 1)
-	elif not _selected_unit_ids.is_empty():
-		# Move the current selection to the tapped tile.
-		Nexus.issue_command("move_unit", LOCAL_PLAYER, {
-			"unit_ids": _selected_unit_ids.duplicate(),
-			"x": tile.x,
-			"y": tile.y,
-		}, 1)
+	# MA6: route the tap decision through the shared, headless-tested TapSelectUtil
+	# so the mobile HUD, the desktop HUD, and the unit tests all agree on exactly
+	# what a single tap does (select / toggle / move). The util is pure; it only
+	# returns a plan -- we still issue the authoritative commands here.
+	#
+	#   * Tap a friendly unit           -> toggle it in/out of the squad (repeated
+	#                                       taps build a squad, needed by Hero Fusion).
+	#   * Tap empty ground with a squad -> MOVE the selection to that tile.
+	var plan: Dictionary = TapSelectUtil.resolve_tap(_selected_unit_ids, tapped_unit)
+	match str(plan.get("action", TapSelectUtil.ACTION_NONE)):
+		TapSelectUtil.ACTION_SELECT:
+			_selected_unit_ids = (plan.get("selection", []) as Array).duplicate()
+			Nexus.issue_command("select_units", LOCAL_PLAYER, {
+				"owner": LOCAL_PLAYER,
+				"unit_ids": _selected_unit_ids.duplicate(),
+			}, 1)
+		TapSelectUtil.ACTION_MOVE:
+			Nexus.issue_command("move_unit", LOCAL_PLAYER, {
+				"unit_ids": _selected_unit_ids.duplicate(),
+				"x": tile.x,
+				"y": tile.y,
+			}, 1)
+		_:
+			pass
 
 
 # --- MA2: box / drag selection (mobile) -------------------------------------
@@ -706,15 +711,10 @@ func _on_match_over(_event_name: String, payload: Dictionary) -> void:
 # --- Helpers ----------------------------------------------------------------
 
 func _unit_at_tile(tile: Vector2i, owner_filter: int) -> int:
+	# MA6: delegate to the shared, headless-tested helper so tile hit-testing is
+	# identical everywhere and deterministic when two units share a tile.
 	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
-	var keys: Array = units.keys()
-	keys.sort()
-	for key in keys:
-		var u: Dictionary = units[key]
-		if int(u["x"]) == tile.x and int(u["y"]) == tile.y:
-			if owner_filter < 0 or int(u["owner"]) == owner_filter:
-				return int(u["id"])
-	return -1
+	return TapSelectUtil.unit_at_tile(units, tile, owner_filter)
 
 
 func _selected_squad_size() -> int:
