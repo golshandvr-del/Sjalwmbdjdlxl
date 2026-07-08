@@ -91,18 +91,32 @@ func _draw() -> void:
 	if ws == null:
 		return
 
+	# MB1.1 (bug 3): respect fog of war so the minimap never leaks enemy
+	# positions. Enemy units/buildings are only drawn on tiles the fog_viewer can
+	# currently SEE (same rule as the main RenderAdapter). fog_viewer < 0 shows
+	# everything (spectator / fog disabled).
+	var fog: Dictionary = ws.get_section("fog")
+
 	# Buildings as owner-coloured squares.
 	var buildings: Dictionary = ws.get_section("buildings").get("list", {})
 	for key in buildings.keys():
 		var b: Dictionary = buildings[key]
-		var pos: Vector2 = Vector2(int(b.get("x", 0)), int(b.get("y", 0))) * cell
+		var bx: int = int(b.get("x", 0))
+		var by: int = int(b.get("y", 0))
+		if not FogUtil.should_draw(fog, fog_viewer, int(b.get("owner", -1)), bx, by):
+			continue
+		var pos: Vector2 = Vector2(bx, by) * cell
 		draw_rect(Rect2(pos, cell * 1.5), _owner_color(int(b.get("owner", -1))), true)
 
 	# Units as owner-coloured dots.
 	var units: Dictionary = ws.get_section("units").get("list", {})
 	for key in units.keys():
 		var u: Dictionary = units[key]
-		var c: Vector2 = (Vector2(int(u.get("x", 0)), int(u.get("y", 0))) + Vector2(0.5, 0.5)) * cell
+		var ux: int = int(u.get("x", 0))
+		var uy: int = int(u.get("y", 0))
+		if not FogUtil.should_draw(fog, fog_viewer, int(u.get("owner", -1)), ux, uy):
+			continue
+		var c: Vector2 = (Vector2(ux, uy) + Vector2(0.5, 0.5)) * cell
 		draw_circle(c, maxf(1.5, cell.x * 0.4), _owner_color(int(u.get("owner", -1))))
 
 	# Camera box: map the main view's visible world rect onto the minimap.
