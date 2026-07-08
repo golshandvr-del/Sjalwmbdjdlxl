@@ -216,6 +216,11 @@ func _init() -> void:
 	test_ma6_unit_at_tile_owner_filter_and_determinism()
 	test_ma6_resolve_tap_does_not_mutate_input()
 	test_ma6_hud_delegates_tap_to_util()
+	# Phase MB1 (Android v2): minimap fog filter, teammate control leak, pause formation.
+	test_mb1_fog_util_hides_enemy_on_hidden_tile()
+	test_mb1_fog_util_shows_enemy_on_visible_tile()
+	test_mb1_fog_util_always_shows_own_and_spectator()
+	test_mb1_fog_util_state_out_of_range_is_hidden()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3871,6 +3876,64 @@ func test_ma6_hud_delegates_tap_to_util() -> void:
 	_check(body.contains("TapSelectUtil.resolve_tap"), "_handle_tap delegates the decision to TapSelectUtil")
 	_check(body.contains("TapSelectUtil.ACTION_MOVE"), "_handle_tap issues a move on the util's move action")
 	_check(body.contains("select_units"), "_handle_tap still issues the authoritative select_units command")
+
+
+# --- Phase MB1: minimap fog filter (bug 3) ----------------------------------
+
+# Build a tiny fog section: a 4x4 map where player 0 can see the left half only.
+# visible grid uses FOG_VISIBLE=2 / FOG_EXPLORED=1 / FOG_HIDDEN=0.
+func _mb1_fog() -> Dictionary:
+	var w: int = 4
+	var h: int = 4
+	var grid: Array = []
+	grid.resize(w * h)
+	for y in range(h):
+		for x in range(w):
+			# Left two columns visible, third column explored, right column hidden.
+			var state: int = 0
+			if x <= 1:
+				state = 2
+			elif x == 2:
+				state = 1
+			grid[y * w + x] = state
+	return { "width": w, "height": h, "visible": { "0": grid } }
+
+
+# An enemy unit standing on a HIDDEN (or merely explored) tile must NOT be drawn.
+func test_mb1_fog_util_hides_enemy_on_hidden_tile() -> void:
+	print("test_mb1_fog_util_hides_enemy_on_hidden_tile")
+	var fog: Dictionary = _mb1_fog()
+	# Enemy (owner 1) on the hidden right column -> not drawn.
+	_check(not FogUtil.should_draw(fog, 0, 1, 3, 0), "enemy on hidden tile is not drawn")
+	# Enemy on an explored-but-not-visible tile -> still not drawn.
+	_check(not FogUtil.should_draw(fog, 0, 1, 2, 0), "enemy on explored (not visible) tile is not drawn")
+
+
+# An enemy unit on a currently VISIBLE tile IS drawn.
+func test_mb1_fog_util_shows_enemy_on_visible_tile() -> void:
+	print("test_mb1_fog_util_shows_enemy_on_visible_tile")
+	var fog: Dictionary = _mb1_fog()
+	_check(FogUtil.should_draw(fog, 0, 1, 0, 0), "enemy on a visible tile is drawn")
+	_check(FogUtil.should_draw(fog, 0, 1, 1, 2), "enemy on another visible tile is drawn")
+
+
+# Own units are always drawn; a spectator (viewer < 0) sees everything.
+func test_mb1_fog_util_always_shows_own_and_spectator() -> void:
+	print("test_mb1_fog_util_always_shows_own_and_spectator")
+	var fog: Dictionary = _mb1_fog()
+	# Own unit on a hidden tile still drawn (owner == viewer).
+	_check(FogUtil.should_draw(fog, 0, 0, 3, 0), "own unit is always drawn regardless of fog")
+	# Spectator viewer -1 draws even enemies on hidden tiles.
+	_check(FogUtil.should_draw(fog, -1, 1, 3, 0), "spectator (viewer < 0) draws everything")
+
+
+# Out-of-range coordinates / missing grids resolve to HIDDEN.
+func test_mb1_fog_util_state_out_of_range_is_hidden() -> void:
+	print("test_mb1_fog_util_state_out_of_range_is_hidden")
+	var fog: Dictionary = _mb1_fog()
+	_check(FogUtil.fog_state(fog, 0, -1, 0) == FogUtil.FOG_HIDDEN, "negative x is hidden")
+	_check(FogUtil.fog_state(fog, 0, 99, 0) == FogUtil.FOG_HIDDEN, "x past width is hidden")
+	_check(FogUtil.fog_state(fog, 5, 0, 0) == FogUtil.FOG_HIDDEN, "unknown viewer is hidden")
 
 
 # Generic event capture helper used by several Phase 2 tests.
