@@ -42,3 +42,31 @@ static func units_in_screen_rect(adapter: Object, units: Dictionary, p1: Vector2
 		if ux >= min_x and ux <= max_x and uy >= min_y and uy <= max_y:
 			out.append(int(u["id"]))
 	return out
+
+
+# MB1.2 (bug 1 - teammate control leak): box-select restricted to the set of
+# owner ids the local device may command (from OwnershipUtil /
+# Nexus.is_locally_controlled). Mirrors units_in_screen_rect but accepts the full
+# controllable owner set instead of a single filter, so an AI teammate's units
+# are never swept into the box. Empty `owners` matches nothing (fail closed).
+static func units_in_screen_rect_owned_by(adapter: Object, units: Dictionary, p1: Vector2, p2: Vector2, owners: Array) -> Array:
+	var out: Array = []
+	if adapter == null or owners.is_empty():
+		return out
+	var tl: Vector2i = adapter.screen_to_tile(Vector2(minf(p1.x, p2.x), minf(p1.y, p2.y)))
+	var br: Vector2i = adapter.screen_to_tile(Vector2(maxf(p1.x, p2.x), maxf(p1.y, p2.y)))
+	var min_x: int = mini(tl.x, br.x)
+	var max_x: int = maxi(tl.x, br.x)
+	var min_y: int = mini(tl.y, br.y)
+	var max_y: int = maxi(tl.y, br.y)
+	var keys: Array = units.keys()
+	keys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in keys:
+		var u: Dictionary = units[key]
+		if not owners.has(int(u.get("owner", -1))):
+			continue
+		var ux: int = int(u["x"])
+		var uy: int = int(u["y"])
+		if ux >= min_x and ux <= max_x and uy >= min_y and uy <= max_y:
+			out.append(int(u["id"]))
+	return out
