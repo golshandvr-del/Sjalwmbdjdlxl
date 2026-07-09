@@ -46,6 +46,12 @@ var _layout_option: OptionButton
 var _start_button: Button
 var _back_button: Button
 var _title_label: Label
+# MB2.2 (bug 5): single-player AI team-grouping panel. The container holds one
+# "AI N -> Team" row per AI player; `_ai_team_options` maps the AI owner index
+# to its team OptionButton so _on_start can gather the explicit team overrides.
+var _ai_groups_box: VBoxContainer
+var _ai_groups_hint: Label
+var _ai_team_options: Dictionary = {}
 
 # Parallel list of scenario ids matching the OptionButton item order.
 var _scenario_ids: Array = []
@@ -152,6 +158,26 @@ func _build_ui() -> void:
 	_style_option.add_item(_loc.t("ui.menu.single_mobile"))
 	_style_option.selected = 0
 
+	# MB2.2 (bug 5): AI team-grouping panel. A hint line plus a dynamically-built
+	# list of "AI N -> Team" rows. It mirrors the multiplayer host lobby's grouping
+	# so a single-player player can ally the AIs into teams. The rows are rebuilt
+	# whenever the AI count or game mode changes (they seed sensible defaults via
+	# AiGroupUtil so the panel always opens on a valid layout).
+	_ai_groups_hint = Label.new()
+	_ai_groups_hint.set_meta("loc_key_plain", "ui.setup.ai_groups_hint")
+	_ai_groups_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_ai_groups_hint.add_theme_font_size_override("font_size", 13)
+	box.add_child(_ai_groups_hint)
+
+	_ai_groups_box = VBoxContainer.new()
+	_ai_groups_box.add_theme_constant_override("separation", 8)
+	box.add_child(_ai_groups_box)
+
+	# Rebuild the grouping rows when the inputs that drive them change.
+	_ai_option.item_selected.connect(func(_i: int) -> void: _rebuild_ai_groups())
+	_mode_option.item_selected.connect(func(_i: int) -> void: _rebuild_ai_groups())
+	_rebuild_ai_groups()
+
 	var buttons: HBoxContainer = HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 12)
@@ -202,6 +228,57 @@ func _add_labeled_line_edit(parent: VBoxContainer, label_key: String, placeholde
 	edit.placeholder_text = placeholder
 	row.add_child(edit)
 	return edit
+
+
+# MB2.2 (bug 5): (re)build the AI team-grouping rows. One row per AI player, each
+# with a Team OptionButton pre-selected to the deterministic default for the
+# current mode (via AiGroupUtil) so the panel opens already valid. Preserves the
+# player's earlier team picks across a rebuild when the owner index still exists.
+func _rebuild_ai_groups() -> void:
+	if _ai_groups_box == null:
+		return
+	# Remember prior explicit picks so a rebuild (e.g. mode change) keeps them.
+	var prior: Dictionary = {}
+	for owner in _ai_team_options.keys():
+		var opt: OptionButton = _ai_team_options[owner]
+		if is_instance_valid(opt):
+			prior[owner] = opt.selected
+	for child in _ai_groups_box.get_children():
+		child.queue_free()
+	_ai_team_options.clear()
+
+	var ai_count: int = _ai_option.selected  # option 0 => 0 AIs
+	var m_idx: int = clampi(_mode_option.selected, 0, _modes.size() - 1)
+	var mode: String = str(_modes[m_idx])
+
+	# The grouping panel is only meaningful with at least two AIs to ally; hide it
+	# (and its hint) otherwise to keep the setup screen compact.
+	var show_panel: bool = ai_count >= 2
+	_ai_groups_hint.visible = show_panel
+	_ai_groups_box.visible = show_panel
+	if not show_panel:
+		return
+
+	for ai_index in range(ai_count):
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		_ai_groups_box.add_child(row)
+
+		var label: Label = Label.new()
+		label.custom_minimum_size = Vector2(140, 0)
+		label.text = "%s:" % (_loc.t("ui.setup.ai_player_n") % (ai_index + 1))
+		row.add_child(label)
+
+		var option: OptionButton = OptionButton.new()
+		option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		for team in range(AiGroupUtil.TEAM_COUNT):
+			option.add_item(_loc.t("ui.setup.team_n") % (team + 1))
+		# Seed selection: keep the earlier pick if this owner still exists,
+		# otherwise use the deterministic default team for the mode.
+		var default_team: int = AiGroupUtil.default_team(ai_index, mode)
+		option.selected = int(prior.get(ai_index, default_team))
+		row.add_child(option)
+		_ai_team_options[ai_index] = option
 
 
 # --- Population -------------------------------------------------------------
@@ -259,6 +336,11 @@ func _apply_meta_labels(node: Node) -> void:
 		if child is Label and (child as Label).has_meta("loc_key"):
 			var key: String = str((child as Label).get_meta("loc_key"))
 			(child as Label).text = "%s:" % _loc.t(key)
+		# MB2.2: some captions (e.g. the AI-grouping hint) are full sentences that
+		# must NOT get a trailing ":" -- they carry a "loc_key_plain" meta instead.
+		if child is Label and (child as Label).has_meta("loc_key_plain"):
+			var plain_key: String = str((child as Label).get_meta("loc_key_plain"))
+			(child as Label).text = _loc.t(plain_key)
 		_apply_meta_labels(child)
 
 
@@ -298,6 +380,20 @@ func _on_start() -> void:
 	config["game_mode"] = str(_modes[m_idx])
 	var l_idx: int = clampi(_layout_option.selected, 0, _layouts.size() - 1)
 	config["team_layout"] = str(_layouts[l_idx])
+	# MB2.2 (bug 5): gather the explicit AI -> team choices into match_config so
+	# GameBootstrap._resolve_team honours them. Only recorded when the grouping
+	# panel is active (>= 2 AIs); otherwise the engine uses per-mode defaults.
+	# The panel is keyed by the 0-based AI index (AI 1, AI 2, ...), but the engine
+	# seats humans first (owners 0..humans-1) then AIs, so we remap each AI index
+	# onto its real owner seat: owner = human_players + ai_index.
+	var humans: int = _humans_option.selected + 1
+	var team_overrides: Dictionary = {}
+	for ai_index in _ai_team_options.keys():
+		var opt: OptionButton = _ai_team_options[ai_index]
+		if is_instance_valid(opt):
+			var owner_seat: int = humans + int(ai_index)
+			team_overrides[owner_seat] = AiGroupUtil.clamp_team(opt.selected)
+	config["team_overrides"] = team_overrides
 	# MA7.4 (B8): tag a shared-device hot-seat session so the game scene can adapt
 	# (e.g. show a "local multiplayer" banner / per-turn hand-off later). It is a
 	# pure UI hint -- the deterministic core treats every human player the same.
