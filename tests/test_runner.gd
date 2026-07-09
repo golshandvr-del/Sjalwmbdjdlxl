@@ -228,6 +228,11 @@ func _init() -> void:
 	test_mb1_tap_ignores_ai_teammate_on_shared_tile()
 	test_mb1_tap_empty_owner_set_selects_none()
 	test_mb1_box_select_excludes_ai_teammate()
+	# MB1.3 (bug 2 - pause stacking): cross-command reserved-tile formation.
+	test_mb13_reserved_tiles_are_skipped()
+	test_mb13_separate_commands_get_unique_tiles()
+	test_mb13_plan_goals_deterministic_with_reserved()
+	test_mb13_single_unit_avoids_reserved_tile()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3418,6 +3423,76 @@ func test_ma1_formation_goals_are_deterministic() -> void:
 		uniq["%d,%d" % [g1[i].x, g1[i].y]] = true
 	_check(same, "formation goals are identical across calls (deterministic)")
 	_check(uniq.size() == 5, "formation goals are all unique")
+
+
+# --- Phase MB1.3: pause-stacking fix (cross-command reserved tiles) ----------
+
+# FormationUtil must NEVER return a tile listed in `reserved`, even the exact
+# center. This is the core mechanism that stops separate pause commands from all
+# grabbing tile X.
+func test_mb13_reserved_tiles_are_skipped() -> void:
+	print("test_mb13_reserved_tiles_are_skipped")
+	var walk: Callable = func(x: int, y: int) -> bool:
+		return x >= 0 and y >= 0 and x < 12 and y < 12
+	var reserved: Dictionary = {
+		"6,6": true, "6,5": true, "7,6": true,
+	}
+	var goals: Array = FormationUtil.plan_goals(Vector2i(6, 6), 3, walk, reserved)
+	_check(goals.size() == 3, "returns the requested count with reservations")
+	var hit_reserved: bool = false
+	for g in goals:
+		if reserved.has("%d,%d" % [g.x, g.y]):
+			hit_reserved = true
+	_check(not hit_reserved, "no returned tile collides with a reserved tile")
+
+
+# Simulate the pause bug: three SEPARATE one-unit commands each aimed at the same
+# tile X. Each later command reserves the tiles the earlier ones already claimed,
+# so all three end on DISTINCT tiles (no stacking across independent commands).
+func test_mb13_separate_commands_get_unique_tiles() -> void:
+	print("test_mb13_separate_commands_get_unique_tiles")
+	var walk: Callable = func(x: int, y: int) -> bool:
+		return x >= 0 and y >= 0 and x < 12 and y < 12
+	var claimed: Dictionary = {}
+	var picks: Array = []
+	for i in range(3):
+		var g: Array = FormationUtil.plan_goals(Vector2i(6, 6), 1, walk, claimed)
+		_check(g.size() == 1, "each separate command yields one goal")
+		var t: Vector2i = g[0]
+		picks.append(t)
+		claimed["%d,%d" % [t.x, t.y]] = true
+	var uniq: Dictionary = {}
+	for p in picks:
+		uniq["%d,%d" % [p.x, p.y]] = true
+	_check(uniq.size() == 3, "three separate commands to X give three unique tiles")
+
+
+# Reserved-aware planning must still be deterministic (same reserved set + center
+# -> identical goals) so lockstep peers agree.
+func test_mb13_plan_goals_deterministic_with_reserved() -> void:
+	print("test_mb13_plan_goals_deterministic_with_reserved")
+	var walk: Callable = func(x: int, y: int) -> bool:
+		return x >= 0 and y >= 0 and x < 12 and y < 12
+	var reserved: Dictionary = { "6,6": true, "5,6": true }
+	var g1: Array = FormationUtil.plan_goals(Vector2i(6, 6), 4, walk, reserved)
+	var g2: Array = FormationUtil.plan_goals(Vector2i(6, 6), 4, walk, reserved)
+	var same: bool = g1.size() == g2.size()
+	for i in range(g1.size()):
+		if g1[i] != g2[i]:
+			same = false
+	_check(same, "reserved-aware plan is identical across calls (deterministic)")
+
+
+# A single unit ordered onto a tile another unit already targets must step aside
+# to the nearest free tile instead of stacking on the reserved one.
+func test_mb13_single_unit_avoids_reserved_tile() -> void:
+	print("test_mb13_single_unit_avoids_reserved_tile")
+	var walk: Callable = func(x: int, y: int) -> bool:
+		return x >= 0 and y >= 0 and x < 12 and y < 12
+	var reserved: Dictionary = { "6,6": true }
+	var g: Array = FormationUtil.plan_goals(Vector2i(6, 6), 1, walk, reserved)
+	_check(g.size() == 1, "single-unit plan returns one goal")
+	_check(not reserved.has("%d,%d" % [g[0].x, g[0].y]), "single unit avoids the reserved tile")
 
 
 # --- Phase MA2: box / drag selection (mobile) -------------------------------
