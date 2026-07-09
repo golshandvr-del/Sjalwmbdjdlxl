@@ -3401,17 +3401,14 @@ func test_ma1_single_unit_move_keeps_exact_goal() -> void:
 
 
 # The formation assignment must be deterministic: same input -> same goals, so
-# lockstep peers stay in sync.
+# lockstep peers stay in sync. Now delegates to the dependency-free FormationUtil
+# (MB1.3) which does not need the Nexus autoload.
 func test_ma1_formation_goals_are_deterministic() -> void:
 	print("test_ma1_formation_goals_are_deterministic")
-	var nexus: TickHarness = TickHarness.new()
-	GameBootstrap.register_modules(nexus)
-	GameBootstrap.load_catalogs(nexus)
-	var map: Object = nexus.get_module("map")
-	map.create_grid(12, 12)
-	var units: Object = nexus.get_module("units")
-	var g1: Array = units._formation_goals(Vector2i(6, 6), 5)
-	var g2: Array = units._formation_goals(Vector2i(6, 6), 5)
+	var walk: Callable = func(x: int, y: int) -> bool:
+		return x >= 0 and y >= 0 and x < 12 and y < 12
+	var g1: Array = FormationUtil.plan_goals(Vector2i(6, 6), 5, walk)
+	var g2: Array = FormationUtil.plan_goals(Vector2i(6, 6), 5, walk)
 	_check(g1.size() == 5 and g2.size() == 5, "formation returns the requested count")
 	var same: bool = true
 	var uniq: Dictionary = {}
