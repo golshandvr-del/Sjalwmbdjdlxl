@@ -216,17 +216,9 @@ func _apply_labels() -> void:
 
 func _start_as_host() -> void:
 	_ensure_session()
-	# Build the slot model: humans first, then AIs; default team layout = split.
-	_slots.clear()
-	var total: int = _human_players + _ai_players
-	for i in range(total):
-		var kind: String = "human" if i < _human_players else "ai"
-		_slots.append({
-			"kind": kind,
-			"team": _default_team_for(i),
-			"ready": (kind == "ai"),   # AIs are always "ready"
-			"peer": 0 if i == 0 else -1,  # host owns slot 0
-		})
+	# Build the slot model via the pure util (humans first, then AIs; slot 0 is
+	# the host). Keeps host/client logic identical and unit-testable (MB5).
+	_slots = LobbyStateUtil.build_host_slots(_human_players, _ai_players, _game_mode)
 	# Host waits for the human players only (AIs are local); slot 0 is us.
 	var err: int = _session.host(LAN_SEED, _human_players)
 	if err != OK:
@@ -240,13 +232,6 @@ func _start_as_host() -> void:
 	_status_label.text = _loc.t("ui.net.waiting_for_players")
 	_rebuild_slot_rows()
 	_update_start_enabled()
-
-
-# Default team assignment for team mode: alternate 0/1; ffa/ctf: unique per slot.
-func _default_team_for(index: int) -> int:
-	if _game_mode == "team":
-		return index % 2
-	return index
 
 
 func _beacon_info() -> Dictionary:
@@ -389,21 +374,13 @@ func _my_slot_index() -> int:
 	if _session == null or _session.transport() == null:
 		return -1
 	var me: int = _session.transport().local_peer_id()
-	for i in range(_slots.size()):
-		if int(_slots[i].get("peer", -1)) == me:
-			return i
-	return -1
+	return LobbyStateUtil.slot_index_for_peer(_slots, me)
 
 
 func _update_start_enabled() -> void:
 	if _role != "host":
 		return
-	var all_ready: bool = true
-	for slot in _slots:
-		if slot["kind"] == "human" and int(slot["peer"]) >= 0 and not bool(slot["ready"]):
-			all_ready = false
-			break
-	_start_button.disabled = not all_ready
+	_start_button.disabled = not LobbyStateUtil.can_start(_slots)
 
 
 # --- Session wiring ---------------------------------------------------------
@@ -431,10 +408,7 @@ func _on_peer_connected(_event_name: String, payload: Dictionary) -> void:
 	# Host side: a player filled a slot. Assign it to the first open human slot.
 	if _role == "host":
 		var peer: int = int(payload.get("peer", -1))
-		for slot in _slots:
-			if slot["kind"] == "human" and int(slot["peer"]) < 0:
-				slot["peer"] = peer
-				break
+		LobbyStateUtil.assign_peer_to_open_slot(_slots, peer)
 		if _discovery != null:
 			_discovery.set_info(_beacon_info())
 		_rebuild_slot_rows()
@@ -505,16 +479,7 @@ func _on_start_pressed() -> void:
 # schema in STRUCTURE.md section 9.8. Pure (no side effects) so it can be reused
 # both to persist locally AND to ship to join clients over the control channel.
 func _current_placements() -> Array:
-	var placements: Array = []
-	for i in range(_slots.size()):
-		var slot: Dictionary = _slots[i]
-		placements.append({
-			"slot": i,
-			"kind": slot["kind"],
-			"team": int(slot["team"]),
-			"flag_index": i,
-		})
-	return placements
+	return LobbyStateUtil.placements(_slots)
 
 
 # Persist the lobby's team/slot decisions so the game (and victory conditions)
@@ -547,10 +512,7 @@ func _on_control(_event_name: String, payload: Dictionary) -> void:
 		# whether the match can start (MA7.3).
 		if _role == "host":
 			var peer: int = int(payload.get("peer", -1))
-			for slot in _slots:
-				if int(slot.get("peer", -1)) == peer:
-					slot["ready"] = bool(payload.get("ready", false))
-					break
+			LobbyStateUtil.set_ready_for_peer(_slots, peer, bool(payload.get("ready", false)))
 			_rebuild_slot_rows()
 			_update_start_enabled()
 			_broadcast_slots()
@@ -580,25 +542,13 @@ func _on_control(_event_name: String, payload: Dictionary) -> void:
 
 # How many human slots currently have a peer assigned (host counts as slot 0).
 func _filled_human_slots() -> int:
-	var n: int = 0
-	for slot in _slots:
-		if slot["kind"] == "human" and int(slot.get("peer", -1)) >= 0:
-			n += 1
-	return n
+	return LobbyStateUtil.filled_human_slots(_slots)
 
 
 # A plain, serializable copy of the slot layout for the control channel (no
 # engine objects, only ints/strings/bools) so it survives RPC/loopback intact.
 func _slot_snapshot() -> Array:
-	var out: Array = []
-	for slot in _slots:
-		out.append({
-			"kind": str(slot.get("kind", "human")),
-			"team": int(slot.get("team", 0)),
-			"ready": bool(slot.get("ready", false)),
-			"peer": int(slot.get("peer", -1)),
-		})
-	return out
+	return LobbyStateUtil.snapshot(_slots)
 
 
 # Host: push the authoritative slot layout to all clients.
@@ -610,15 +560,7 @@ func _broadcast_slots() -> void:
 
 # Join: replace the local slot model with the host's snapshot and refresh the UI.
 func _apply_slot_snapshot(snapshot: Array) -> void:
-	_slots.clear()
-	for entry in snapshot:
-		var e: Dictionary = entry
-		_slots.append({
-			"kind": str(e.get("kind", "human")),
-			"team": int(e.get("team", 0)),
-			"ready": bool(e.get("ready", false)),
-			"peer": int(e.get("peer", -1)),
-		})
+	_slots = LobbyStateUtil.from_snapshot(snapshot)
 	# Keep our own Ready toggle visually consistent with the assigned slot.
 	var mine: int = _my_slot_index()
 	if mine >= 0 and mine < _slots.size():
