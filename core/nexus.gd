@@ -111,6 +111,25 @@ func player_command(type: String, data: Dictionary = {}, delay_ticks: int = 1) -
 	issue_command(type, 0, data, delay_ticks)
 
 
+# The owner id this device drives by default (single-player / primary seat).
+# Kept here so the HUDs and the ownership check share ONE constant.
+const LOCAL_PLAYER: int = 0
+
+
+# MB1.2 (bug 1 - teammate control leak): the SINGLE source of truth for "may the
+# human at this device command units owned by `owner`?". Every HUD selection path
+# (tap, box-select, control groups) must gate through here so an AI teammate's
+# units can never be selected. The concrete rule lives in the pure OwnershipUtil
+# helper (headless-testable); here we only feed it the live session seat ownership
+# from world_state ("session_info.local_players"), defaulting to LOCAL_PLAYER.
+func is_locally_controlled(owner: int) -> bool:
+	var session: Dictionary = {}
+	if world_state != null:
+		session = world_state.get_section("session_info")
+	var local_players: Array = OwnershipUtil.local_players_from_session(session, LOCAL_PLAYER)
+	return OwnershipUtil.is_locally_controlled(owner, LOCAL_PLAYER, local_players)
+
+
 # Return the multiplayer/lockstep module ONLY when a session is active, else
 # null (so player_command uses the direct single-player path). Shared with the
 # tick loop's _active_lockstep(); kept as a separate tiny helper so callers that
