@@ -266,6 +266,17 @@ func _init() -> void:
 	# MB2.3 (bug 8): Settings moved from a list row to a top-right gear button.
 	test_mb2_settings_gear_replaces_list_row()
 	test_mb2_settings_gear_tooltip_localized()
+	# Phase MB5 (Android v2, bugs 9/10/11/13/14): lobby slot model + sync rules.
+	test_mb5_build_host_slots_shape_and_teams()
+	test_mb5_build_host_slots_ffa_unique_teams()
+	test_mb5_assign_peer_fills_first_open_human_slot()
+	test_mb5_assign_peer_never_takes_ai_slot_and_full_returns_minus_one()
+	test_mb5_ready_roundtrip_for_peer()
+	test_mb5_can_start_gates_on_occupied_humans_only()
+	test_mb5_snapshot_includes_ai_and_roundtrips()
+	test_mb5_placements_cover_every_slot()
+	test_mb5_lobby_teardown_static_guard()
+	test_mb5_lobby_client_readonly_view_static_guard()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3777,6 +3788,176 @@ func test_mb2_settings_gear_tooltip_localized() -> void:
 	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
 	_check(en.has("ui.menu.settings_gear"), "en has 'ui.menu.settings_gear'")
 	_check(fa.has("ui.menu.settings_gear"), "fa has 'ui.menu.settings_gear'")
+
+
+# --- Phase MB5: multiplayer lobby state (bugs 9, 10, 11, 13, 14) ------------
+#
+# LobbyStateUtil is the pure single source of truth the lobby scene delegates
+# to; these tests pin the host<->client sync rules headlessly: slot building,
+# peer seating, the ready round-trip (bugs 9/14), AI visibility in snapshots
+# (bug 10), and via static guards the read-only client view (bug 13) and the
+# idempotent network teardown that fixes re-join (bug 11).
+
+func test_mb5_build_host_slots_shape_and_teams() -> void:
+	print("test_mb5_build_host_slots_shape_and_teams")
+	var slots: Array = LobbyStateUtil.build_host_slots(2, 2, "team")
+	_check(slots.size() == 4, "2 humans + 2 AIs -> 4 slots")
+	_check(str((slots[0] as Dictionary).get("kind", "")) == "human", "slot 0 is human")
+	_check(int((slots[0] as Dictionary).get("peer", -1)) == 0, "slot 0 belongs to the host (peer 0)")
+	_check(str((slots[2] as Dictionary).get("kind", "")) == "ai", "slot 2 is AI")
+	_check(bool((slots[2] as Dictionary).get("ready", false)), "AI slots are always ready")
+	_check(not bool((slots[0] as Dictionary).get("ready", true)), "human slots start not ready")
+	# team mode alternates 0/1.
+	_check(int((slots[0] as Dictionary).get("team", -1)) == 0, "team mode: slot 0 -> team 0")
+	_check(int((slots[1] as Dictionary).get("team", -1)) == 1, "team mode: slot 1 -> team 1")
+	_check(int((slots[2] as Dictionary).get("team", -1)) == 0, "team mode: slot 2 -> team 0")
+
+
+func test_mb5_build_host_slots_ffa_unique_teams() -> void:
+	print("test_mb5_build_host_slots_ffa_unique_teams")
+	var slots: Array = LobbyStateUtil.build_host_slots(1, 3, "ffa")
+	var teams: Dictionary = {}
+	for slot in slots:
+		teams[int((slot as Dictionary).get("team", -1))] = true
+	_check(teams.size() == slots.size(), "ffa: every slot gets a unique team")
+
+
+func test_mb5_assign_peer_fills_first_open_human_slot() -> void:
+	print("test_mb5_assign_peer_fills_first_open_human_slot")
+	var slots: Array = LobbyStateUtil.build_host_slots(3, 1, "ffa")
+	var idx: int = LobbyStateUtil.assign_peer_to_open_slot(slots, 7)
+	_check(idx == 1, "first open human slot is index 1 (0 is host)")
+	_check(int((slots[1] as Dictionary).get("peer", -1)) == 7, "peer id stored on the slot")
+	_check(LobbyStateUtil.slot_index_for_peer(slots, 7) == 1, "slot_index_for_peer resolves the seat")
+	_check(LobbyStateUtil.filled_human_slots(slots) == 2, "host + joined peer = 2 filled humans")
+
+
+func test_mb5_assign_peer_never_takes_ai_slot_and_full_returns_minus_one() -> void:
+	print("test_mb5_assign_peer_never_takes_ai_slot_and_full_returns_minus_one")
+	var slots: Array = LobbyStateUtil.build_host_slots(1, 2, "ffa")
+	# Only slot 0 (host) is human, so a joining peer has no seat.
+	var idx: int = LobbyStateUtil.assign_peer_to_open_slot(slots, 9)
+	_check(idx == -1, "full lobby (no open human slot) returns -1")
+	_check(int((slots[1] as Dictionary).get("peer", -1)) == -1, "AI slot untouched")
+	_check(LobbyStateUtil.slot_index_for_peer(slots, 9) == -1, "unseated peer resolves to -1")
+
+
+func test_mb5_ready_roundtrip_for_peer() -> void:
+	print("test_mb5_ready_roundtrip_for_peer")
+	# Bug 9/14: the client's ready_state must land on the host's slot model.
+	var slots: Array = LobbyStateUtil.build_host_slots(2, 1, "team")
+	LobbyStateUtil.assign_peer_to_open_slot(slots, 3)
+	_check(not LobbyStateUtil.can_start(slots), "not startable while the client is unready")
+	_check(LobbyStateUtil.set_ready_for_peer(slots, 3, true), "ready_state applied for seated peer")
+	_check(bool((slots[1] as Dictionary).get("ready", false)), "client slot flagged ready")
+	_check(not LobbyStateUtil.set_ready_for_peer(slots, 42, true), "unknown peer is rejected")
+	# The host itself is still unready; toggling it too unlocks the start gate.
+	LobbyStateUtil.set_ready_for_peer(slots, 0, true)
+	_check(LobbyStateUtil.can_start(slots), "all occupied humans ready -> can start (bug 14)")
+
+
+func test_mb5_can_start_gates_on_occupied_humans_only() -> void:
+	print("test_mb5_can_start_gates_on_occupied_humans_only")
+	# Empty human seats and AI slots must never block the start.
+	var slots: Array = LobbyStateUtil.build_host_slots(3, 2, "ffa")
+	LobbyStateUtil.set_ready_for_peer(slots, 0, true)
+	_check(LobbyStateUtil.can_start(slots),
+		"host ready + empty seats + AIs -> startable (empty seats do not block)")
+	LobbyStateUtil.assign_peer_to_open_slot(slots, 5)
+	_check(not LobbyStateUtil.can_start(slots), "a newly seated, unready client blocks start")
+
+
+func test_mb5_snapshot_includes_ai_and_roundtrips() -> void:
+	print("test_mb5_snapshot_includes_ai_and_roundtrips")
+	# Bug 10: the snapshot the host broadcasts must contain the AI slots so a
+	# joining client sees the bots, and it must round-trip losslessly.
+	var slots: Array = LobbyStateUtil.build_host_slots(2, 2, "team")
+	LobbyStateUtil.assign_peer_to_open_slot(slots, 4)
+	LobbyStateUtil.set_ready_for_peer(slots, 4, true)
+	var snap: Array = LobbyStateUtil.snapshot(slots)
+	_check(snap.size() == 4, "snapshot covers ALL slots (humans + AIs)")
+	var ai_count: int = 0
+	for entry in snap:
+		if str((entry as Dictionary).get("kind", "")) == "ai":
+			ai_count += 1
+	_check(ai_count == 2, "both AI slots are present in the snapshot (bug 10)")
+	var rebuilt: Array = LobbyStateUtil.from_snapshot(snap)
+	_check(rebuilt == slots, "from_snapshot(snapshot(x)) == x (lossless round-trip)")
+	# Serializable-only payload: every value must be a String/int/bool.
+	var clean: bool = true
+	for entry in snap:
+		for key in (entry as Dictionary):
+			var v: Variant = (entry as Dictionary)[key]
+			if not (v is String or v is int or v is bool):
+				clean = false
+	_check(clean, "snapshot uses only plain String/int/bool values")
+
+
+func test_mb5_placements_cover_every_slot() -> void:
+	print("test_mb5_placements_cover_every_slot")
+	var slots: Array = LobbyStateUtil.build_host_slots(1, 2, "team")
+	var placements: Array = LobbyStateUtil.placements(slots)
+	_check(placements.size() == slots.size(), "one placement per slot")
+	for i in range(placements.size()):
+		var p: Dictionary = placements[i]
+		_check(int(p.get("slot", -1)) == i and int(p.get("flag_index", -1)) == i,
+			"placement %d carries its slot + flag index" % i)
+	_check(str((placements[1] as Dictionary).get("kind", "")) == "ai",
+		"placement preserves the slot kind")
+
+
+# Bug 11 (re-join): the lobby must own ONE idempotent teardown used by every
+# exit path (back button, WM_GO_BACK, ui_cancel) that closes the session, stops
+# discovery AND drops all event-bus subscriptions.
+func test_mb5_lobby_teardown_static_guard() -> void:
+	print("test_mb5_lobby_teardown_static_guard")
+	var src: String = FileAccess.get_file_as_string("res://ui/shared/lobby.gd")
+	_check(src != "", "lobby.gd source is readable")
+	_check(src.contains("func _teardown_network"), "lobby has a single teardown helper")
+	var body: String = _mb5_func_body(src, "func _teardown_network")
+	_check(body.contains("_session.close()"), "teardown closes the network session")
+	_check(body.contains("_discovery.stop()"), "teardown stops LAN discovery")
+	_check(body.contains("unsubscribe_all"), "teardown drops ALL event-bus subscriptions")
+	# Every exit path funnels through _on_back -> _teardown_network.
+	_check(_mb5_func_body(src, "func _on_back").contains("_teardown_network()"),
+		"back button tears the network down")
+	_check(_mb5_func_body(src, "func _notification").contains("_on_back()"),
+		"Android BACK (WM_GO_BACK) routes through _on_back")
+	_check(_mb5_func_body(src, "func _unhandled_input").contains("_on_back()"),
+		"ui_cancel routes through _on_back")
+
+
+# Bug 13: after connecting, a join client must switch to a read-only lobby view
+# (search UI hidden, slot list shown, Start reserved for the host).
+func test_mb5_lobby_client_readonly_view_static_guard() -> void:
+	print("test_mb5_lobby_client_readonly_view_static_guard")
+	var src: String = FileAccess.get_file_as_string("res://ui/shared/lobby.gd")
+	_check(src != "", "lobby.gd source is readable")
+	var labels: String = _mb5_func_body(src, "func _apply_labels")
+	_check(labels.contains("not _connected"), "search UI visibility depends on connection state")
+	_check(labels.contains("_start_button.visible = (_role == \"host\")"),
+		"only the host sees the Start button")
+	var connected: String = _mb5_func_body(src, "func _on_connected")
+	_check(connected.contains("_connected = true") and connected.contains("_apply_labels()"),
+		"connecting flips the client into the read-only view")
+	var failed: String = _mb5_func_body(src, "func _on_connection_failed")
+	_check(failed.contains("_connected = false"),
+		"a failed connection falls back to the browsing view")
+	# Team editing is host-only (clients get a disabled control).
+	_check(src.contains("team_option.disabled = (_role != \"host\")"),
+		"clients cannot edit teams in the read-only view")
+
+
+# Extract the body of `header` (up to the next top-level func) from GDScript
+# source, for the MB5 static guards.
+func _mb5_func_body(src: String, header: String) -> String:
+	var at: int = src.find(header)
+	if at == -1:
+		return ""
+	var next_func: int = src.find("\nfunc ", at + 1)
+	if next_func == -1:
+		next_func = src.length()
+	return src.substr(at, next_func - at)
 
 
 # --- Phase MA2: box / drag selection (mobile) -------------------------------
