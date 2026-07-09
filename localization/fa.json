@@ -31,6 +31,7 @@
 		"ui.debug.title": "پروژه نکسوس - کنسول دیباگ فاز ۰",
 		"ui.game.assign": "تخصیص",
 		"ui.game.build_soldier": "ساخت سرباز",
+		"ui.game.confirm_leave": "متوقف شد. برای خروج از بازی، دوباره back را بزنید.",
 		"ui.game.defeat": "شکست",
 		"ui.game.desktop_hint": "WASD/جهت‌نما: حرکت دوربین | چرخ ماوس: بزرگنمایی | کلیک چپ/کشیدن: انتخاب | کلیک راست: حرکت | Space/B/R/U/F/Tab/V/L",
 		"ui.game.fuse_hero": "ادغام قهرمان",

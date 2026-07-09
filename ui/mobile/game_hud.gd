@@ -29,6 +29,13 @@
 extends Control
 
 const LOCAL_PLAYER: int = 0
+const MAIN_MENU_SCENE: String = "res://scenes/main_menu.tscn"
+
+# MB3.3 (bug 6): during a match the Android BACK key must NOT quit the app. The
+# first BACK pauses the sim and arms a confirm ("press Back again to leave");
+# only the SECOND consecutive BACK returns to the main menu. Any other action
+# clears the arm so a stray press is harmless.
+var _leave_armed: bool = false
 
 @onready var _render_adapter: RenderAdapter = $WorldLayer/RenderAdapter
 @onready var _resource_label: Label = $TopBar/Margin/Row/ResourceLabel
@@ -353,6 +360,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	# guarantees each physical tap is handled exactly once on every platform.
 	if _is_emulated(event):
 		return
+	# MB3.3 (bug 6): Android BACK / ESC / gamepad-B arrive as "ui_cancel". In a
+	# match this must pause + confirm-leave, never quit the app.
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_on_back_in_game()
+		return
 	# Trackpad / touchscreen gesture zoom (two fingers). On laptops and desktops a
 	# two-finger pinch produces an InputEventMagnifyGesture, NOT two touch points,
 	# so without this branch "two-finger zoom" did nothing. factor > 1 spreads
@@ -602,7 +615,40 @@ func _update_selection_box(current: Vector2) -> void:
 # --- Buttons ----------------------------------------------------------------
 
 func _on_pause_pressed() -> void:
+	# A manual pause/resume clears any armed "leave" confirm so it cannot linger.
+	_leave_armed = false
 	Nexus.toggle_pause()
+
+
+# MB3.3 (bug 6): the Android BACK button / gesture arrives as
+# NOTIFICATION_WM_GO_BACK_REQUEST while in a match. Route it through the same
+# pause-then-confirm-leave flow as ui_cancel so it never quits the app.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		_on_back_in_game()
+
+
+# In-game BACK handling. First press pauses the sim and arms a confirm; the
+# second consecutive press leaves to the main menu. Never quits the app.
+func _on_back_in_game() -> void:
+	if _leave_armed:
+		_leave_armed = false
+		_leave_to_main_menu()
+		return
+	_leave_armed = true
+	# Pause so the match is frozen while the player decides.
+	if Nexus != null and Nexus.sim_clock != null and not Nexus.sim_clock.is_paused():
+		Nexus.sim_clock.pause()
+	if _status_label != null:
+		_status_label.text = _local_text("ui.game.confirm_leave")
+
+
+func _leave_to_main_menu() -> void:
+	# Resume the clock so the next match/menu is not stuck paused, then hand off.
+	if Nexus != null and Nexus.sim_clock != null and Nexus.sim_clock.is_paused():
+		Nexus.sim_clock.resume()
+	if is_inside_tree() and get_tree() != null:
+		get_tree().change_scene_to_file(MAIN_MENU_SCENE)
 
 
 func _on_build_pressed() -> void:
