@@ -207,10 +207,17 @@ static func _apply_match_config_to_scenario(base: Dictionary, config: Dictionary
 	if base_players.size() > 0 and (base_players[0] as Dictionary).has("start_resources"):
 		start_res = (base_players[0] as Dictionary).get("start_resources", start_res)
 
+	# MB2.2 (bug 5): the single-player Match Setup (and the host lobby) may hand us
+	# an explicit owner -> team map so the player can group AIs/humans into custom
+	# teams. When an in-range override exists it wins; otherwise we fall back to
+	# the deterministic per-mode default. Keys may be ints or their string forms
+	# because a WorldState/JSON round-trip stringifies dictionary keys.
+	var team_overrides: Dictionary = config.get("team_overrides", {})
+
 	var players: Array = []
 	for owner in range(total):
 		var is_human: bool = owner < humans
-		var team: int = _team_for(owner, total, mode)
+		var team: int = _resolve_team(owner, total, mode, team_overrides)
 		var entry: Dictionary = {
 			"owner": owner,
 			"is_human": is_human,
@@ -236,6 +243,18 @@ static func _team_for(owner: int, total: int, mode: String) -> int:
 		# Alternate sides so a 4-player team match is 2v2, etc.
 		return owner % 2
 	return owner  # ffa: own team
+
+
+# MB2.2 (bug 5): final team for a player, honouring an explicit override map
+# (owner -> team) from the setup UI before falling back to _team_for. Overrides
+# are clamped to a sane range so a malformed value can never crash placement.
+const _MAX_TEAMS: int = 4
+static func _resolve_team(owner: int, total: int, mode: String, overrides: Dictionary) -> int:
+	if overrides.has(owner):
+		return clampi(int(overrides[owner]), 0, _MAX_TEAMS - 1)
+	if overrides.has(str(owner)):
+		return clampi(int(overrides[str(owner)]), 0, _MAX_TEAMS - 1)
+	return _team_for(owner, total, mode)
 
 
 # P2.3: override the difficulty of every AI player with the value chosen in the
