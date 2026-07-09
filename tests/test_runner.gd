@@ -212,6 +212,8 @@ func _init() -> void:
 	test_mb45_columns_that_fit_is_geometric()
 	test_mb45_grid_rows_ceils()
 	test_mb45_columns_never_exceed_count()
+	test_mb45_hud_wires_action_grid_columns()
+	test_mb45_scene_action_row_is_grid()
 	# Phase MA6 (Android): single-tap select/toggle/move on the real input path.
 	test_ma6_tap_empty_ground_with_no_selection_is_noop()
 	test_ma6_tap_friendly_unit_selects_it()
@@ -4186,6 +4188,39 @@ func test_mb45_columns_never_exceed_count() -> void:
 	# have buttons; the result must be capped at the button count.
 	var cols: int = ResponsiveLayoutUtil.action_columns(Vector2(3840, 1080), 4, 100.0, 8.0)
 	_check(cols == 4, "columns are capped at the number of buttons")
+
+
+func test_mb45_hud_wires_action_grid_columns() -> void:
+	print("test_mb45_hud_wires_action_grid_columns")
+	# Static guard: the mobile HUD must actually drive the grid columns from the
+	# pure util on every re-layout, so the landscape wrap really happens in-game.
+	var src: String = FileAccess.get_file_as_string("res://ui/mobile/game_hud.gd")
+	_check(src != "", "game_hud.gd source is readable")
+	_check(src.contains("_action_grid"), "HUD references the action GridContainer")
+	_check(src.contains("_apply_action_grid_columns"), "HUD has the column-apply helper")
+	_check(src.contains("ResponsiveLayoutUtil.action_columns"),
+		"HUD sizes the grid via ResponsiveLayoutUtil.action_columns")
+	# The apply helper must be invoked from the responsive re-layout path.
+	var relayout_at: int = src.find("func _apply_responsive_layout")
+	_check(relayout_at != -1, "HUD has _apply_responsive_layout")
+	if relayout_at == -1:
+		return
+	var next_func: int = src.find("\nfunc ", relayout_at + 1)
+	if next_func == -1:
+		next_func = src.length()
+	var body: String = src.substr(relayout_at, next_func - relayout_at)
+	_check(body.contains("_apply_action_grid_columns"),
+		"_apply_responsive_layout re-computes the action-grid columns")
+
+
+# The scene's bottom action Row must be a GridContainer (so columns can wrap),
+# not the old HBoxContainer that could only scroll.
+func test_mb45_scene_action_row_is_grid() -> void:
+	print("test_mb45_scene_action_row_is_grid")
+	var src: String = FileAccess.get_file_as_string("res://scenes/game_main.tscn")
+	_check(src != "", "game_main.tscn is readable")
+	_check(src.contains("[node name=\"Row\" type=\"GridContainer\" parent=\"BottomBar/Margin/Scroll\"]"),
+		"bottom action Row is a GridContainer")
 
 
 # ============================================================================
