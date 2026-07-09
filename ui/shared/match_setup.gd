@@ -8,7 +8,10 @@
 #   - Scenario / map   (any scenario installed in the `scenarios` catalog:
 #                       shipped ones + anything a mod or .nexpack added)
 #   - AI difficulty    (easy / normal / hard)  -- the DEFAULT for AI players
-#   - UI style         (desktop keyboard/mouse HUD vs mobile touch HUD)
+#
+# The desktop-vs-mobile HUD choice used to live here; as of MB4.4 (bug 15) it is
+# a GLOBAL preference (GameSettings.ui_mode) set in the Options panel, and the
+# game scene is resolved from it on Start (_resolve_game_scene).
 #
 # On "Start", the chosen configuration is written into a UI-only WorldState
 # section (`match_config`) that GameBootstrap.setup_skirmish reads, a shared
@@ -36,7 +39,6 @@ var _loc: Localization = Localization.new()
 
 var _scenario_option: OptionButton
 var _difficulty_option: OptionButton
-var _style_option: OptionButton
 # R1 fields: match name, human/AI counts, and game mode.
 var _name_edit: LineEdit
 var _humans_option: OptionButton
@@ -124,7 +126,9 @@ func _build_ui() -> void:
 
 	_scenario_option = _add_labeled_option(box, "ui.setup.map")
 	_difficulty_option = _add_labeled_option(box, "ui.setup.difficulty")
-	_style_option = _add_labeled_option(box, "ui.setup.ui_style")
+	# MB4.4 (bug 15): the desktop/mobile UI choice is now a GLOBAL preference
+	# (GameSettings.ui_mode), configured once in the Options panel, so it is NOT
+	# shown here any more. The game scene is resolved from that setting on Start.
 
 	# R1.3 / R1.4: human + AI player counts (1..8 humans, 0..7 AIs).
 	_humans_option = _add_labeled_option(box, "ui.setup.humans")
@@ -152,11 +156,6 @@ func _build_ui() -> void:
 	for layout in _layouts:
 		_layout_option.add_item(_loc.t("ui.setup.layout_%s" % layout))
 	_layout_option.selected = 0
-
-	# UI style choices: desktop first (index 0), mobile second (index 1).
-	_style_option.add_item(_loc.t("ui.menu.single_desktop"))
-	_style_option.add_item(_loc.t("ui.menu.single_mobile"))
-	_style_option.selected = 0
 
 	# MB2.2 (bug 5): AI team-grouping panel. A hint line plus a dynamically-built
 	# list of "AI N -> Team" rows. It mirrors the multiplayer host lobby's grouping
@@ -399,7 +398,9 @@ func _on_start() -> void:
 	# pure UI hint -- the deterministic core treats every human player the same.
 	config["hot_seat"] = _is_hotseat_setup
 
-	var game_scene: String = MOBILE_SCENE if _style_option.selected == 1 else DESKTOP_SCENE
+	# MB4.4 (bug 15): resolve the game scene from the GLOBAL ui_mode preference
+	# instead of a per-match dropdown. "auto" picks mobile/desktop from the device.
+	var game_scene: String = _resolve_game_scene()
 
 	# Persist locale for the next scene, exactly like the main menu does.
 	var prefs: Dictionary = Nexus.world_state.get_section("ui_prefs")
@@ -427,3 +428,22 @@ func _on_start() -> void:
 	await get_tree().process_frame
 	overlay.set_progress(1.0)
 	get_tree().change_scene_to_file(game_scene)
+
+
+# MB4.4 (bug 15): pick the game scene from the global ui_mode preference.
+# "desktop"/"mobile" are honoured directly; "auto" is resolved from the device
+# profile via GameSettings.resolve_ui_mode_for (mobile platform / touchscreen /
+# small screen -> mobile HUD). Kept out of _on_start so it is easy to read/test.
+func _resolve_game_scene() -> String:
+	var settings: GameSettings = GameSettings.new(Nexus.world_state)
+	settings.load_from_file()
+	var setting: String = settings.get_ui_mode()
+	var is_mobile: bool = OS.has_feature("mobile")
+	var has_touch: bool = DisplayServer.is_touchscreen_available()
+	var short_edge: float = 0.0
+	var vp: Viewport = get_viewport()
+	if vp != null:
+		var vs: Vector2 = vp.get_visible_rect().size
+		short_edge = minf(vs.x, vs.y)
+	var resolved: String = GameSettings.resolve_ui_mode_for(setting, is_mobile, has_touch, short_edge)
+	return MOBILE_SCENE if resolved == "mobile" else DESKTOP_SCENE
