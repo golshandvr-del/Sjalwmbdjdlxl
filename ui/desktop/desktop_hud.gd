@@ -267,11 +267,13 @@ func _finish_drag(release_pos: Vector2, additive: bool) -> void:
 	if not additive:
 		_selected_unit_ids.clear()
 	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
+	# MB1.2 (bug 1 - teammate control leak): only sweep locally controllable owners.
+	var owners: Array = _locally_controlled_owners()
 	var keys: Array = units.keys()
 	keys.sort()
 	for key in keys:
 		var u: Dictionary = units[key]
-		if int(u.get("owner", -1)) != LOCAL_PLAYER:
+		if not owners.has(int(u.get("owner", -1))):
 			continue
 		var ux: int = int(u["x"])
 		var uy: int = int(u["y"])
@@ -423,15 +425,26 @@ func _next_research_node(tech: Object) -> String:
 
 
 func _unit_at_tile(tile: Vector2i, owner_filter: int) -> int:
+	# MB1.2 (bug 1 - teammate control leak): gate through the locally controllable
+	# owner set (single source of truth Nexus.is_locally_controlled) so an AI
+	# teammate's unit is never selectable. owner_filter kept for compatibility.
 	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
-	var keys: Array = units.keys()
-	keys.sort()
-	for key in keys:
-		var u: Dictionary = units[key]
-		if int(u["x"]) == tile.x and int(u["y"]) == tile.y:
-			if owner_filter < 0 or int(u["owner"]) == owner_filter:
-				return int(u["id"])
-	return -1
+	return TapSelectUtil.unit_at_tile_owned_by(units, tile, _locally_controlled_owners())
+
+
+# MB1.2 (bug 1): owner ids the human at THIS device may command, derived from
+# Nexus.is_locally_controlled. Parallels the mobile HUD helper so both agree.
+func _locally_controlled_owners() -> Array:
+	var owners: Array = []
+	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
+	for key in units.keys():
+		var owner: int = int((units[key] as Dictionary).get("owner", -1))
+		if owner >= 0 and not owners.has(owner) and Nexus.is_locally_controlled(owner):
+			owners.append(owner)
+	if owners.is_empty() and Nexus.is_locally_controlled(LOCAL_PLAYER):
+		owners.append(LOCAL_PLAYER)
+	owners.sort()
+	return owners
 
 
 func _find_local_hq() -> int:
