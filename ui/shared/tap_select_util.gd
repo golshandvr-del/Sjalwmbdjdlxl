@@ -77,3 +77,22 @@ static func unit_at_tile(units: Dictionary, tile: Vector2i, owner_filter: int) -
 			if owner_filter < 0 or int(u.get("owner", -1)) == owner_filter:
 				return int(u.get("id", -1))
 	return -1
+
+
+# MB1.2 (bug 1 - teammate control leak): tile hit-test restricted to the set of
+# owner ids the local device may command. Unlike unit_at_tile's single filter,
+# this accepts the full "locally controllable" owner set (from
+# OwnershipUtil / Nexus.is_locally_controlled), so an AI teammate's unit sharing
+# the local team is NEVER returned. An empty `owners` set matches nothing (fail
+# closed). Deterministic ascending-id scan, same as unit_at_tile.
+static func unit_at_tile_owned_by(units: Dictionary, tile: Vector2i, owners: Array) -> int:
+	if owners.is_empty():
+		return -1
+	var keys: Array = units.keys()
+	keys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in keys:
+		var u: Dictionary = units[key]
+		if int(u.get("x", -2147483648)) == tile.x and int(u.get("y", -2147483648)) == tile.y:
+			if owners.has(int(u.get("owner", -1))):
+				return int(u.get("id", -1))
+	return -1
