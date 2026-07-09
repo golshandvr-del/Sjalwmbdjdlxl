@@ -98,6 +98,21 @@ func _on_back() -> void:
 		get_tree().change_scene_to_file(MAIN_MENU_SCENE)
 
 
+# MB3.2 (bug 6): the Android BACK button / gesture arrives as
+# NOTIFICATION_WM_GO_BACK_REQUEST; ESC / gamepad-B arrive as the "ui_cancel"
+# action. Both must return to the main menu (NavService parent), never quit the
+# app.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		_on_back()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_on_back()
+
+
 func _world_state() -> WorldState:
 	var nexus: Node = get_node_or_null("/root/Nexus")
 	if nexus != null and nexus.get("world_state") != null:
