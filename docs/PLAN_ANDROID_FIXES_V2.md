@@ -201,10 +201,26 @@
 
 ---
 
-## فاز MB4 — چرخش/جهت صفحه، انتخابِ خودکارِ دستگاه، بازطراحیِ اساسیِ GUI (باگ‌های ۷، ۱۵، ۱۶، ۱۷، ۱۸) 🔴
+## فاز MB4 — چرخش/جهت صفحه، انتخابِ خودکارِ دستگاه، بازطراحیِ اساسیِ GUI (باگ‌های ۷، ۱۵، ۱۶، ۱۷، ۱۸) ✅ (انجام شد)
 
 **چرا با هم:** همه در «سیستمِ responsive/scale/orientation» ریشه دارند؛ این
 بزرگ‌ترین و مهم‌ترین فاز است (کاربر صراحتاً «بازطراحیِ اساسی» خواست).
+
+**آنچه انجام شد:**
+- **MB4.1 (باگ ۱۷):** پرِفِ `screen_orientation` (auto/portrait/landscape) و `ui_mode`
+  (auto/desktop/mobile) به `game_settings` افزوده شد (اعتبارسنجی‌شده + persist).
+- **MB4.2 (باگ ۷ و ۱۸):** `OrientationService` جهت را با `DisplayServer` اعمال می‌کند؛
+  `auto` = sensor. افقی/عمودی هر دو کار می‌کنند و قفل نمی‌شوند.
+- **MB4.3 (باگ ۱۸):** `auto_scale_for` یک کفِ اندازه‌ی لمسیِ منطقی (`MIN_TOUCH_PX`)
+  تضمین می‌کند تا دکمه‌ها روی صفحه‌ی ریز هرگز خیلی کوچک نشوند.
+- **MB4.4 (باگ ۱۵):** انتخابِ desktop/mobile از Match Setup حذف و به تنظیماتِ سراسری
+  (`ui_mode`) منتقل شد؛ پیش‌فرض خودکار بر اساسِ دستگاه؛ resolver خالص
+  (`resolve_ui_mode_for`).
+- **MB4.5 (باگ ۱۶):** ردیفِ دکمه‌های اکشنِ HUD به `GridContainer` تبدیل شد و در
+  landscape با `ResponsiveLayoutUtil.action_columns` به چند ستون/چند ردیف می‌پیچد.
+- **MB4.6:** تست‌های headless برای resolverهای orientation/ui_mode + roundtripِ پرِف‌ها.
+
+**تأیید:** کلِ مجموعه‌ی headless سبز (`1071/1071`، ۲ skip)؛ لینترِ CODE_POLICY بدونِ نقض.
 
 **فایل‌ها:** `project.godot`, `core/game_settings.gd`,
 `ui/shared/options_menu.gd`, `ui/shared/ui_scale.gd`,
@@ -389,7 +405,7 @@ read-only باز می‌شود؛ leave→re-join بدونِ بستنِ اپ کا
 **ترتیبِ پیشنهادی (بر اساسِ اثر/وابستگی):**
 `MB1 → MB3 → MB2 → MB4 → MB5 → MB6 → MB7 → MB8 → MB10 → MB9`
 
-**پیشرفتِ فعلی:** MB1 ✅ | MB3 ✅ | MB2 ✅ | MB4 (بعدی) → بقیه در انتظار.
+**پیشرفتِ فعلی:** MB1 ✅ | MB3 ✅ | MB2 ✅ | MB4 ✅ | MB5 (بعدی) → بقیه در انتظار.
 
 - **MB1** اول: باگ‌های گیم‌پلیِ آزاردهنده و کم‌ریسک (برد سریع).
 - **MB3** زود: کلیدِ back مستقل و پرتکرار است.

@@ -214,6 +214,11 @@ func _init() -> void:
 	test_mb45_columns_never_exceed_count()
 	test_mb45_hud_wires_action_grid_columns()
 	test_mb45_scene_action_row_is_grid()
+	# Phase MB4.6 (Android): orientation + ui_mode resolution.
+	test_mb46_orientation_to_display_constant()
+	test_mb46_ui_mode_explicit_is_honoured()
+	test_mb46_ui_mode_auto_follows_device()
+	test_mb46_orientation_and_ui_mode_prefs_roundtrip()
 	# Phase MA6 (Android): single-tap select/toggle/move on the real input path.
 	test_ma6_tap_empty_ground_with_no_selection_is_noop()
 	test_ma6_tap_friendly_unit_selects_it()
@@ -4221,6 +4226,71 @@ func test_mb45_scene_action_row_is_grid() -> void:
 	_check(src != "", "game_main.tscn is readable")
 	_check(src.contains("[node name=\"Row\" type=\"GridContainer\" parent=\"BottomBar/Margin/Scroll\"]"),
 		"bottom action Row is a GridContainer")
+
+
+# ============================================================================
+# Phase MB4.6 (Android): orientation + ui_mode resolution (bugs 7, 15, 17, 18).
+# ============================================================================
+#
+# These pin down the pure resolvers that map a stored preference (and a probed
+# device profile) to a concrete DisplayServer orientation constant / HUD variant.
+# They are frame-rate and DisplayServer independent so they run headlessly and
+# guarantee "auto" behaves per-device while explicit values are always honoured.
+
+func test_mb46_orientation_to_display_constant() -> void:
+	print("test_mb46_orientation_to_display_constant")
+	# Godot 4 enum: LANDSCAPE=0, PORTRAIT=1, SENSOR=4.
+	_check(GameSettings.orientation_to_display_constant("landscape") == 0, "landscape -> 0")
+	_check(GameSettings.orientation_to_display_constant("portrait") == 1, "portrait -> 1")
+	_check(GameSettings.orientation_to_display_constant("auto") == 4, "auto -> sensor (4)")
+	# Any unknown / malformed value must fall back to the safe sensor default.
+	_check(GameSettings.orientation_to_display_constant("sideways") == 4, "unknown -> sensor (4)")
+	_check(GameSettings.orientation_to_display_constant("") == 4, "empty -> sensor (4)")
+
+
+func test_mb46_ui_mode_explicit_is_honoured() -> void:
+	print("test_mb46_ui_mode_explicit_is_honoured")
+	# Explicit desktop/mobile choices ignore the device profile entirely.
+	_check(GameSettings.resolve_ui_mode_for("desktop", true, true, 480.0) == "desktop",
+		"explicit desktop wins even on a small touchscreen phone")
+	_check(GameSettings.resolve_ui_mode_for("mobile", false, false, 1440.0) == "mobile",
+		"explicit mobile wins even on a large non-touch desktop")
+
+
+func test_mb46_ui_mode_auto_follows_device() -> void:
+	print("test_mb46_ui_mode_auto_follows_device")
+	# auto -> mobile when the platform is a phone/tablet.
+	_check(GameSettings.resolve_ui_mode_for("auto", true, false, 1080.0) == "mobile",
+		"auto on a mobile platform -> mobile")
+	# auto -> mobile when a touchscreen is present.
+	_check(GameSettings.resolve_ui_mode_for("auto", false, true, 1080.0) == "mobile",
+		"auto with a touchscreen -> mobile")
+	# auto -> mobile when the physical screen is small (short edge <= 900).
+	_check(GameSettings.resolve_ui_mode_for("auto", false, false, 720.0) == "mobile",
+		"auto on a small screen -> mobile")
+	# auto -> desktop on a large non-touch screen.
+	_check(GameSettings.resolve_ui_mode_for("auto", false, false, 1200.0) == "desktop",
+		"auto on a large non-touch screen -> desktop")
+	# Unknown values behave like auto (never crash, sensible default).
+	_check(GameSettings.resolve_ui_mode_for("weird", false, false, 1200.0) == "desktop",
+		"unknown ui_mode on a big screen falls back to desktop")
+
+
+func test_mb46_orientation_and_ui_mode_prefs_roundtrip() -> void:
+	print("test_mb46_orientation_and_ui_mode_prefs_roundtrip")
+	# The setters validate values and persist them; bad values leave state intact.
+	var s: GameSettings = GameSettings.new(WorldState.new())
+	s.ensure_defaults()
+	_check(s.get_screen_orientation() == "auto", "orientation defaults to auto")
+	_check(s.get_ui_mode() == "auto", "ui_mode defaults to auto")
+	_check(s.set_screen_orientation("portrait"), "portrait is accepted")
+	_check(s.get_screen_orientation() == "portrait", "orientation persisted as portrait")
+	_check(not s.set_screen_orientation("diagonal"), "invalid orientation rejected")
+	_check(s.get_screen_orientation() == "portrait", "rejected orientation leaves state intact")
+	_check(s.set_ui_mode("desktop"), "desktop ui_mode is accepted")
+	_check(s.get_ui_mode() == "desktop", "ui_mode persisted as desktop")
+	_check(not s.set_ui_mode("holographic"), "invalid ui_mode rejected")
+	_check(s.get_ui_mode() == "desktop", "rejected ui_mode leaves state intact")
 
 
 # ============================================================================
