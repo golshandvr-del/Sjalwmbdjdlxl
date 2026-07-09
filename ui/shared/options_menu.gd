@@ -26,6 +26,8 @@ var _loc: Localization = null
 @onready var _zoom_button: Button = $Center/Box/ZoomRow/ZoomButton
 @onready var _ui_scale_auto_button: Button = $Center/Box/UiScaleAutoRow/UiScaleAutoButton
 @onready var _ui_scale_button: Button = $Center/Box/UiScaleRow/UiScaleButton
+@onready var _orientation_button: Button = $Center/Box/OrientationRow/OrientationButton
+@onready var _ui_mode_button: Button = $Center/Box/UiModeRow/UiModeButton
 @onready var _sfx_button: Button = $Center/Box/SfxRow/SfxButton
 @onready var _music_button: Button = $Center/Box/MusicRow/MusicButton
 @onready var _content_path_button: Button = $Center/Box/ContentPathRow/ContentPathButton
@@ -54,6 +56,8 @@ func _ready() -> void:
 	_zoom_button.pressed.connect(_on_zoom)
 	_ui_scale_auto_button.pressed.connect(_on_ui_scale_auto)
 	_ui_scale_button.pressed.connect(_on_ui_scale)
+	_orientation_button.pressed.connect(_on_orientation)
+	_ui_mode_button.pressed.connect(_on_ui_mode)
 	_sfx_button.pressed.connect(_on_sfx)
 	_music_button.pressed.connect(_on_music)
 	_content_path_button.pressed.connect(_on_content_path)
@@ -116,6 +120,27 @@ func _on_ui_scale() -> void:
 	_settings.set_ui_scale(s)
 	_persist()
 	_apply_ui_scale()
+	_refresh()
+
+
+# MB4.1/MB4.2 (bugs 7/17/18): cycle the screen-orientation preference
+# (auto -> portrait -> landscape) and apply it live via OrientationService so
+# the change is visible immediately (and persists for the next launch).
+func _on_orientation() -> void:
+	var next: String = _next_in(GameSettings.SCREEN_ORIENTATIONS, _settings.get_screen_orientation())
+	_settings.set_screen_orientation(next)
+	_persist()
+	OrientationService.apply_with_settings(_settings)
+	_refresh()
+
+
+# MB4.4 (bug 15): cycle the interface mode (auto -> desktop -> mobile). The value
+# is a global preference that Match Setup consults when picking the game scene,
+# so the desktop/mobile choice lives here instead of on the setup screen.
+func _on_ui_mode() -> void:
+	var next: String = _next_in(GameSettings.UI_MODES, _settings.get_ui_mode())
+	_settings.set_ui_mode(next)
+	_persist()
 	_refresh()
 
 
@@ -191,6 +216,8 @@ func _refresh() -> void:
 		_ui_scale_button.text = "%s: %s" % [_loc.t("ui.options.ui_scale"), _loc.t("ui.options.ui_scale_auto_value")]
 	else:
 		_ui_scale_button.text = "%s: %.2fx" % [_loc.t("ui.options.ui_scale"), _settings.get_ui_scale()]
+	_orientation_button.text = "%s: %s" % [_loc.t("ui.options.orientation"), _orientation_label(_settings.get_screen_orientation())]
+	_ui_mode_button.text = "%s: %s" % [_loc.t("ui.options.ui_mode"), _ui_mode_label(_settings.get_ui_mode())]
 	_sfx_button.text = "%s: %s" % [_loc.t("ui.options.sfx"), _on_off(_settings.is_sfx_enabled())]
 	_music_button.text = "%s: %s" % [_loc.t("ui.options.music"), _on_off(_settings.is_music_enabled())]
 	_content_path_button.text = "%s: %s" % [_loc.t("ui.options.content_path"), _settings.get_content_path()]
@@ -206,6 +233,28 @@ func _style_label(style_id: String) -> String:
 
 func _on_off(value: bool) -> String:
 	return _loc.t("ui.options.on") if value else _loc.t("ui.options.off")
+
+
+# Localized display for a screen-orientation setting (auto/portrait/landscape).
+func _orientation_label(value: String) -> String:
+	match value:
+		"portrait":
+			return _loc.t("ui.options.orientation_portrait")
+		"landscape":
+			return _loc.t("ui.options.orientation_landscape")
+		_:
+			return _loc.t("ui.options.orientation_auto")
+
+
+# Localized display for an interface (ui_mode) setting (auto/desktop/mobile).
+func _ui_mode_label(value: String) -> String:
+	match value:
+		"desktop":
+			return _loc.t("ui.options.ui_mode_desktop")
+		"mobile":
+			return _loc.t("ui.options.ui_mode_mobile")
+		_:
+			return _loc.t("ui.options.ui_mode_auto")
 
 
 # --- Helpers ----------------------------------------------------------------
