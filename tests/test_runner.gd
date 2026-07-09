@@ -221,6 +221,13 @@ func _init() -> void:
 	test_mb1_fog_util_shows_enemy_on_visible_tile()
 	test_mb1_fog_util_always_shows_own_and_spectator()
 	test_mb1_fog_util_state_out_of_range_is_hidden()
+	# MB1.2 (bug 1 - teammate control leak): local-control single source of truth.
+	test_mb1_ownership_default_local_player_only()
+	test_mb1_ownership_explicit_seat_set()
+	test_mb1_ownership_from_session()
+	test_mb1_tap_ignores_ai_teammate_on_shared_tile()
+	test_mb1_tap_empty_owner_set_selects_none()
+	test_mb1_box_select_excludes_ai_teammate()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3934,6 +3941,77 @@ func test_mb1_fog_util_state_out_of_range_is_hidden() -> void:
 	_check(FogUtil.fog_state(fog, 0, -1, 0) == FogUtil.FOG_HIDDEN, "negative x is hidden")
 	_check(FogUtil.fog_state(fog, 0, 99, 0) == FogUtil.FOG_HIDDEN, "x past width is hidden")
 	_check(FogUtil.fog_state(fog, 5, 0, 0) == FogUtil.FOG_HIDDEN, "unknown viewer is hidden")
+
+
+# --- MB1.2 (bug 1 - teammate control leak) ----------------------------------
+# The single source of truth OwnershipUtil (behind Nexus.is_locally_controlled)
+# and the owner-set selection helpers must never let an AI teammate's unit be
+# selected. Pure, headless.
+
+# Two units on the same tile: one owned by the local player (0), one by the AI
+# teammate (1). Tap must resolve to the local unit only.
+func _mb1_two_owner_units() -> Dictionary:
+	return {
+		"10": { "id": 10, "x": 3, "y": 4, "owner": 1 },  # AI teammate
+		"11": { "id": 11, "x": 3, "y": 4, "owner": 0 },  # local player
+		"12": { "id": 12, "x": 7, "y": 2, "owner": 1 },  # AI teammate elsewhere
+	}
+
+
+func test_mb1_ownership_default_local_player_only() -> void:
+	print("test_mb1_ownership_default_local_player_only")
+	_check(OwnershipUtil.is_locally_controlled(0, 0, []), "owner 0 controllable by default")
+	_check(not OwnershipUtil.is_locally_controlled(1, 0, []), "AI teammate 1 NOT controllable")
+	_check(not OwnershipUtil.is_locally_controlled(-1, 0, []), "no-owner (-1) never controllable")
+
+
+func test_mb1_ownership_explicit_seat_set() -> void:
+	print("test_mb1_ownership_explicit_seat_set")
+	# Hot-seat / assigned seats: only owners in the set are controllable.
+	_check(OwnershipUtil.is_locally_controlled(2, 0, [0, 2]), "seat 2 controllable when in set")
+	_check(not OwnershipUtil.is_locally_controlled(1, 0, [0, 2]), "seat 1 not controllable outside set")
+
+
+func test_mb1_ownership_from_session() -> void:
+	print("test_mb1_ownership_from_session")
+	var default_set: Array = OwnershipUtil.local_players_from_session({}, 0)
+	_check(default_set == [0], "empty session falls back to [local_player]")
+	var custom: Array = OwnershipUtil.local_players_from_session({ "local_players": [3, 3, 1] }, 0)
+	_check(custom == [1, 3], "session set deduped + sorted")
+
+
+func test_mb1_tap_ignores_ai_teammate_on_shared_tile() -> void:
+	print("test_mb1_tap_ignores_ai_teammate_on_shared_tile")
+	var units: Dictionary = _mb1_two_owner_units()
+	# Local device controls only owner 0.
+	var picked: int = TapSelectUtil.unit_at_tile_owned_by(units, Vector2i(3, 4), [0])
+	_check(picked == 11, "shared tile picks the local unit (11), not AI teammate (10)")
+	# Tapping a tile with ONLY an AI teammate unit selects nothing.
+	var none: int = TapSelectUtil.unit_at_tile_owned_by(units, Vector2i(7, 2), [0])
+	_check(none == -1, "tapping AI teammate-only tile selects none")
+
+
+func test_mb1_tap_empty_owner_set_selects_none() -> void:
+	print("test_mb1_tap_empty_owner_set_selects_none")
+	var units: Dictionary = _mb1_two_owner_units()
+	_check(TapSelectUtil.unit_at_tile_owned_by(units, Vector2i(3, 4), []) == -1, "empty owner set fails closed")
+
+
+func test_mb1_box_select_excludes_ai_teammate() -> void:
+	print("test_mb1_box_select_excludes_ai_teammate")
+	var units: Dictionary = _mb1_two_owner_units()
+	var adapter: Object = _IdentityAdapter.new()
+	# Box covering the whole map in tile space (adapter is identity: screen==tile).
+	var got: Array = SelectionUtil.units_in_screen_rect_owned_by(adapter, units, Vector2(0, 0), Vector2(20, 20), [0])
+	_check(got == [11], "box-select only sweeps local units, not AI teammates")
+	var closed: Array = SelectionUtil.units_in_screen_rect_owned_by(adapter, units, Vector2(0, 0), Vector2(20, 20), [])
+	_check(closed == [], "empty owner set box-select fails closed")
+
+
+# Identity screen->tile adapter for headless SelectionUtil tests.
+class _IdentityAdapter extends RefCounted:
+	func screen_to_tile(p: Vector2) -> Vector2i:
+		return Vector2i(int(p.x), int(p.y))
 
 
 # Generic event capture helper used by several Phase 2 tests.
