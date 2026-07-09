@@ -82,9 +82,11 @@ layout_mode = 2
 horizontal_scroll_mode = 2
 vertical_scroll_mode = 0
 
-[node name="Row" type="HBoxContainer" parent="BottomBar/Margin/Scroll"]
+[node name="Row" type="GridContainer" parent="BottomBar/Margin/Scroll"]
 layout_mode = 2
-theme_override_constants/separation = 12
+columns = 7
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
 
 [node name="PauseButton" type="Button" parent="BottomBar/Margin/Scroll/Row"]
 custom_minimum_size = Vector2(120, 52)
