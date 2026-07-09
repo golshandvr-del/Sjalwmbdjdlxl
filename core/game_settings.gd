@@ -39,6 +39,14 @@ const DEFAULT_PATH: String = "user://nexus_settings.json"
 # selectable render style (and the new default -- see DEFAULTS below).
 const RENDER_STYLES: Array = ["simple", "detailed", "sprite"]
 const DIFFICULTIES: Array = ["easy", "normal", "hard"]
+# MB4.1 (bug 17): the player-chosen screen orientation. "auto" follows the
+# device sensor; "portrait"/"landscape" lock the app. Purely presentational and
+# never touches the deterministic hash (cosmetic, like zoom/scale).
+const SCREEN_ORIENTATIONS: Array = ["auto", "portrait", "landscape"]
+# MB4.4 (bug 15): which HUD variant to use. "auto" picks mobile vs desktop from
+# the device (OS.has_feature("mobile")/screen size); the explicit values force
+# one. This replaces the per-match desktop/mobile prompt in Match Setup.
+const UI_MODES: Array = ["auto", "desktop", "mobile"]
 const ZOOM_MIN: float = 0.5
 const ZOOM_MAX: float = 3.0
 
@@ -70,6 +78,10 @@ const DEFAULTS: Dictionary = {
 	# is turned off.
 	"ui_scale": 1.0,
 	"ui_scale_auto": true,
+	# MB4.1 (bug 17) + MB4.4 (bug 15): orientation + HUD variant, both defaulting
+	# to "auto" so the game adapts to the device out of the box.
+	"screen_orientation": "auto",
+	"ui_mode": "auto",
 }
 
 var _world: WorldState = null
@@ -132,6 +144,16 @@ func get_ui_scale() -> float:
 # device/screen size and the manual `ui_scale` value is ignored.
 func is_ui_scale_auto() -> bool:
 	return bool(_get_pref("ui_scale_auto"))
+
+
+# MB4.1 (bug 17): the chosen screen orientation ("auto"/"portrait"/"landscape").
+func get_screen_orientation() -> String:
+	return str(_get_pref("screen_orientation"))
+
+
+# MB4.4 (bug 15): the chosen HUD variant ("auto"/"desktop"/"mobile").
+func get_ui_mode() -> String:
+	return str(_get_pref("ui_mode"))
 
 
 # --- Validated setters (return true when the value was accepted) ------------
@@ -199,6 +221,24 @@ func set_ui_scale_auto(value: bool) -> void:
 	_set_pref("ui_scale_auto", value)
 
 
+# MB4.1 (bug 17): set the screen orientation. Rejected (state untouched) for any
+# value outside the documented allow-list.
+func set_screen_orientation(value: String) -> bool:
+	if not SCREEN_ORIENTATIONS.has(value):
+		return false
+	_set_pref("screen_orientation", value)
+	return true
+
+
+# MB4.4 (bug 15): set the HUD variant. Rejected for any value outside the
+# documented allow-list.
+func set_ui_mode(value: String) -> bool:
+	if not UI_MODES.has(value):
+		return false
+	_set_pref("ui_mode", value)
+	return true
+
+
 # --- GUI scale resolution (Phase G) -----------------------------------------
 #
 # The single source of truth for "how big should the interface be drawn". The
@@ -211,6 +251,13 @@ func set_ui_scale_auto(value: bool) -> void:
 # The design reference resolution the menus/HUD were laid out against.
 const REFERENCE_WIDTH: float = 1280.0
 const REFERENCE_HEIGHT: float = 720.0
+
+# MB4.3 (bug 18): minimum comfortable touch target. The smallest interactive
+# controls (compact HUD/menu buttons) are laid out at BASE_TOUCH_PX design
+# pixels; MIN_TOUCH_PX is the physical-pixel floor (~48dp) we never want them to
+# render below, and drives the touch-scale floor in auto_scale_for.
+const BASE_TOUCH_PX: float = 44.0
+const MIN_TOUCH_PX: float = 48.0
 
 
 # Compute the automatic GUI scale for a given screen size (in physical pixels).
@@ -226,6 +273,13 @@ const REFERENCE_HEIGHT: float = 720.0
 #
 # It stays backward compatible with landscape screens: for 1280x720 the short
 # edge is 720 and the long edge is 1280, so both ratios are 1.0 -> 1.0x exactly.
+#
+# MB4.3 (bug 18): a fit-to-screen ratio alone can still shrink buttons below a
+# comfortably tappable size on dense small phones. We therefore also compute a
+# TOUCH floor: the smallest scale at which the smallest interactive control
+# (BASE_TOUCH_PX design px) still renders at >= MIN_TOUCH_PX physical pixels
+# (~48dp equivalent), and never scale below max(UI_SCALE_MIN, that floor). The
+# floor is itself capped so it can never force the UI larger than the screen.
 static func auto_scale_for(screen_size: Vector2) -> float:
 	if screen_size.x <= 0.0 or screen_size.y <= 0.0:
 		return 1.0
@@ -238,7 +292,17 @@ static func auto_scale_for(screen_size: Vector2) -> float:
 	var ratio: float = min(ratio_short, ratio_long)
 	# Round to the nearest 0.05 so the scale is stable across tiny size jitter.
 	ratio = round(ratio / 0.05) * 0.05
-	return clampf(ratio, UI_SCALE_MIN, UI_SCALE_MAX)
+	# Touch floor: on small screens the fit ratio can drop so far that the
+	# smallest control renders below a tappable size. Raise the lower bound so a
+	# BASE_TOUCH_PX control stays >= MIN_TOUCH_PX physical pixels -- but cap the
+	# floor at 1.0 so we NEVER enlarge the UI past its design size on a normal or
+	# large screen (that would make the reference 1280x720 report >1.0x), and cap
+	# it again at ~22% of the short edge so a genuinely tiny screen still fits.
+	var touch_floor: float = min(MIN_TOUCH_PX / BASE_TOUCH_PX, 1.0)
+	var fit_cap: float = (short_edge * 0.22) / BASE_TOUCH_PX
+	touch_floor = min(touch_floor, fit_cap)
+	var lower: float = maxf(UI_SCALE_MIN, touch_floor)
+	return clampf(ratio, lower, UI_SCALE_MAX)
 
 
 # The GUI scale that should actually be applied right now, honouring the
@@ -248,6 +312,40 @@ func resolve_ui_scale(screen_size: Vector2) -> float:
 	if is_ui_scale_auto():
 		return auto_scale_for(screen_size)
 	return clampf(get_ui_scale(), UI_SCALE_MIN, UI_SCALE_MAX)
+
+
+# --- MB4.1/MB4.4: orientation + ui_mode resolution (pure, testable) ---------
+#
+# Map an orientation setting to a Godot DisplayServer.SCREEN_ORIENTATION_* value.
+# Kept as literal ints (0=landscape, 1=portrait, 4=sensor) so the mapping is
+# unit-testable without a live DisplayServer and matches Godot 4's enum:
+#   SCREEN_ORIENTATION_LANDSCAPE = 0
+#   SCREEN_ORIENTATION_PORTRAIT  = 1
+#   SCREEN_ORIENTATION_SENSOR    = 4
+static func orientation_to_display_constant(setting: String) -> int:
+	match setting:
+		"portrait":
+			return 1
+		"landscape":
+			return 0
+		_:
+			# "auto" (and any unknown value) -> follow the device sensor.
+			return 4
+
+
+# Resolve the effective HUD variant. "auto" chooses mobile vs desktop from a
+# supplied device profile: whether the platform reports as mobile and/or a
+# touchscreen, plus the screen's short edge (small screens lean mobile). This is
+# pure so callers can pass probe values and it is unit-testable.
+static func resolve_ui_mode_for(setting: String, is_mobile_platform: bool, has_touchscreen: bool, screen_short_edge: float) -> String:
+	if setting == "desktop" or setting == "mobile":
+		return setting
+	# "auto" (or anything unexpected): mobile when the platform is a phone/tablet,
+	# reports a touchscreen, or the physical screen is small enough that the
+	# desktop layout would not fit comfortably.
+	if is_mobile_platform or has_touchscreen or (screen_short_edge > 0.0 and screen_short_edge <= 900.0):
+		return "mobile"
+	return "desktop"
 
 
 # Reset every preference back to its documented default.
@@ -334,6 +432,10 @@ func _is_valid(key: String, value: Variant) -> bool:
 		"ui_scale":
 			var s: float = float(value) if (value is float or value is int) else -1.0
 			return s >= UI_SCALE_MIN and s <= UI_SCALE_MAX
+		"screen_orientation":
+			return value is String and SCREEN_ORIENTATIONS.has(value)
+		"ui_mode":
+			return value is String and UI_MODES.has(value)
 	return false
 
 
