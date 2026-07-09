@@ -242,6 +242,24 @@ func _apply_labels() -> void:
 	_title_label.text = _loc.t("ui.setup.title_hotseat") if _is_hotseat_setup else _loc.t("ui.setup.title")
 	_start_button.text = _loc.t("ui.setup.start")
 	_back_button.text = _loc.t("ui.menu.back")
+	# MB2.1 (bug 4): every labeled row stored its localization key on the label via
+	# a "loc_key" meta. Walk the whole tree and set each such label's text so the
+	# descriptive captions ("Name:", "Map:", "AI Difficulty:", ...) are always
+	# visible next to their input -- previously the meta was never applied, so the
+	# left column showed up blank on device. A trailing ":" makes the label read as
+	# a caption for the control to its right.
+	_apply_meta_labels(self)
+
+
+# Recursively localize every Label that carries a "loc_key" meta (see
+# _add_labeled_option / _add_labeled_line_edit). Kept generic so any future
+# labeled row is localized automatically.
+func _apply_meta_labels(node: Node) -> void:
+	for child in node.get_children():
+		if child is Label and (child as Label).has_meta("loc_key"):
+			var key: String = str((child as Label).get_meta("loc_key"))
+			(child as Label).text = "%s:" % _loc.t(key)
+		_apply_meta_labels(child)
 
 
 # --- Actions ----------------------------------------------------------------
