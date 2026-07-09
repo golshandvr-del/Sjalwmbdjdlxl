@@ -632,3 +632,18 @@ func _on_back() -> void:
 	if _discovery != null:
 		_discovery.stop()
 	get_tree().change_scene_to_file(MENU_SCENE)
+
+
+# MB3.2 (bug 6): Android BACK / ESC leaves the lobby (tearing down the session +
+# discovery via _on_back) instead of quitting the app. This also guards the
+# re-join bug (MB5.4): every exit path runs the same clean teardown.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if is_inside_tree():
+			_on_back()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_on_back()
