@@ -31,6 +31,7 @@ user://
 # Local test/lint run logs (agent scratch)
 tests/_lastrun.log
 tests/_lint.log
+tests/_import.log
 
 # OS / editor cruft
 .DS_Store
