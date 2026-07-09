@@ -91,6 +91,22 @@ custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "GUI Scale: Auto"
 
+[node name="OrientationRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="OrientationButton" type="Button" parent="Center/Box/OrientationRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Orientation: Auto"
+
+[node name="UiModeRow" type="HBoxContainer" parent="Center/Box"]
+layout_mode = 2
+
+[node name="UiModeButton" type="Button" parent="Center/Box/UiModeRow"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+text = "Interface: Auto"
+
 [node name="SfxRow" type="HBoxContainer" parent="Center/Box"]
 layout_mode = 2
 
