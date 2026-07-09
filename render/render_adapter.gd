@@ -177,8 +177,9 @@ func _draw_units(world: Object) -> void:
 				continue
 		var rect: Rect2 = _tile_rect(int(u["x"]), int(u["y"]))
 		var is_selected: bool = selected_unit_ids.has(int(u["id"]))
-		# BUG-3 (P0.3): draw a cosmetic destination marker/line for a selected,
-		# moving unit so the player gets clear feedback that the move registered.
+		# MB1.4 (bug 2b): draw a cosmetic destination MARKER (no line) for a
+		# selected, moving unit so the player gets clear feedback the move
+		# registered -- including while paused (move_goal persists in pause).
 		if is_selected and u.has("move_goal"):
 			_draw_move_goal(rect, u.get("move_goal", []))
 		# Phase B.3: attach the data-driven `visual` block (read-only).
@@ -257,16 +258,21 @@ func _with_visual(entity: Dictionary, catalog_name: String) -> Dictionary:
 
 # --- Coordinate conversion --------------------------------------------------
 
-# BUG-3 (P0.3): a thin line + ring from a selected unit to its move target.
-# Pure presentation, drawn from the unit's cosmetic "move_goal" hint.
-func _draw_move_goal(unit_rect: Rect2, goal: Array) -> void:
+# MB1.4 (bug 2b): draw ONLY a small cosmetic destination marker at a selected
+# unit's move target -- NO guide line. Per the user, the guide line looked bad in
+# both normal and pause play, so it is removed; a faint dot/ring is kept so the
+# player still gets clear feedback (also visible while paused, since `move_goal`
+# is set on the unit regardless of pause state). Purely cosmetic: read from the
+# unit's "move_goal" hint, never affects the deterministic hash.
+func _draw_move_goal(_unit_rect: Rect2, goal: Array) -> void:
 	if goal.size() < 2:
 		return
-	var from: Vector2 = unit_rect.position + unit_rect.size * 0.5
 	var goal_rect: Rect2 = _tile_rect(int(goal[0]), int(goal[1]))
 	var to: Vector2 = goal_rect.position + goal_rect.size * 0.5
-	draw_line(from, to, Color(1.0, 1.0, 1.0, 0.35), 2.0)
-	draw_circle(to, maxf(4.0, goal_rect.size.x * 0.22), Color(1.0, 1.0, 1.0, 0.30))
+	var r: float = maxf(4.0, goal_rect.size.x * 0.22)
+	# Faint filled dot + a slightly brighter thin ring so it reads on any terrain.
+	draw_circle(to, r, Color(1.0, 1.0, 1.0, 0.30))
+	draw_arc(to, r, 0.0, TAU, 20, Color(1.0, 1.0, 1.0, 0.55), 1.5)
 
 
 func _tile_rect(x: int, y: int) -> Rect2:
