@@ -207,6 +207,11 @@ func _init() -> void:
 	test_ma5_orientation_changes_placement()
 	test_ma5_project_allows_rotation()
 	test_ma5_hud_reapplies_scale_on_resize()
+	test_mb45_portrait_uses_single_row()
+	test_mb45_landscape_wraps_into_multiple_columns()
+	test_mb45_columns_that_fit_is_geometric()
+	test_mb45_grid_rows_ceils()
+	test_mb45_columns_never_exceed_count()
 	# Phase MA6 (Android): single-tap select/toggle/move on the real input path.
 	test_ma6_tap_empty_ground_with_no_selection_is_noop()
 	test_ma6_tap_friendly_unit_selects_it()
@@ -4127,6 +4132,60 @@ func test_ma5_hud_reapplies_scale_on_resize() -> void:
 		"_on_viewport_resized re-applies the GUI scale (rotation-safe)")
 	_check(body.contains("_apply_responsive_layout"),
 		"_on_viewport_resized re-flows the overlay widgets")
+
+
+# ============================================================================
+# Phase MB4.5 (Android): multi-column action-grid flow in landscape (bug 16).
+# ============================================================================
+#
+# Portrait keeps a single wide row; landscape wraps the action buttons into a
+# compact grid so a long row never overflows / needs scrolling. These pin down
+# the pure column/row math in ResponsiveLayoutUtil.
+
+func test_mb45_portrait_uses_single_row() -> void:
+	print("test_mb45_portrait_uses_single_row")
+	# In portrait, all N buttons stay on one row (columns == count).
+	var cols: int = ResponsiveLayoutUtil.action_columns(Vector2(720, 1280), 7, 120.0, 8.0)
+	_check(cols == 7, "portrait keeps every button in a single row")
+
+
+func test_mb45_landscape_wraps_into_multiple_columns() -> void:
+	print("test_mb45_landscape_wraps_into_multiple_columns")
+	# A narrow-ish landscape viewport cannot fit 7 wide buttons in one row, so
+	# the grid must use fewer columns than the button count (i.e. it wraps).
+	var cols: int = ResponsiveLayoutUtil.action_columns(Vector2(960, 540), 7, 160.0, 8.0)
+	_check(cols >= ResponsiveLayoutUtil.MIN_COLUMNS, "landscape columns never below the minimum")
+	_check(cols < 7, "landscape wraps: fewer columns than buttons when they cannot all fit")
+	# Sanity: the chosen columns actually fit the usable width.
+	var usable: float = 960.0 - 2.0 * ResponsiveLayoutUtil.MARGIN
+	var span: float = cols * 160.0 + maxf(0.0, float(cols - 1)) * 8.0
+	_check(span <= usable + 0.01, "chosen columns fit inside the usable width")
+
+
+func test_mb45_columns_that_fit_is_geometric() -> void:
+	print("test_mb45_columns_that_fit_is_geometric")
+	# 3 buttons of 100px with 10px gaps need 100*3 + 10*2 = 320px; 330px fits 3.
+	_check(ResponsiveLayoutUtil.columns_that_fit(330.0, 100.0, 10.0) == 3, "330px fits exactly 3")
+	_check(ResponsiveLayoutUtil.columns_that_fit(319.0, 100.0, 10.0) == 2, "319px drops to 2")
+	# Never zero even on a degenerate width / button size.
+	_check(ResponsiveLayoutUtil.columns_that_fit(0.0, 100.0, 10.0) == ResponsiveLayoutUtil.MIN_COLUMNS, "zero width -> min columns")
+	_check(ResponsiveLayoutUtil.columns_that_fit(500.0, 0.0, 10.0) == ResponsiveLayoutUtil.MIN_COLUMNS, "zero button width -> min columns (no div by zero)")
+
+
+func test_mb45_grid_rows_ceils() -> void:
+	print("test_mb45_grid_rows_ceils")
+	_check(ResponsiveLayoutUtil.grid_rows(7, 3) == 3, "7 items over 3 cols -> 3 rows")
+	_check(ResponsiveLayoutUtil.grid_rows(6, 3) == 2, "6 items over 3 cols -> 2 rows")
+	_check(ResponsiveLayoutUtil.grid_rows(1, 3) == 1, "1 item -> 1 row")
+	_check(ResponsiveLayoutUtil.grid_rows(0, 3) == 0, "0 items -> 0 rows")
+
+
+func test_mb45_columns_never_exceed_count() -> void:
+	print("test_mb45_columns_never_exceed_count")
+	# A very wide landscape viewport could geometrically fit more columns than we
+	# have buttons; the result must be capped at the button count.
+	var cols: int = ResponsiveLayoutUtil.action_columns(Vector2(3840, 1080), 4, 100.0, 8.0)
+	_check(cols == 4, "columns are capped at the number of buttons")
 
 
 # ============================================================================
