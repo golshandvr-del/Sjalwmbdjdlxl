@@ -240,6 +240,16 @@ func _init() -> void:
 	test_mb3_is_root_true_only_for_main_menu()
 	test_mb3_is_in_game_true_only_for_game_scenes()
 	test_mb3_known_scenes_complete_and_sorted()
+	# Phase MB2.2 (bug 5): single-player AI team grouping (AiGroupUtil + bootstrap).
+	test_mb2_default_team_matches_team_for_contract()
+	test_mb2_default_overrides_seeds_all_owners()
+	test_mb2_clamp_team_keeps_range()
+	test_mb2_resolve_team_override_wins_int_and_str_keys()
+	test_mb2_resolve_team_falls_back_to_default()
+	test_mb2_teams_to_members_groups_and_sorts()
+	test_mb2_distinct_team_count()
+	test_mb2_bootstrap_resolve_team_honours_overrides()
+	test_mb2_setup_grouping_keys_localized_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3570,6 +3580,110 @@ func test_mb3_known_scenes_complete_and_sorted() -> void:
 	var sorted_copy: Array = known.duplicate()
 	sorted_copy.sort()
 	_check(known == sorted_copy, "known_scenes is sorted (deterministic)")
+
+
+# --- Phase MB2.2 (bug 5): single-player AI team grouping --------------------
+#
+# AiGroupUtil owns the pure "who is on which team" logic reused by Match Setup.
+# It must mirror GameBootstrap._team_for for defaults, let explicit overrides
+# win, clamp bad values, and produce deterministic groupings for the UI.
+
+func test_mb2_default_team_matches_team_for_contract() -> void:
+	print("test_mb2_default_team_matches_team_for_contract")
+	# team/ctf alternate two sides; ffa gives each player their own team.
+	_check(AiGroupUtil.default_team(0, "team") == 0 and AiGroupUtil.default_team(1, "team") == 1,
+		"team mode alternates sides")
+	_check(AiGroupUtil.default_team(2, "team") == 0 and AiGroupUtil.default_team(3, "team") == 1,
+		"team mode makes a 2v2")
+	_check(AiGroupUtil.default_team(0, "ctf") == 0 and AiGroupUtil.default_team(1, "ctf") == 1,
+		"ctf also splits into two sides")
+	_check(AiGroupUtil.default_team(0, "ffa") == 0 and AiGroupUtil.default_team(3, "ffa") == 3,
+		"ffa gives each player their own team")
+
+
+func test_mb2_default_overrides_seeds_all_owners() -> void:
+	print("test_mb2_default_overrides_seeds_all_owners")
+	var seeded: Dictionary = AiGroupUtil.default_overrides(4, "team")
+	_check(seeded.size() == 4, "one entry per owner")
+	_check(int(seeded[0]) == 0 and int(seeded[1]) == 1, "seeds match default_team")
+	_check(int(seeded[2]) == 0 and int(seeded[3]) == 1, "seeds cover all owners")
+	# Zero / negative totals must not crash and produce no entries.
+	_check(AiGroupUtil.default_overrides(0, "ffa").is_empty(), "zero total -> empty map")
+	_check(AiGroupUtil.default_overrides(-3, "team").is_empty(), "negative total -> empty map")
+
+
+func test_mb2_clamp_team_keeps_range() -> void:
+	print("test_mb2_clamp_team_keeps_range")
+	_check(AiGroupUtil.clamp_team(-5) == 0, "below range clamps to 0")
+	_check(AiGroupUtil.clamp_team(0) == 0, "0 stays 0")
+	_check(AiGroupUtil.clamp_team(AiGroupUtil.TEAM_COUNT - 1) == AiGroupUtil.TEAM_COUNT - 1,
+		"top of range preserved")
+	_check(AiGroupUtil.clamp_team(999) == AiGroupUtil.TEAM_COUNT - 1, "above range clamps to max")
+
+
+func test_mb2_resolve_team_override_wins_int_and_str_keys() -> void:
+	print("test_mb2_resolve_team_override_wins_int_and_str_keys")
+	# Integer keys (fresh from the UI).
+	var by_int: Dictionary = { 1: 3 }
+	_check(AiGroupUtil.resolve_team(1, "team", by_int) == 3, "int-keyed override wins over default")
+	# String keys (after a JSON / WorldState section round-trip stringifies keys).
+	var by_str: Dictionary = { "1": 2 }
+	_check(AiGroupUtil.resolve_team(1, "team", by_str) == 2, "str-keyed override wins over default")
+	# Out-of-range override is clamped, never trusted blindly.
+	_check(AiGroupUtil.resolve_team(0, "ffa", { 0: 99 }) == AiGroupUtil.TEAM_COUNT - 1,
+		"override is clamped into range")
+
+
+func test_mb2_resolve_team_falls_back_to_default() -> void:
+	print("test_mb2_resolve_team_falls_back_to_default")
+	# No override for owner 2 -> falls back to per-mode default (team => 2 % 2 == 0).
+	_check(AiGroupUtil.resolve_team(2, "team", { 0: 1 }) == 0, "missing owner uses default")
+	_check(AiGroupUtil.resolve_team(3, "ffa", {}) == 3, "empty overrides use default")
+
+
+func test_mb2_teams_to_members_groups_and_sorts() -> void:
+	print("test_mb2_teams_to_members_groups_and_sorts")
+	# 4 players, team mode, no overrides: {0:[0,2], 1:[1,3]}.
+	var groups: Dictionary = AiGroupUtil.teams_to_members(4, "team", {})
+	_check(groups.size() == 2, "two teams in a 2v2")
+	_check(groups.has(0) and (groups[0] as Array) == [0, 2], "team 0 = [0,2] sorted")
+	_check(groups.has(1) and (groups[1] as Array) == [1, 3], "team 1 = [1,3] sorted")
+	# With an override moving owner 3 onto team 0.
+	var moved: Dictionary = AiGroupUtil.teams_to_members(4, "team", { 3: 0 })
+	_check((moved[0] as Array) == [0, 2, 3], "override moves member and list stays sorted")
+
+
+func test_mb2_distinct_team_count() -> void:
+	print("test_mb2_distinct_team_count")
+	_check(AiGroupUtil.distinct_team_count(4, "team", {}) == 2, "2v2 has two distinct teams")
+	_check(AiGroupUtil.distinct_team_count(4, "ffa", {}) == 4, "ffa has four distinct teams")
+	# Degenerate: everyone forced onto team 0.
+	var one_team: Dictionary = { 0: 0, 1: 0, 2: 0, 3: 0 }
+	_check(AiGroupUtil.distinct_team_count(4, "team", one_team) == 1,
+		"forcing one team collapses to a single side")
+
+
+func test_mb2_bootstrap_resolve_team_honours_overrides() -> void:
+	print("test_mb2_bootstrap_resolve_team_honours_overrides")
+	# GameBootstrap._resolve_team must agree with AiGroupUtil: default when no
+	# override, and the (clamped) override when present, with int or str keys.
+	_check(GameBootstrap._resolve_team(1, 4, "team", {}) == 1, "bootstrap default matches _team_for")
+	_check(GameBootstrap._resolve_team(1, 4, "team", { 1: 3 }) == 3, "bootstrap honours int override")
+	_check(GameBootstrap._resolve_team(1, 4, "team", { "1": 2 }) == 2, "bootstrap honours str override")
+	_check(GameBootstrap._resolve_team(0, 4, "ffa", { 0: 99 }) == 3, "bootstrap clamps override")
+
+
+func test_mb2_setup_grouping_keys_localized_in_all_locales() -> void:
+	print("test_mb2_setup_grouping_keys_localized_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	var required: Array = [
+		"ui.setup.ai_groups", "ui.setup.ai_groups_hint",
+		"ui.setup.ai_player_n", "ui.setup.team_n",
+	]
+	for key in required:
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
 
 
 # --- Phase MA2: box / drag selection (mobile) -------------------------------
