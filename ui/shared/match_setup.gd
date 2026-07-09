@@ -250,6 +250,19 @@ func _on_back() -> void:
 	get_tree().change_scene_to_file(MENU_SCENE)
 
 
+# MB3.2 (bug 6): Android BACK / ESC returns to the main menu instead of quitting.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if is_inside_tree():
+			_on_back()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_on_back()
+
+
 func _on_start() -> void:
 	# Record the chosen configuration into a UI-only WorldState section that
 	# GameBootstrap.setup_skirmish (and the lobby) consume when building the match.
