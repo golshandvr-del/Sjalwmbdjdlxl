@@ -233,6 +233,13 @@ func _init() -> void:
 	test_mb13_separate_commands_get_unique_tiles()
 	test_mb13_plan_goals_deterministic_with_reserved()
 	test_mb13_single_unit_avoids_reserved_tile()
+	# Phase MB3 (Android back key, bug 6): NavService pure back-routing logic.
+	test_mb3_back_target_maps_each_child_to_main_menu()
+	test_mb3_back_target_root_returns_empty()
+	test_mb3_back_target_unknown_scene_returns_empty()
+	test_mb3_is_root_true_only_for_main_menu()
+	test_mb3_is_in_game_true_only_for_game_scenes()
+	test_mb3_known_scenes_complete_and_sorted()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3493,6 +3500,76 @@ func test_mb13_single_unit_avoids_reserved_tile() -> void:
 	var g: Array = FormationUtil.plan_goals(Vector2i(6, 6), 1, walk, reserved)
 	_check(g.size() == 1, "single-unit plan returns one goal")
 	_check(not reserved.has("%d,%d" % [g[0].x, g[0].y]), "single unit avoids the reserved tile")
+
+
+# --- Phase MB3: Android back key routing (bug 6) ----------------------------
+# NavService is the single source of truth for "where does BACK go from screen
+# X?". These are pure, headless-safe checks: no SceneTree, no autoload. They
+# guard the routing table the scene handlers rely on (see ui/shared/*.gd and
+# ui/mobile/game_hud.gd _notification handlers).
+
+func test_mb3_back_target_maps_each_child_to_main_menu() -> void:
+	print("test_mb3_back_target_maps_each_child_to_main_menu")
+	# Every non-root scene routes BACK to the main menu (its logical parent).
+	for scene in NavService.PARENTS.keys():
+		_check(NavService.back_target(scene) == NavService.MAIN_MENU,
+			"back_target(%s) is main menu" % scene)
+	# Spot-check a few named children so a renamed constant is caught too.
+	_check(NavService.back_target(NavService.MATCH_SETUP) == NavService.MAIN_MENU,
+		"match_setup back is main menu")
+	_check(NavService.back_target(NavService.LOBBY) == NavService.MAIN_MENU,
+		"lobby back is main menu")
+	_check(NavService.back_target(NavService.MAP_EDITOR) == NavService.MAIN_MENU,
+		"map_editor back is main menu")
+
+
+func test_mb3_back_target_root_returns_empty() -> void:
+	print("test_mb3_back_target_root_returns_empty")
+	# The main menu is the root: BACK there has no parent (caller confirms quit).
+	_check(NavService.back_target(NavService.MAIN_MENU) == "",
+		"back_target(main menu) is empty (root)")
+
+
+func test_mb3_back_target_unknown_scene_returns_empty() -> void:
+	print("test_mb3_back_target_unknown_scene_returns_empty")
+	# An unmapped scene degrades safely to "" (treated as root, never a crash).
+	_check(NavService.back_target("res://scenes/does_not_exist.tscn") == "",
+		"unknown scene back is empty")
+	_check(NavService.back_target("") == "", "empty scene path back is empty")
+
+
+func test_mb3_is_root_true_only_for_main_menu() -> void:
+	print("test_mb3_is_root_true_only_for_main_menu")
+	_check(NavService.is_root(NavService.MAIN_MENU), "main menu is root")
+	# Unknown scenes have no parent, so they are treated as root too (safe fallback).
+	_check(NavService.is_root("res://scenes/unknown.tscn"), "unknown scene is root (fallback)")
+	# Every mapped child must NOT be root (it has a real parent to go back to).
+	for scene in NavService.PARENTS.keys():
+		_check(not NavService.is_root(scene), "%s is not root" % scene)
+
+
+func test_mb3_is_in_game_true_only_for_game_scenes() -> void:
+	print("test_mb3_is_in_game_true_only_for_game_scenes")
+	_check(NavService.is_in_game(NavService.GAME_MOBILE), "mobile game scene is in-game")
+	_check(NavService.is_in_game(NavService.GAME_DESKTOP), "desktop game scene is in-game")
+	_check(not NavService.is_in_game(NavService.MAIN_MENU), "main menu is not in-game")
+	_check(not NavService.is_in_game(NavService.LOBBY), "lobby is not in-game")
+	_check(not NavService.is_in_game(NavService.MAP_EDITOR), "map editor is not in-game")
+
+
+func test_mb3_known_scenes_complete_and_sorted() -> void:
+	print("test_mb3_known_scenes_complete_and_sorted")
+	var known: Array = NavService.known_scenes()
+	# Completeness: the root and every mapped child must be listed exactly once.
+	_check(known.has(NavService.MAIN_MENU), "known_scenes includes the root")
+	for scene in NavService.PARENTS.keys():
+		_check(known.has(scene), "known_scenes includes %s" % scene)
+	_check(known.size() == NavService.PARENTS.size() + 1,
+		"known_scenes size == children + root (no dups)")
+	# Determinism: the list is sorted so callers/tests agree on order.
+	var sorted_copy: Array = known.duplicate()
+	sorted_copy.sort()
+	_check(known == sorted_copy, "known_scenes is sorted (deterministic)")
 
 
 # --- Phase MA2: box / drag selection (mobile) -------------------------------
