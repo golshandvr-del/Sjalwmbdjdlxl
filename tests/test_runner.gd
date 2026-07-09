@@ -249,6 +249,7 @@ func _init() -> void:
 	test_mb2_teams_to_members_groups_and_sorts()
 	test_mb2_distinct_team_count()
 	test_mb2_bootstrap_resolve_team_honours_overrides()
+	test_mb2_ai_index_maps_to_owner_seat_for_bootstrap()
 	test_mb2_setup_grouping_keys_localized_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
@@ -3671,6 +3672,38 @@ func test_mb2_bootstrap_resolve_team_honours_overrides() -> void:
 	_check(GameBootstrap._resolve_team(1, 4, "team", { 1: 3 }) == 3, "bootstrap honours int override")
 	_check(GameBootstrap._resolve_team(1, 4, "team", { "1": 2 }) == 2, "bootstrap honours str override")
 	_check(GameBootstrap._resolve_team(0, 4, "ffa", { 0: 99 }) == 3, "bootstrap clamps override")
+
+
+func test_mb2_ai_index_maps_to_owner_seat_for_bootstrap() -> void:
+	print("test_mb2_ai_index_maps_to_owner_seat_for_bootstrap")
+	# Contract between Match Setup and GameBootstrap: the grouping panel is keyed by
+	# the 0-based AI index (AI 1, AI 2, ...), but the engine seats humans first
+	# (owners 0..humans-1) then the AIs. Match Setup therefore remaps each AI index
+	# onto owner = humans + ai_index before writing team_overrides. Verify the
+	# remapped override actually lands on the right AI seat inside the bootstrap.
+	var humans: int = 2
+	var ais: int = 3
+	var total: int = humans + ais            # seats 0,1 human; 2,3,4 AI
+	var mode: String = "team"
+	# Player chose: AI 1 (index 0) -> team 2, AI 3 (index 2) -> team 3.
+	var panel_choice: Dictionary = { 0: 2, 2: 3 }
+	# Remap exactly as match_setup._on_start does.
+	var team_overrides: Dictionary = {}
+	for ai_index in panel_choice.keys():
+		team_overrides[humans + int(ai_index)] = AiGroupUtil.clamp_team(int(panel_choice[ai_index]))
+	# AI 1 sits on owner seat 2, AI 3 on owner seat 4.
+	_check(GameBootstrap._resolve_team(2, total, mode, team_overrides) == 2,
+		"AI 1 (owner seat 2) gets its chosen team 2")
+	_check(GameBootstrap._resolve_team(4, total, mode, team_overrides) == 3,
+		"AI 3 (owner seat 4) gets its chosen team 3")
+	# The untouched AI (index 1 -> seat 3) keeps the per-mode default (3 % 2 == 1).
+	_check(GameBootstrap._resolve_team(3, total, mode, team_overrides) == 1,
+		"unchosen AI seat falls back to per-mode default")
+	# Human seats (0,1) are never in the override map -> per-mode defaults.
+	_check(GameBootstrap._resolve_team(0, total, mode, team_overrides) == 0,
+		"human seat 0 uses default team")
+	_check(GameBootstrap._resolve_team(1, total, mode, team_overrides) == 1,
+		"human seat 1 uses default team")
 
 
 func test_mb2_setup_grouping_keys_localized_in_all_locales() -> void:
