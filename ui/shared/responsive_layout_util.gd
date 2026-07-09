@@ -126,3 +126,55 @@ static func select_button_pos(viewport: Vector2, widget_size: Vector2, group_pos
 	var x: float = group_pos.x
 	var y: float = group_pos.y - widget_size.y - gap
 	return clamp_into_safe_area(Vector2(x, y), widget_size, viewport)
+
+
+# --- MB4.5: multi-column action-button flow (bug 16) ------------------------
+#
+# In PORTRAIT the action bar is a single horizontal row (wide + short screen,
+# lots of horizontal room). In LANDSCAPE the usable width is spent on the world
+# view, so a long single row of buttons overflows and needs scrolling; instead
+# we let the buttons WRAP into a compact grid of several columns/rows that fits
+# the shorter landscape height without pushing anything off-screen.
+#
+# These helpers are pure: given the orientation, the number of buttons and the
+# per-button size they return how many COLUMNS the grid should use. The HUD (or
+# any menu) then feeds that into a GridContainer / flow layout. Keeping the math
+# here makes the "never overflow" rule unit-testable without a SceneTree.
+
+# Smallest column count is 1; we never return 0 (avoids div-by-zero in callers).
+const MIN_COLUMNS: int = 1
+
+# How many action buttons can sit side by side within `available_width` given a
+# per-button width plus a uniform `gap`. Always at least MIN_COLUMNS. This is the
+# geometric cap; callers combine it with a desired count.
+static func columns_that_fit(available_width: float, button_width: float, gap: float) -> int:
+	if button_width <= 0.0:
+		return MIN_COLUMNS
+	# n buttons occupy n*button_width + (n-1)*gap. Solve for the largest n.
+	var span: float = button_width + gap
+	var n: int = int(floor((available_width + gap) / span))
+	return maxi(MIN_COLUMNS, n)
+
+
+# The number of columns the action grid should use for `count` buttons on this
+# viewport. PORTRAIT keeps everything in a single row (one wide flow). LANDSCAPE
+# wraps: it prefers the geometric fit but caps at ceil(count/rows) so the grid
+# stays reasonably square rather than one very long row that scrolls. The bottom
+# bar's usable width is the viewport minus the outer margins.
+static func action_columns(viewport: Vector2, count: int, button_width: float, gap: float = 8.0) -> int:
+	if count <= 0:
+		return MIN_COLUMNS
+	if not is_landscape(viewport):
+		# Portrait: a single horizontal row (existing behaviour).
+		return count
+	var usable_w: float = maxf(0.0, viewport.x - 2.0 * MARGIN)
+	var fit: int = columns_that_fit(usable_w, button_width, gap)
+	# Never ask for more columns than buttons.
+	return clampi(fit, MIN_COLUMNS, count)
+
+
+# Given the chosen column count, how many ROWS the grid needs for `count` items.
+static func grid_rows(count: int, columns: int) -> int:
+	if columns <= 0 or count <= 0:
+		return 0
+	return int(ceil(float(count) / float(columns)))
