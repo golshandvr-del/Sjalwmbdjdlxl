@@ -2760,8 +2760,14 @@ func test_phase_g_auto_scale_math() -> void:
 	_check(abs(GameSettings.auto_scale_for(Vector2(1280, 720)) - 1.0) < 0.0001, "reference size -> 1.0x")
 	# A 2x-larger screen yields ~2.0x (uses the smaller ratio, here both equal).
 	_check(abs(GameSettings.auto_scale_for(Vector2(2560, 1440)) - 2.0) < 0.0001, "double size -> 2.0x")
-	# A tiny screen clamps to the documented minimum.
-	_check(abs(GameSettings.auto_scale_for(Vector2(320, 180)) - GameSettings.UI_SCALE_MIN) < 0.0001, "tiny screen clamps to min")
+	# MB4.3 (bug 18): a tiny screen no longer collapses to the bare UI_SCALE_MIN;
+	# the touch floor keeps the smallest control tappable. The floor is capped at
+	# ~22% of the short edge, so for 320x180 the lower bound is 180*0.22/44 = 0.9,
+	# which is what the fit ratio (0.25) is raised to. It must be >= UI_SCALE_MIN
+	# and never exceed 1.0 (never enlarges past design size on a small screen).
+	var tiny: float = GameSettings.auto_scale_for(Vector2(320, 180))
+	_check(tiny >= GameSettings.UI_SCALE_MIN and tiny <= 1.0, "tiny screen honours touch floor (>=min, <=1.0)")
+	_check(abs(tiny - 0.9) < 0.0001, "tiny screen touch floor is 0.9 for 320x180")
 	# A huge screen clamps to the documented maximum.
 	_check(abs(GameSettings.auto_scale_for(Vector2(7680, 4320)) - GameSettings.UI_SCALE_MAX) < 0.0001, "huge screen clamps to max")
 	# An invalid (zero) size is safe and returns 1.0.
