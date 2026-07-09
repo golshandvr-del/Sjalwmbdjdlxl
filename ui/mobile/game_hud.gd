@@ -573,8 +573,10 @@ func _update_select_button() -> void:
 func _units_in_screen_rect(p1: Vector2, p2: Vector2, owner_filter: int) -> Array:
 	if _render_adapter == null:
 		return []
+	# MB1.2 (bug 1): restrict the box to the locally controllable owner set so AI
+	# teammates are never swept in. owner_filter kept for signature compatibility.
 	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
-	return SelectionUtil.units_in_screen_rect(_render_adapter, units, p1, p2, owner_filter)
+	return SelectionUtil.units_in_screen_rect_owned_by(_render_adapter, units, p1, p2, _locally_controlled_owners())
 
 
 # Apply a box selection: replace the current selection with everything inside the
@@ -715,8 +717,29 @@ func _on_match_over(_event_name: String, payload: Dictionary) -> void:
 func _unit_at_tile(tile: Vector2i, owner_filter: int) -> int:
 	# MA6: delegate to the shared, headless-tested helper so tile hit-testing is
 	# identical everywhere and deterministic when two units share a tile.
+	# MB1.2 (bug 1): gate through the locally controllable owner set so an AI
+	# teammate's unit on the same tile can never be selected. `owner_filter` is
+	# retained for signature compatibility; the authoritative gate is
+	# Nexus.is_locally_controlled (via _locally_controlled_owners()).
 	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
-	return TapSelectUtil.unit_at_tile(units, tile, owner_filter)
+	return TapSelectUtil.unit_at_tile_owned_by(units, tile, _locally_controlled_owners())
+
+
+# MB1.2 (bug 1 - teammate control leak): the set of owner ids the human at THIS
+# device may command, derived from the single source of truth
+# Nexus.is_locally_controlled. Scans the current player roster so hot-seat /
+# assigned seats work; falls back to LOCAL_PLAYER when no roster is present.
+func _locally_controlled_owners() -> Array:
+	var owners: Array = []
+	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
+	for key in units.keys():
+		var owner: int = int((units[key] as Dictionary).get("owner", -1))
+		if owner >= 0 and not owners.has(owner) and Nexus.is_locally_controlled(owner):
+			owners.append(owner)
+	if owners.is_empty() and Nexus.is_locally_controlled(LOCAL_PLAYER):
+		owners.append(LOCAL_PLAYER)
+	owners.sort()
+	return owners
 
 
 func _selected_squad_size() -> int:
