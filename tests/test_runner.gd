@@ -251,6 +251,9 @@ func _init() -> void:
 	test_mb2_bootstrap_resolve_team_honours_overrides()
 	test_mb2_ai_index_maps_to_owner_seat_for_bootstrap()
 	test_mb2_setup_grouping_keys_localized_in_all_locales()
+	# MB2.3 (bug 8): Settings moved from a list row to a top-right gear button.
+	test_mb2_settings_gear_replaces_list_row()
+	test_mb2_settings_gear_tooltip_localized()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3717,6 +3720,45 @@ func test_mb2_setup_grouping_keys_localized_in_all_locales() -> void:
 	for key in required:
 		_check(en.has(key), "en has '%s'" % key)
 		_check(fa.has(key), "fa has '%s'" % key)
+
+
+# MB2.3 (bug 8): the main menu scene must no longer carry a "SettingsButton"
+# list row; instead a top-right, corner-anchored "GearButton" opens Options.
+# We assert on the scene text (no autoloads needed) so the contract is stable
+# regardless of how the icon is drawn at runtime.
+func test_mb2_settings_gear_replaces_list_row() -> void:
+	print("test_mb2_settings_gear_replaces_list_row")
+	var f: FileAccess = FileAccess.open("res://scenes/main_menu.tscn", FileAccess.READ)
+	_check(f != null, "main_menu.tscn opens")
+	if f == null:
+		return
+	var text: String = f.get_as_text()
+	f.close()
+	_check(not text.contains("name=\"SettingsButton\""), "SettingsButton row removed from list")
+	_check(text.contains("name=\"GearButton\""), "GearButton node present")
+	# The gear must be anchored to the top-right corner (anchor_left/right == 1.0)
+	# so it stays in the corner across aspect ratios.
+	_check(text.contains("anchor_left = 1.0"), "GearButton anchored to right edge")
+	# The script must wire the gear press to the options screen and no longer
+	# reference the removed SettingsButton.
+	var s: FileAccess = FileAccess.open("res://ui/shared/main_menu.gd", FileAccess.READ)
+	_check(s != null, "main_menu.gd opens")
+	if s == null:
+		return
+	var src: String = s.get_as_text()
+	s.close()
+	_check(src.contains("_gear_button.pressed.connect(_on_options)"), "gear wired to options")
+	_check(not src.contains("SettingsButton"), "no lingering SettingsButton reference")
+
+
+# MB2.3 (bug 8): the gear is icon-only, so its purpose is exposed via a
+# localized tooltip key present in every locale.
+func test_mb2_settings_gear_tooltip_localized() -> void:
+	print("test_mb2_settings_gear_tooltip_localized")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	_check(en.has("ui.menu.settings_gear"), "en has 'ui.menu.settings_gear'")
+	_check(fa.has("ui.menu.settings_gear"), "fa has 'ui.menu.settings_gear'")
 
 
 # --- Phase MA2: box / drag selection (mobile) -------------------------------
