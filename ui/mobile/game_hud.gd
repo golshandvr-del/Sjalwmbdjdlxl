@@ -40,6 +40,10 @@ var _leave_armed: bool = false
 @onready var _render_adapter: RenderAdapter = $WorldLayer/RenderAdapter
 @onready var _resource_label: Label = $TopBar/Margin/Row/ResourceLabel
 @onready var _status_label: Label = $TopBar/Margin/Row/StatusLabel
+# MB4.5 (bug16): the bottom action bar is a GridContainer so it can wrap the
+# buttons into several rows in landscape (short screen) instead of one long
+# scrolling row. `_action_grid.columns` is re-computed on every resize.
+@onready var _action_grid: GridContainer = $BottomBar/Margin/Scroll/Row
 @onready var _pause_button: Button = $BottomBar/Margin/Scroll/Row/PauseButton
 @onready var _build_button: Button = $BottomBar/Margin/Scroll/Row/BuildButton
 @onready var _speed_button: Button = $BottomBar/Margin/Scroll/Row/SpeedButton
@@ -210,6 +214,7 @@ func _on_viewport_resized() -> void:
 # presentation-only: it moves Control nodes, never WorldState.
 func _apply_responsive_layout() -> void:
 	var vp: Vector2 = get_viewport_rect().size
+	_apply_action_grid_columns(vp)
 	if _minimap != null:
 		_minimap.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		_minimap.position = ResponsiveLayoutUtil.minimap_pos(vp, _widget_size(_minimap))
@@ -229,6 +234,27 @@ func _apply_responsive_layout() -> void:
 		_select_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		_select_button.position = ResponsiveLayoutUtil.select_button_pos(
 			vp, _widget_size(_select_button), group_pos, group_size)
+
+
+# MB4.5 (bug16): pick the number of columns for the bottom action grid. Portrait
+# keeps every button in a single row (wide screen). Landscape wraps them into a
+# compact grid of the widest count that fits the usable width, so the row never
+# overflows / needs horizontal scrolling on a short landscape screen. The widest
+# button's minimum width drives the geometric fit so no caption is clipped.
+func _apply_action_grid_columns(vp: Vector2) -> void:
+	if _action_grid == null:
+		return
+	var count: int = _action_grid.get_child_count()
+	if count <= 0:
+		return
+	# Widest button min-width (buttons carry custom_minimum_size in the scene).
+	var widest: float = 1.0
+	for child in _action_grid.get_children():
+		if child is Control:
+			widest = maxf(widest, (child as Control).get_combined_minimum_size().x)
+	var sep: float = float(_action_grid.get_theme_constant("h_separation"))
+	var cols: int = ResponsiveLayoutUtil.action_columns(vp, count, widest, sep)
+	_action_grid.columns = cols
 
 
 # Best-effort measured size of a floating widget. `size` is authoritative once
