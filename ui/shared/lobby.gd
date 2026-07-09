@@ -50,6 +50,10 @@ var _loc: Localization = Localization.new()
 
 # Role: "host" or "join" (read from ui_prefs, set by main menu).
 var _role: String = "host"
+# MB5.3 (bug 13): a join client starts in the BROWSING phase (search + server
+# list) and flips to the CONNECTED phase (read-only lobby view) once it reaches
+# a host. Host is always considered "connected" (it owns the lobby).
+var _connected: bool = false
 # UI style the game scene should use once the match starts.
 var _game_scene: String = MOBILE_SCENE
 
@@ -205,9 +209,13 @@ func _apply_labels() -> void:
 	_back_button.text = _loc.t("ui.menu.back")
 
 	# Show/hide the search UI depending on role (join browses; host advertises).
-	var is_join: bool = (_role == "join")
-	_search_edit.get_parent().visible = is_join
-	_servers_box.get_parent().visible = is_join
+	# A join client is in one of two phases: BROWSING (search box + server list
+	# visible) or CONNECTED (MB5.3/bug13: a read-only lobby view like the host's,
+	# search UI hidden, slot list shown, only Ready/Leave usable). `_connected`
+	# flips once the transport reports EVENT_CONNECTED.
+	var show_search: bool = (_role == "join") and not _connected
+	_search_edit.get_parent().visible = show_search
+	_servers_box.get_parent().visible = show_search
 	# Only the host can start the match.
 	_start_button.visible = (_role == "host")
 
@@ -425,6 +433,10 @@ func _on_connected(_event_name: String, _payload: Dictionary) -> void:
 	# layout (MA7.3 slots_update) and then for the start signal (MA7.2). We show a
 	# provisional single-row view until the real layout arrives so the screen is
 	# never blank.
+	# MB5.3 (bug 13): switch to the read-only lobby view (hide the search UI,
+	# keep the slot list + Ready/Leave) now that we are connected.
+	_connected = true
+	_apply_labels()
 	_status_label.text = _loc.t("ui.lobby.waiting_host")
 	if _slots.is_empty():
 		_slots.append({ "kind": "human", "team": 0, "ready": false, "peer": 1 })
@@ -433,6 +445,11 @@ func _on_connected(_event_name: String, _payload: Dictionary) -> void:
 
 func _on_connection_failed(_event_name: String, _payload: Dictionary) -> void:
 	_status_label.text = _loc.t("ui.net.disconnected")
+	# MB5.3: connection did not take -- fall back to the browsing view so the user
+	# can pick another server instead of being stuck on an empty read-only screen.
+	if _role == "join":
+		_connected = false
+		_apply_labels()
 	if _discovery != null and _role == "join":
 		_discovery.start_browsing()
 
@@ -569,11 +586,30 @@ func _apply_slot_snapshot(snapshot: Array) -> void:
 
 
 func _on_back() -> void:
+	_teardown_network()
+	get_tree().change_scene_to_file(MENU_SCENE)
+
+
+# MB5.4 (bug 11): a single, idempotent teardown for EVERY exit path so leaving a
+# lobby and re-entering builds a fresh session (no need to kill the whole app).
+# It (1) ends the lockstep session + closes the transport, (2) stops LAN
+# advertising/browsing, and (3) removes ALL of this node's event-bus
+# subscriptions so no stale listener from a previous lobby instance survives.
+func _teardown_network() -> void:
 	if _session != null:
 		_session.close()
+		_session.queue_free()
+		_session = null
 	if _discovery != null:
 		_discovery.stop()
-	get_tree().change_scene_to_file(MENU_SCENE)
+		_discovery.queue_free()
+		_discovery = null
+	# Drop every subscription we registered (session control, peer/connect
+	# events, discovery). Without this, a freed lobby's dead listeners would pile
+	# up on the shared bus and could mis-route the NEXT lobby's traffic.
+	if Nexus != null and Nexus.event_bus != null:
+		Nexus.event_bus.unsubscribe_all(self)
+	_connected = false
 
 
 # MB3.2 (bug 6): Android BACK / ESC leaves the lobby (tearing down the session +
