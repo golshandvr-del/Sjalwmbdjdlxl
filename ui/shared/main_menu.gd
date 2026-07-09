@@ -90,6 +90,10 @@ var _loc: Localization = Localization.new()
 var _session: NetworkSession = null
 var _next_scene: String = DESKTOP_SCENE
 var _panel: int = MenuPanel.MAIN
+# MB3.2 (bug 6): the main menu is the navigation ROOT. A BACK press while in a
+# sub-panel returns to the MAIN panel; a BACK press already at MAIN must NOT quit
+# instantly -- it arms a confirm and only the SECOND consecutive BACK quits.
+var _quit_armed: bool = false
 
 
 func _ready() -> void:
@@ -313,6 +317,50 @@ func _on_save_load() -> void:
 
 func _on_quit() -> void:
 	get_tree().quit()
+
+
+# --- MB3.2 (bug 6): Android BACK key / ui_cancel ---------------------------
+#
+# The Android hardware/gesture BACK button arrives as
+# NOTIFICATION_WM_GO_BACK_REQUEST; ESC / gamepad-B arrive as the "ui_cancel"
+# action. On the main menu (the navigation root) BACK must never quit the app
+# outright. Instead:
+#   * in a sub-panel (single / multiplayer / online) -> return to its parent
+#     panel, mirroring the on-screen "Back" buttons;
+#   * already at the MAIN panel -> arm a confirm and show a hint; only a SECOND
+#     consecutive BACK actually quits.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		_go_back()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_go_back()
+
+
+func _go_back() -> void:
+	# The single-player UI sub-choice is a transient panel: treat its BACK the
+	# same as its own "Back" button (return to MAIN).
+	if _single_panel.visible:
+		_quit_armed = false
+		_show_panel(MenuPanel.MAIN)
+		return
+	match _panel:
+		MenuPanel.ONLINE:
+			_quit_armed = false
+			_show_panel(MenuPanel.MULTIPLAYER)
+		MenuPanel.MULTIPLAYER:
+			_quit_armed = false
+			_show_panel(MenuPanel.MAIN)
+		_:
+			# At the root MAIN panel: confirm before quitting (press BACK twice).
+			if _quit_armed:
+				_on_quit()
+			else:
+				_quit_armed = true
+				_status_label.text = _loc.t("ui.menu.confirm_quit")
 
 
 # --- Helpers ----------------------------------------------------------------

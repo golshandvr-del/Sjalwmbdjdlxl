@@ -124,6 +124,7 @@
 		"ui.mapeditor.tool.wall": "دیوار",
 		"ui.mapeditor.width": "عرض",
 		"ui.menu.back": "بازگشت",
+		"ui.menu.confirm_quit": "برای خروج، دوباره back را بزنید",
 		"ui.menu.custom_games": "بازی‌های سفارشی",
 		"ui.menu.map_editor": "ویرایشگر نقشه",
 		"ui.menu.mod_editor": "ویرایشگر مود",

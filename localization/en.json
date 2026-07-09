@@ -124,6 +124,7 @@
 		"ui.mapeditor.tool.wall": "Wall",
 		"ui.mapeditor.width": "Width",
 		"ui.menu.back": "Back",
+		"ui.menu.confirm_quit": "Press Back again to quit",
 		"ui.menu.custom_games": "Custom Games",
 		"ui.menu.map_editor": "Map Editor",
 		"ui.menu.mod_editor": "Mod Editor",
