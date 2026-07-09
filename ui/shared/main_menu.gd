@@ -54,12 +54,17 @@ enum MenuPanel { MAIN, MULTIPLAYER, ONLINE }
 
 @onready var _title_label: Label = $Center/Box/Title
 @onready var _status_label: Label = $Center/Box/Status
+# MB2.3 (bug 8): "Settings" is no longer a row in the main list. It now lives as
+# a gear button pinned to the TOP-RIGHT corner (anchored so it stays in the
+# corner at every aspect ratio). The gear glyph is drawn procedurally at _ready
+# so it needs no imported texture asset (and uses an RGBA8 image, avoiding the
+# RGBAFloat conversion warning from bug 28).
+@onready var _gear_button: Button = $GearButton
 
 # --- Main panel -------------------------------------------------------------
 @onready var _main_panel: VBoxContainer = $Center/Box/MainPanel
 @onready var _single_button: Button = $Center/Box/MainPanel/SingleButton
 @onready var _multiplayer_button: Button = $Center/Box/MainPanel/MultiplayerButton
-@onready var _settings_button: Button = $Center/Box/MainPanel/SettingsButton
 @onready var _mod_editor_button: Button = $Center/Box/MainPanel/ModEditorButton
 @onready var _map_editor_button: Button = $Center/Box/MainPanel/MapEditorButton
 @onready var _custom_games_button: Button = $Center/Box/MainPanel/CustomGamesButton
@@ -112,7 +117,8 @@ func _ready() -> void:
 	# Main panel.
 	_single_button.pressed.connect(_on_single)
 	_multiplayer_button.pressed.connect(func() -> void: _show_panel(MenuPanel.MULTIPLAYER))
-	_settings_button.pressed.connect(_on_options)
+	_gear_button.pressed.connect(_on_options)
+	_setup_gear_icon()
 	_mod_editor_button.pressed.connect(_on_mod_editor)
 	_map_editor_button.pressed.connect(_on_map_editor)
 	_custom_games_button.pressed.connect(_on_custom_games)
@@ -152,7 +158,9 @@ func _apply_labels() -> void:
 	# Main panel.
 	_single_button.text = _loc.t("ui.menu.single")
 	_multiplayer_button.text = _loc.t("ui.menu.multiplayer")
-	_settings_button.text = _loc.t("ui.options.title")
+	# MB2.3 (bug 8): the gear carries no text label (icon only) but exposes a
+	# localized tooltip so its purpose stays discoverable.
+	_gear_button.tooltip_text = _loc.t("ui.menu.settings_gear")
 	_mod_editor_button.text = _loc.t("ui.menu.mod_editor")
 	_map_editor_button.text = _loc.t("ui.menu.map_editor")
 	_custom_games_button.text = _loc.t("ui.menu.custom_games")
@@ -361,6 +369,46 @@ func _go_back() -> void:
 			else:
 				_quit_armed = true
 				_status_label.text = _loc.t("ui.menu.confirm_quit")
+
+
+# --- MB2.3 (bug 8): procedural gear icon ------------------------------------
+#
+# Draw a simple gear glyph into an RGBA8 image and hand it to the button as an
+# icon (no imported texture asset needed, so nothing to break in an exported
+# build). RGBA8 is GL-Compatibility friendly, so this never triggers the
+# "RGBAFloat not supported" conversion warning (bug 28).
+func _setup_gear_icon() -> void:
+	var size: int = 40
+	var img: Image = Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cx: float = float(size) * 0.5
+	var cy: float = float(size) * 0.5
+	var r_outer: float = float(size) * 0.42
+	var r_inner: float = float(size) * 0.30
+	var r_hole: float = float(size) * 0.13
+	var teeth: int = 8
+	var gear_color: Color = Color(0.882353, 0.745098, 0.341176, 1)
+	for y in range(size):
+		for x in range(size):
+			var dx: float = float(x) - cx + 0.5
+			var dy: float = float(y) - cy + 0.5
+			var dist: float = sqrt(dx * dx + dy * dy)
+			if dist <= r_hole:
+				continue
+			# Teeth: modulate the effective outer radius by the angle so the rim
+			# alternates between r_outer (tooth) and r_inner (gap).
+			var ang: float = atan2(dy, dx)
+			var wave: float = cos(ang * float(teeth))
+			var rim: float = r_inner
+			if wave > 0.0:
+				rim = r_outer
+			if dist <= rim:
+				img.set_pixel(x, y, gear_color)
+	var tex: ImageTexture = ImageTexture.create_from_image(img)
+	_gear_button.icon = tex
+	# Icon-only button: hide the placeholder "*" glyph baked into the scene.
+	_gear_button.text = ""
+	_gear_button.expand_icon = true
 
 
 # --- Helpers ----------------------------------------------------------------

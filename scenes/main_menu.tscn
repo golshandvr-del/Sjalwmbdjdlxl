@@ -24,6 +24,20 @@ grow_vertical = 2
 color = Color(0.0627451, 0.0745098, 0.105882, 1)
 script = SubResource("GDScript_bg")
 
+[node name="GearButton" type="Button" parent="." unique_id=470800462]
+custom_minimum_size = Vector2(52, 52)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -68.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = 64.0
+grow_horizontal = 0
+text = "*"
+tooltip_text = "Settings"
+
 [node name="Center" type="CenterContainer" parent="." unique_id=1489088254]
 layout_mode = 1
 anchors_preset = 15
@@ -62,11 +76,6 @@ text = "Single Player"
 custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
 text = "Multiplayer"
-
-[node name="SettingsButton" type="Button" parent="Center/Box/MainPanel" unique_id=470800462]
-custom_minimum_size = Vector2(320, 52)
-layout_mode = 2
-text = "Settings"
 
 [node name="ModEditorButton" type="Button" parent="Center/Box/MainPanel" unique_id=2099989503]
 custom_minimum_size = Vector2(320, 52)
