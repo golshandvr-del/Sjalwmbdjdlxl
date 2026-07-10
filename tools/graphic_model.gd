@@ -34,6 +34,16 @@ const MAX_PARTS: int = 3
 const MIN_PX: int = 16
 const MAX_PX: int = 512
 
+# MB8.2 (bug 26): upper bound on an uploaded image file so a huge PNG cannot hang
+# the installed build while decoding. Editor shows this in the upload hint.
+const MAX_IMAGE_KB: int = 512
+
+# MB8.2 (bug 26): how far an uploaded image's aspect ratio may drift from the
+# entity's declared px ratio before it is rejected (5% tolerance). This stops a
+# wrong-shape image (e.g. a square PNG for a 2:1 unit) from being squashed and
+# looking broken / hanging the renderer.
+const RATIO_TOLERANCE: float = 0.05
+
 # Logical-size bounds (this DOES affect the sim, so keep it sane).
 const MIN_LOGICAL: int = 1
 const MAX_LOGICAL: int = 8
@@ -147,6 +157,56 @@ static func validate_image(bytes: PackedByteArray, min_px: int = MIN_PX, max_px:
 	if dims.x > max_px or dims.y > max_px:
 		problems.append("image larger than %dx%d" % [max_px, max_px])
 	return problems
+
+
+# MB8.2 (bug 26): validate an uploaded image AGAINST a target px size so only an
+# image with the SAME aspect ratio (within RATIO_TOLERANCE) and a sane file size
+# is accepted. This is what the mod editor calls once the user has set a part's
+# logical px (e.g. 20x10 -> only ~2:1 images pass). Returns problem strings.
+#   - `target_w`/`target_h` : the part's declared px size (defines the ratio).
+#   - `min_px`/`max_px`     : dimension bounds (default to model bounds).
+#   - `max_kb`              : file-size cap in KiB (default MAX_IMAGE_KB).
+static func validate_image_for_ratio(bytes: PackedByteArray, target_w: int, target_h: int, min_px: int = MIN_PX, max_px: int = MAX_PX, max_kb: int = MAX_IMAGE_KB) -> Array:
+	# Reuse the base checks (PNG, dimension bounds) first.
+	var problems: Array = validate_image(bytes, min_px, max_px)
+	# File-size guard (protects the installed build from a huge decode).
+	var kb: int = int(ceil(float(bytes.size()) / 1024.0))
+	if kb > max_kb:
+		problems.append("image file too large (%d KB > %d KB)" % [kb, max_kb])
+	# Aspect-ratio guard (only when we could read valid dimensions + a target).
+	if target_w > 0 and target_h > 0 and not problems.has("could not read PNG dimensions"):
+		var dims: Vector2i = png_dimensions(bytes)
+		if dims.x > 0 and dims.y > 0:
+			var want: float = float(target_w) / float(target_h)
+			var got: float = float(dims.x) / float(dims.y)
+			if absf(got - want) > want * RATIO_TOLERANCE:
+				problems.append("image aspect ratio %s does not match required %s" % [ratio_label(dims.x, dims.y), ratio_label(target_w, target_h)])
+	return problems
+
+
+# MB8.2: human-readable "W:H" ratio in lowest terms, for hint text + messages.
+static func ratio_label(w: int, h: int) -> String:
+	if w <= 0 or h <= 0:
+		return "?:?"
+	var g: int = _gcd(w, h)
+	return "%d:%d" % [w / g, h / g]
+
+
+# MB8.2 (bug 26): the hint shown under the upload box for a given part px size.
+# Updates live as the user changes the entity's dimensions, e.g.
+#   "PNG with 2:1 ratio, 16..512 px per side, max 512 KB".
+static func upload_hint(target_w: int, target_h: int, min_px: int = MIN_PX, max_px: int = MAX_PX, max_kb: int = MAX_IMAGE_KB) -> String:
+	return "PNG with %s ratio, %d..%d px per side, max %d KB" % [ratio_label(target_w, target_h), min_px, max_px, max_kb]
+
+
+static func _gcd(a: int, b: int) -> int:
+	a = absi(a)
+	b = absi(b)
+	while b != 0:
+		var t: int = b
+		b = a % b
+		a = t
+	return maxi(a, 1)
 
 
 # True if the bytes start with the PNG signature.
