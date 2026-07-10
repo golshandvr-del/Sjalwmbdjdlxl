@@ -212,7 +212,7 @@ static func default_unit(id: String) -> Dictionary:
 # Build a MULTI-PART unit skeleton with `n` cosmetic layers (1..3). Each part has
 # its own stats dictionary so the compatibility matrix (StatRegistry) applies.
 # Only multi-part entities may be marked `fusable` (plan 1.1 / E3.4).
-static func default_multipart_unit(id: String, parts: int = 2) -> Dictionary:
+static func default_multipart_unit(id: String, parts: int = 3) -> Dictionary:
 	var n: int = clampi(parts, 2, GraphicModel.MAX_PARTS)
 	var graphic_parts: Array = []
 	var size: int = 64
@@ -308,7 +308,7 @@ static func default_building(id: String) -> Dictionary:
 # MULTI-PART building (E4.3). Every part is INDEPENDENTLY destructible and MUST
 # carry hp+armor (enforced in validate_building) -- this is what makes a building
 # losing one wing while another keeps fighting possible.
-static func default_multipart_building(id: String, parts: int = 2) -> Dictionary:
+static func default_multipart_building(id: String, parts: int = 3) -> Dictionary:
 	var n: int = clampi(parts, 2, GraphicModel.MAX_PARTS)
 	var graphic_parts: Array = []
 	var size: int = 96

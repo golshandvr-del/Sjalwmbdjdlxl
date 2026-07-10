@@ -401,9 +401,11 @@ func _apply_build(target_id: String, multi: bool) -> void:
 	var def: Dictionary = {}
 	match _active_catalog:
 		ModProject.UNITS_CATALOG:
-			def = ModProject.default_multipart_unit(target_id, 2) if multi else ModProject.default_unit(target_id)
+			# MB8.1 (bug 25): default multi-part entities start with 3 parts (the
+			# supported maximum) so the editor exposes all three layers, not two.
+			def = ModProject.default_multipart_unit(target_id, GraphicModel.MAX_PARTS) if multi else ModProject.default_unit(target_id)
 		ModProject.BUILDINGS_CATALOG:
-			def = ModProject.default_multipart_building(target_id, 2) if multi else ModProject.default_building(target_id)
+			def = ModProject.default_multipart_building(target_id, GraphicModel.MAX_PARTS) if multi else ModProject.default_building(target_id)
 		ModProject.OBJECTS_CATALOG:
 			def = ModProject.default_object(target_id)
 	if not editor_meta.is_empty():
