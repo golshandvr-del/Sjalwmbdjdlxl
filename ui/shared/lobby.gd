@@ -347,7 +347,33 @@ func _on_rescan_pressed() -> void:
 		return
 	_discovery.start_browsing()
 	_status_label.text = _loc.t("ui.lobby.scanning")
+	# MB10.2 (bug 29): a LAN scan has an unknown length, so show the shared
+	# ProgressOverlay in INDETERMINATE mode (via the LoadingStages descriptor) so
+	# the player sees the app is busy scanning, not frozen. It is dismissed once
+	# the first refreshed list is drawn just below.
+	_show_scan_overlay()
 	_refresh_server_list()
+	_hide_scan_overlay()
+
+
+# MB10.2 (bug 29): show the indeterminate scan overlay described by LoadingStages
+# (title + "scanning..." label). Reuses the single persistent _overlay instance
+# created in _build() -- it must NOT be freed here, because the start-match flow
+# (_start_match) reuses the same instance.
+func _show_scan_overlay() -> void:
+	if _overlay == null:
+		return
+	var title: String = _loc.t(LoadingStages.title_key(LoadingStages.OP_SCAN_NETWORK))
+	var status: String = _loc.t(LoadingStages.indeterminate_key(LoadingStages.OP_SCAN_NETWORK))
+	_overlay.begin_indeterminate(title, status)
+
+
+func _hide_scan_overlay() -> void:
+	if _overlay != null:
+		# keep=true: fill + stay alive (do not queue_free the shared instance),
+		# then simply hide it so it can be reused by the start flow.
+		_overlay.finish(true)
+		_overlay.visible = false
 
 
 # MB6.2 (bug 19): periodic auto-rescan tick. Only re-lists while the join client
