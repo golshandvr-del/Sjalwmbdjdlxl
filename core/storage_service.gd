@@ -50,12 +50,28 @@ func _init(content_root: String = DEFAULT_CONTENT_ROOT) -> void:
 
 # Set (and normalise) the content root. An empty/whitespace path resets to the
 # default. Returns the effective root actually applied.
+#
+# BUILD-STABILITY GUARD (MB8.3 / bug 23): the content root MUST be writable on
+# every export target. A `res://` path is bundled/read-only in an installed
+# build, so writing authored/imported content there silently fails on Android
+# and can hang the editor. If a configured (or imported-settings) root points at
+# `res://`, we reject it and fall back to the documented writable default under
+# `user://` instead of putting the service into an unusable state.
 func set_content_root(path: String) -> String:
 	var clean: String = path.strip_edges()
 	if clean.is_empty():
 		clean = DEFAULT_CONTENT_ROOT
+	if _is_read_only_root(clean):
+		push_warning("StorageService: content root '%s' is read-only (res://); falling back to '%s'" % [clean, DEFAULT_CONTENT_ROOT])
+		clean = DEFAULT_CONTENT_ROOT
 	_content_root = _normalise(clean)
 	return _content_root
+
+
+# True when the given root lives under Godot's read-only `res://` scheme, which
+# cannot be written to in an exported build. Case-insensitive on the scheme.
+func _is_read_only_root(path: String) -> bool:
+	return path.strip_edges().to_lower().begins_with("res://")
 
 
 # The current content root (no trailing slash).
