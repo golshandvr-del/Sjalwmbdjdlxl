@@ -91,6 +91,10 @@ func _try_load(relative_path: String) -> Texture2D:
 		if FileAccess.file_exists(full):
 			var img: Image = Image.new()
 			if img.load(full) == OK:
+				# MB9.2 (bug 28): user images may be a float format that the GL
+				# Compatibility renderer would convert (with an RGBAFloat warning)
+				# on upload. Normalize to RGBA8 first so the warning never fires.
+				img = ImageFormatUtil.normalize_for_gl_compat(img)
 				return ImageTexture.create_from_image(img)
 	return null
 
