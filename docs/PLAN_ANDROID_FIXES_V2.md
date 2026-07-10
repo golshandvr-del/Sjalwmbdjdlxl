@@ -308,7 +308,7 @@ read-only باز می‌شود؛ leave→re-join بدونِ بستنِ اپ کا
 
 ---
 
-## فاز MB6 — نمایشِ IP و اسکنِ شبکه در لابی (باگ‌های ۱۲، ۱۹) 🟠
+## فاز MB6 — نمایشِ IP و اسکنِ شبکه در لابی (باگ‌های ۱۲، ۱۹) ✅ (انجام شد)
 
 **فایل‌ها:** `ui/shared/lobby.gd`, `modules/multiplayer/lan_discovery.gd`,
 `localization/*.json`, تست‌ها.
