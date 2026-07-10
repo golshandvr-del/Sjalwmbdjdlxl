@@ -22,6 +22,8 @@
 extends Control
 
 const MAIN_MENU_SCENE: String = "res://scenes/main_menu.tscn"
+# MB10.2 (bug 29): shared loading overlay shown while a map pack is written.
+const ProgressOverlayScript = preload("res://ui/shared/progress_overlay.gd")
 
 # The currently selected tool. One of the TOOL_* constants below.
 const TOOL_WALL: String = "wall"
@@ -46,6 +48,8 @@ var _building_type: String = "hq"
 # headless smoke test where the full scene tree may be absent.
 var _grid: Control = null
 var _status_label: Label = null
+# MB10.2 (bug 29): the loading overlay, created lazily on first save.
+var _overlay: ProgressOverlay = null
 
 
 func _ready() -> void:
@@ -154,14 +158,38 @@ func _on_save() -> void:
 	if not problems.is_empty():
 		_set_status("%s: %s" % [_loc.t("ui.mapeditor.status.invalid"), str(problems[0])])
 		return
+	# MB10.2 (bug 29): writing the .nexpack can block briefly, so drive the shared
+	# ProgressOverlay through the OP_SAVE_MAP stage plan (Saving... -> Saved) so
+	# the editor never looks frozen during the write.
+	_begin_overlay(LoadingStages.OP_SAVE_MAP)
 	# Bundle the scenario (and any authored tech) into a .nexpack so it loads
 	# through the SAME ModLoader the game uses (E.6).
 	var pack: ModProject = build_pack()
 	var out_path: String = _storage.resolve_pack(pack.get_id())
-	if pack.save_pack(out_path):
+	var ok: bool = pack.save_pack(out_path)
+	_finish_overlay()
+	if ok:
 		_set_status("%s %s" % [_loc.t("ui.mapeditor.status.saved"), out_path])
 	else:
 		_set_status(_loc.t("ui.mapeditor.status.save_failed"))
+
+
+# MB10.2 (bug 29): show the shared overlay for a determinate operation described
+# by LoadingStages, starting at its first stage. Created lazily and kept alive
+# (finished with keep=true) so it can be reused for the next save.
+func _begin_overlay(op: String) -> void:
+	if not _has_tree():
+		return
+	if _overlay == null:
+		_overlay = ProgressOverlayScript.new()
+		add_child(_overlay)
+	_overlay.begin(_loc.t(LoadingStages.title_key(op)), _loc.t(LoadingStages.stage_key(op, 0)))
+
+
+func _finish_overlay() -> void:
+	if _overlay != null:
+		_overlay.finish(true)
+		_overlay.visible = false
 
 
 # Assemble the editor's scenario + tech into a ModProject ready to write. Kept
