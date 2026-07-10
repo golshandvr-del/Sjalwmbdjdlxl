@@ -359,7 +359,7 @@ read-only باز می‌شود؛ leave→re-join بدونِ بستنِ اپ کا
 
 ---
 
-## فاز MB8 — Mod Editor و پایداریِ build نصبی (باگ‌های ۲۵، ۲۶، ۲۳) 🔴
+## فاز MB8 — Mod Editor و پایداریِ build نصبی (باگ‌های ۲۵، ۲۶، ۲۳) ✅ (انجام شد)
 
 **فایل‌ها:** `tools/mod_project.gd`, `tools/graphic_model.gd`,
 `ui/shared/mod_editor.gd`, `core/storage_service.gd`, `core/pack_reader.gd`/
