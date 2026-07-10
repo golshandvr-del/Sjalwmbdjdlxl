@@ -90,7 +90,21 @@ func begin(title_text: String, status_text: String = "") -> void:
 	_build()
 	_title.text = title_text
 	_status.text = status_text
+	_bar.indeterminate = false
 	_bar.value = 0.0
+	visible = true
+
+
+# MB10.1 (bug 29): start an INDETERMINATE task -- an operation whose total length
+# is unknown (e.g. a LAN scan or image validation). The bar animates without a
+# meaningful percentage so the player sees the game is busy, not frozen. Callers
+# that later learn a real ratio can simply call set_progress(), which switches
+# the bar back to determinate mode.
+func begin_indeterminate(title_text: String, status_text: String = "") -> void:
+	_build()
+	_title.text = title_text
+	_status.text = status_text
+	_bar.indeterminate = true
 	visible = true
 
 
@@ -98,6 +112,9 @@ func begin(title_text: String, status_text: String = "") -> void:
 # status line so the player sees which stage is running.
 func set_progress(ratio: float, status_text: String = "") -> void:
 	_build()
+	# A real ratio always switches the bar back to determinate mode, so a task
+	# that began indeterminate (unknown length) can report progress once known.
+	_bar.indeterminate = false
 	_bar.value = clampf(ratio, 0.0, 1.0) * 100.0
 	if status_text != "":
 		_status.text = status_text
@@ -112,6 +129,7 @@ func set_step(step_index: int, total_steps: int, status_text: String = "") -> vo
 # Complete the task: fill the bar, then fade out and free (unless keep=true).
 func finish(keep: bool = false) -> void:
 	_build()
+	_bar.indeterminate = false
 	_bar.value = 100.0
 	if keep:
 		return
@@ -119,3 +137,18 @@ func finish(keep: bool = false) -> void:
 	var tween: Tween = create_tween()
 	tween.tween_property(self, "modulate:a", 0.0, 0.25)
 	tween.tween_callback(queue_free)
+
+
+# --- Introspection (used by tests and callers that adapt their UI) ----------
+
+# The current bar ratio in 0.0..1.0 (100% -> 1.0). Meaningless while
+# indeterminate, but still safe to read.
+func get_progress() -> float:
+	_build()
+	return _bar.value / 100.0
+
+
+# Whether the overlay is currently animating an unknown-length task.
+func is_indeterminate() -> bool:
+	_build()
+	return _bar.indeterminate
