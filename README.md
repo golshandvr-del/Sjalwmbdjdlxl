@@ -32,15 +32,30 @@ requirements `R#`, and the executable phase plan `P0`..`P8`). For a fast
 > upload / object editor) are all wired. The last QA pass (`docs/BUG_REPORT.md`)
 > found 11 issues; **all 11 (plus one sibling finding) have since been fixed**.
 >
-> Latest headless run with **Godot v4.3.stable**:
-> - **Tests:** `Total: 763 | Passed: 763 | Failed: 0 | Skipped: 2 | Exit: 0` ✅
-> - **CODE_POLICY linter:** `120 files scanned | No violations | Exit: 0` ✅
+> Latest headless run:
+> - **Tests:** `Total: 1301 | Passed: 1301 | Failed: 0 | Skipped: 2 | Exit: 0` ✅
+> - **CODE_POLICY linter:** `142 files scanned | No violations | Exit: 0` ✅
 >
 > (The 2 skips are intentional: two texture/autoload tests that only make sense
 > inside a full SceneTree are recorded as SKIP in `--script` mode instead of a
-> false FAIL.) The remaining work is the user's **visual debug pass on a real
-> device**. See `docs/STRUCTURE.md` sections 3 (bugs), 4 (requirements), 5-8
+> false FAIL.) See `docs/STRUCTURE.md` sections 3 (bugs), 4 (requirements), 5-8
 > (phases) and `docs/BUG_REPORT.md` for the full fix log.
+
+> **Android fix rounds (MA + MB) — COMPLETE.** After the v0.6.0 QA pass, the
+> user reported two rounds of Android-specific bugs, tracked in
+> [`docs/PLAN_ANDROID_FIXES.md`](docs/PLAN_ANDROID_FIXES.md) (round 1, `MA1`..`MA7`,
+> 11 bugs) and [`docs/PLAN_ANDROID_FIXES_V2.md`](docs/PLAN_ANDROID_FIXES_V2.md)
+> (round 2, `MB1`..`MB10`, 29 bugs). **Both rounds are fully fixed** (own-unit
+> control, pause destination markers, fog-aware minimap, setup labels + solo AI
+> team grouping + corner settings gear, Android BACK-key routing,
+> orientation/auto-scale/responsive GUI redesign, deep multiplayer-lobby rework
+> (ready round-trip, bots visible to joiners, re-join teardown, read-only client
+> view), host-IP display + LAN auto-scan, Map Editor rebuild, Mod Editor
+> 3-part/image-ratio validation + `user://` build stability, LAN-no-TLS policy +
+> RGBA8 image normalization, and a global loading overlay). A handful of items
+> can only be *finally* confirmed on a physical Android build — those are listed
+> under "نیازمندِ تأییدِ روی دستگاهِ اندروید" at the bottom of
+> `docs/PLAN_ANDROID_FIXES_V2.md`.
 
 ---
 
