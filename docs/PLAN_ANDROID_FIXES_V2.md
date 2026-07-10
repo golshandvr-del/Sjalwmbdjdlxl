@@ -389,7 +389,7 @@ read-only باز می‌شود؛ leave→re-join بدونِ بستنِ اپ کا
 
 ---
 
-## فاز MB9 — ارورها/هشدارهای Godot: TLS و RGBAFloat (باگ‌های ۲۷، ۲۸) 🟡
+## فاز MB9 — ارورها/هشدارهای Godot: TLS و RGBAFloat (باگ‌های ۲۷، ۲۸) ✅ (انجام شد)
 
 **فایل‌ها:** `modules/multiplayer/mod_sync.gd`/هرجا HTTPS/TLS استفاده می‌شود،
 `assets/**/*.import` و هر منبعِ تکسچرِ RGBAFloat، `render/*`.
