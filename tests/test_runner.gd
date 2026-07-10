@@ -116,6 +116,7 @@ func _init() -> void:
 	test_phase_b_visual_keys_localized_in_all_locales()
 	# Phase C -- Storage service + portable .nexpack package format.
 	test_phase_c_storage_service_root_and_resolve()
+	test_mb8_storage_rejects_read_only_res_root()
 	test_phase_c_storage_settings_content_path()
 	test_phase_c_pack_format_validation()
 	test_phase_c_pack_write_read_round_trip()
@@ -2664,6 +2665,28 @@ func test_phase_c_storage_service_root_and_resolve() -> void:
 	# A bare pack id gets the canonical extension.
 	_check(svc.resolve_pack("my_mod").ends_with("my_mod.nexpack"), "resolve_pack adds extension")
 	_check(svc.resolve_pack("my_mod.nexpack").ends_with("my_mod.nexpack"), "resolve_pack keeps extension once")
+
+
+# MB8.3 (bug 23): the content root MUST be writable on every export target. A
+# `res://` root is bundled/read-only in an installed build, so the storage
+# service rejects it and falls back to the writable `user://` default rather
+# than silently failing writes (which hangs the mod/map editor on Android).
+func test_mb8_storage_rejects_read_only_res_root() -> void:
+	print("test_mb8_storage_rejects_read_only_res_root")
+	# Constructed with a res:// root -> falls back to the writable default.
+	var svc: StorageService = StorageService.new("res://content")
+	_check(svc.get_content_root() == StorageService.DEFAULT_CONTENT_ROOT, "res:// root rejected at construction")
+	# Case-insensitive on the scheme (RES://, Res://, ...).
+	svc.set_content_root("RES://packs")
+	_check(svc.get_content_root() == StorageService.DEFAULT_CONTENT_ROOT, "RES:// (upper) rejected too")
+	# A res:// path with surrounding whitespace is still caught.
+	svc.set_content_root("   res://mods   ")
+	_check(svc.get_content_root() == StorageService.DEFAULT_CONTENT_ROOT, "whitespace-padded res:// rejected")
+	# A legitimate user:// root is still accepted (guard is not over-broad).
+	svc.set_content_root("user://custom_content")
+	_check(svc.get_content_root() == "user://custom_content", "writable user:// root accepted")
+	# The default is itself writable (never a res:// path).
+	_check(not StorageService.DEFAULT_CONTENT_ROOT.to_lower().begins_with("res://"), "default root is writable (user://)")
 
 
 func test_phase_c_storage_settings_content_path() -> void:
