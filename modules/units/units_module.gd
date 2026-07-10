@@ -203,6 +203,16 @@ func handle_event(event_name: String, payload: Dictionary) -> void:
 
 func _handle_move_command(data: Dictionary) -> void:
 	var ids: Array = data.get("unit_ids", [])
+	# MC1.4 (request 1): "manual path" mode. When the command carries an ordered
+	# `waypoints` array the unit(s) travel EXACTLY through those tiles in order
+	# (belief-aware A* between consecutive waypoints, stitched by WaypointUtil)
+	# rather than taking a single direct route to one goal. This is the mode a
+	# strategic AI planner or a player drawing a route uses. Falls back to the
+	# normal single-goal formation move when no waypoints are given.
+	var waypoints: Array = WaypointUtil.normalize(data.get("waypoints", null))
+	if not waypoints.is_empty():
+		_handle_waypoint_move(ids, waypoints)
+		return
 	var gx: int = int(data.get("x", 0))
 	var gy: int = int(data.get("y", 0))
 	# BUG-3 fix (P0.3): if the requested goal tile is not walkable (wall / off
@@ -236,6 +246,31 @@ func _handle_move_command(data: Dictionary) -> void:
 		# Record the move goal so the renderer can draw a destination marker
 		# (cosmetic feedback for BUG-3). Cleared implicitly when the path empties.
 		unit["move_goal"] = [my_goal.x, my_goal.y]
+
+
+# MC1.4 (request 1): manual-path move. Each unit follows the SAME ordered
+# waypoint list exactly (no formation spread -- the caller chose the route). The
+# per-segment paths use the unit's belief grid so undiscovered walls are assumed
+# walkable and replan-on-contact (MC1.3) still applies mid-route. The unit's
+# move_goal is the final waypoint so the destination marker + replanner behave.
+# Deterministic: WaypointUtil + belief A* are both deterministic.
+func _handle_waypoint_move(ids: Array, waypoints: Array) -> void:
+	var valid_ids: Array = _sorted_living_ids(ids)
+	var final_goal: Vector2i = waypoints[waypoints.size() - 1]
+	for uid in valid_ids:
+		var key: String = str(uid)
+		var unit: Dictionary = _units()[key]
+		var owner: int = int(unit.get("owner", -1))
+		var start: Vector2i = Vector2i(int(unit["x"]), int(unit["y"]))
+		var solver: Callable = func(a: Vector2i, b: Vector2i) -> Array:
+			return _compute_path(a, b, owner)
+		var path: Array = WaypointUtil.stitch_path(start, waypoints, solver)
+		# Drop the first node (current tile) so the unit steps forward.
+		if path.size() > 0:
+			path.remove_at(0)
+		unit["path"] = _path_to_pairs(path)
+		unit["target_id"] = -1
+		unit["move_goal"] = [final_goal.x, final_goal.y]
 
 
 # BUG-MA1: return the requested unit ids that still exist, sorted ascending by
