@@ -150,8 +150,15 @@ func _advance_movement(unit: Dictionary) -> void:
 	var ny: int = int(next_tile[1])
 	# Re-validate walkability against the live map (terrain may have changed).
 	if not _map_walkable(nx, ny):
-		# Blocked: clear the path; a higher-level system can re-plan.
-		unit["path"] = []
+		# MC1.3 (request 1): "replan on contact". The unit planned this step on its
+		# BELIEF grid (HIDDEN tiles assumed walkable). It just walked into sight of a
+		# real obstacle that is now blocked. Instead of silently giving up, recompute
+		# the path on the freshly-updated belief grid toward the SAME goal, exactly
+		# like a human who says "did not know there was a wall, I will go around".
+		# Deterministic: belief is derived from the (deterministic) fog grid, so every
+		# lockstep peer replans identically. If no route is found the path clears.
+		if not _replan_unit(unit):
+			unit["path"] = []
 		return
 	unit["x"] = nx
 	unit["y"] = ny
@@ -220,7 +227,7 @@ func _handle_move_command(data: Dictionary) -> void:
 		var key: String = str(valid_ids[i])
 		var unit: Dictionary = _units()[key]
 		var my_goal: Vector2i = goals[i] if i < goals.size() else goal
-		var path: Array = _compute_path(Vector2i(int(unit["x"]), int(unit["y"])), my_goal)
+		var path: Array = _compute_path(Vector2i(int(unit["x"]), int(unit["y"])), my_goal, int(unit.get("owner", -1)))
 		# Drop the first node (current tile) so the unit steps forward.
 		if path.size() > 0:
 			path.remove_at(0)
@@ -311,14 +318,42 @@ func _handle_select_command(data: Dictionary) -> void:
 # module, reading the grid straight from WorldState. This keeps modules
 # decoupled (Units does not import MapModule) while staying deterministic.
 
-func _compute_path(start: Vector2i, goal: Vector2i) -> Array:
+func _compute_path(start: Vector2i, goal: Vector2i, owner: int = -1) -> Array:
 	var map_section: Dictionary = nexus.world_state.get_section("map")
 	var w: int = int(map_section.get("width", 0))
 	var h: int = int(map_section.get("height", 0))
 	var tiles: Array = map_section.get("tiles", [])
 	if w <= 0 or h <= 0 or tiles.is_empty():
 		return [start]
-	return PathService.find_path(w, h, tiles, start, goal)
+	# MC1.2/MC1.3 (request 1): plan on the OWNER's belief grid so undiscovered
+	# walls are assumed walkable (no cheating). owner < 0 means "no fog / full
+	# knowledge" and BeliefGridUtil returns the real grid verbatim, so existing
+	# no-fog callers (and tests) keep the previous behaviour exactly.
+	var fog: Dictionary = nexus.world_state.get_section("fog")
+	return PathService.find_path_on_belief(w, h, tiles, fog, owner, start, goal)
+
+
+# MC1.3 (request 1): recompute a moving unit's path on its belief grid toward its
+# recorded move_goal after it contacted a newly-revealed obstacle. Returns true
+# if a fresh non-trivial path was set, false otherwise (caller clears the path).
+# Deterministic: belief grid + A* are both deterministic, so peers agree.
+func _replan_unit(unit: Dictionary) -> bool:
+	var goal_raw: Variant = unit.get("move_goal", null)
+	if goal_raw == null:
+		return false
+	var goal: Vector2i = Vector2i(int(goal_raw[0]), int(goal_raw[1]))
+	var start: Vector2i = Vector2i(int(unit["x"]), int(unit["y"]))
+	if start == goal:
+		return false
+	var owner: int = int(unit.get("owner", -1))
+	var path: Array = _compute_path(start, goal, owner)
+	# Drop the first node (current tile) so the unit steps forward.
+	if path.size() > 0:
+		path.remove_at(0)
+	if path.is_empty():
+		return false
+	unit["path"] = _path_to_pairs(path)
+	return true
 
 
 func _map_walkable(x: int, y: int) -> bool:
