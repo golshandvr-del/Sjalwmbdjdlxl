@@ -327,7 +327,7 @@ read-only باز می‌شود؛ leave→re-join بدونِ بستنِ اپ کا
 
 ---
 
-## فاز MB7 — بازسازیِ Map Editor: نام/ابعاد، عکسِ پس‌زمینه، پالتِ رنگ، unit/building، جابه‌جایی، انتخابِ نقشه (باگ‌های ۲۰، ۲۱، ۲۲، ۲۴) 🔴
+## فاز MB7 — بازسازیِ Map Editor: نام/ابعاد، عکسِ پس‌زمینه، پالتِ رنگ، unit/building، جابه‌جایی، انتخابِ نقشه (باگ‌های ۲۰، ۲۱، ۲۲، ۲۴) ✅ (انجام شد)
 
 **فایل‌ها:** `ui/shared/map_editor.gd`, `ui/shared/tile_grid.gd`,
 `tools/scenario_project.gd`, `ui/shared/match_setup.gd`, `ui/shared/custom_games.gd`,
@@ -351,7 +351,11 @@ read-only باز می‌شود؛ leave→re-join بدونِ بستنِ اپ کا
   (`_populate_scenarios`) و `custom_games` لیست شوند تا در شروعِ بازی قابلِ انتخاب
   باشند. round-trip: بساز → ذخیره → در منوی شروع انتخاب کن → بازی شود.
 - **MB7.7:** تست‌ها (scenario_project: resize/place/move/background + لیستِ نقشه‌ها)
-  + commit/push.
+  + commit/push. ✅ — `validate_new_map`، `new_scenario_sized`،
+  `set/clear/has_background_image` + round-trip، `move_entity`
+  (building/unit/object/flag + ردها)، `MapPaletteUtil` (۱۶ رنگِ پایدار/کلمپ)،
+  `CatalogListUtil` (مرتب/پیش‌فرض) و static-guard برای rescan در `match_setup`.
+  کلِ مجموعه سبز: **۱۲۰۹/۱۲۰۹**.
 
 ---
 
