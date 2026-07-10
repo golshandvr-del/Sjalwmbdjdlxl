@@ -137,6 +137,43 @@ func new_scenario(id: String, name: String = "") -> void:
 	tech = {}
 
 
+# MB7.1 (bug 22): start a fresh scenario with an author-chosen NAME and explicit
+# grid DIMENSIONS (the editor now shows a "new map" dialog before editing instead
+# of dumping the user into a fixed default grid). Dimensions are clamped to the
+# safe [MIN_DIM, MAX_DIM] authoring bounds so a bad dialog value can never create
+# a degenerate map. Building on the default 2-player layout, the two HQs/units are
+# then re-clamped into the requested grid so a small map stays playable.
+func new_scenario_sized(id: String, name: String, w: int, h: int) -> void:
+	new_scenario(id, name)
+	resize(w, h)
+	# Re-seat the default HQs/units for the (possibly) new size so nothing is left
+	# stranded off-map or stacked after a shrink.
+	var mid_y: int = int(height / 2)
+	buildings = [
+		{ "type": "hq", "owner": 0, "x": clampi(2, 0, width - 1), "y": mid_y },
+		{ "type": "hq", "owner": 1, "x": clampi(width - 3, 0, width - 1), "y": mid_y },
+	]
+	units = [
+		{ "type": "soldier", "owner": 0, "x": clampi(3, 0, width - 1), "y": clampi(mid_y - 1, 0, height - 1) },
+		{ "type": "soldier", "owner": 1, "x": clampi(width - 4, 0, width - 1), "y": clampi(mid_y - 1, 0, height - 1) },
+	]
+
+
+# MB7.1 (bug 22): validate the "new map" dialog inputs (name + width + height)
+# BEFORE a project is created, so the editor can show a precise reason instead of
+# silently clamping. Returns an Array of problem strings; empty means valid.
+# Static + pure so the dialog can call it headlessly without a live project.
+static func validate_new_map(name: String, w: int, h: int) -> Array:
+	var problems: Array = []
+	if ModProject.normalise_id(name) == "":
+		problems.append("name is empty or has no usable ASCII characters")
+	if w < MIN_DIM or h < MIN_DIM:
+		problems.append("map is too small (min %dx%d)" % [MIN_DIM, MIN_DIM])
+	if w > MAX_DIM or h > MAX_DIM:
+		problems.append("map is too large (max %dx%d)" % [MAX_DIM, MAX_DIM])
+	return problems
+
+
 # Load an existing scenario Dictionary (as produced by `to_scenario()` or read
 # from a pack/file). On any structural problem the project is left UNCHANGED so a
 # bad file never destroys in-progress work. Returns true on success.
