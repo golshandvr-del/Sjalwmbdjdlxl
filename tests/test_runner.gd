@@ -3206,6 +3206,155 @@ func test_phase_e_scenario_catalog_listing() -> void:
 	_check(not ScenarioLoader.load_scenario_from_catalog(nexus2, "no_such_scenario"), "unknown scenario id refused")
 
 
+# --- MB7.7 (Map Editor rebuild, bugs 20/21/22/24) ---------------------------
+# Pure model tests for the new ScenarioProject surface (name/dims dialog,
+# background image, move tool) plus the palette + catalog-list helpers.
+
+func test_mb7_validate_new_map_flags_bad_inputs() -> void:
+	print("test_mb7_validate_new_map_flags_bad_inputs")
+	# Valid name + sensible dims -> no problems.
+	_check(ScenarioProject.validate_new_map("My Map", 20, 14).is_empty(), "valid inputs pass")
+	# Empty / non-ASCII-only name -> flagged.
+	_check(ScenarioProject.validate_new_map("", 20, 14).size() >= 1, "empty name flagged")
+	# Too small.
+	var too_small: Array = ScenarioProject.validate_new_map("ok", ScenarioProject.MIN_DIM - 1, 10)
+	_check(too_small.size() >= 1, "below-min dimension flagged")
+	# Too large.
+	var too_big: Array = ScenarioProject.validate_new_map("ok", ScenarioProject.MAX_DIM + 1, 10)
+	_check(too_big.size() >= 1, "above-max dimension flagged")
+
+
+func test_mb7_new_scenario_sized_resizes_and_reseats() -> void:
+	print("test_mb7_new_scenario_sized_resizes_and_reseats")
+	var proj: ScenarioProject = ScenarioProject.new()
+	proj.new_scenario_sized("sized_map", "Sized Map", 30, 18)
+	_check(proj.width == 30 and proj.height == 18, "new_scenario_sized applied dims")
+	_check(proj.id == "sized_map", "id set on sized scenario")
+	# Two HQs + two soldiers, all seated inside the new bounds.
+	_check(proj.buildings.size() == 2, "two HQs re-seated")
+	_check(proj.units.size() == 2, "two soldiers re-seated")
+	for b in proj.buildings:
+		_check(proj.in_bounds(int(b.get("x", -1)), int(b.get("y", -1))), "HQ inside bounds")
+	for u in proj.units:
+		_check(proj.in_bounds(int(u.get("x", -1)), int(u.get("y", -1))), "unit inside bounds")
+	# Dims are clamped, not rejected, when out of range.
+	var clamp_proj: ScenarioProject = ScenarioProject.new()
+	clamp_proj.new_scenario_sized("clamp", "Clamp", ScenarioProject.MAX_DIM + 50, 2)
+	_check(clamp_proj.width <= ScenarioProject.MAX_DIM, "oversize width clamped")
+	_check(clamp_proj.height >= ScenarioProject.MIN_DIM, "undersize height clamped up")
+
+
+func test_mb7_background_image_set_clear_roundtrip() -> void:
+	print("test_mb7_background_image_set_clear_roundtrip")
+	var proj: ScenarioProject = ScenarioProject.new()
+	_check(not proj.has_background_image(), "fresh project has no background")
+	proj.set_background_image("  user://content/bg/map1.png  ")
+	_check(proj.has_background_image(), "background set")
+	_check(proj.background_image == "user://content/bg/map1.png", "background path stripped")
+	# Round-trips through to_scenario / from_scenario.
+	var scn: Dictionary = proj.to_scenario()
+	_check(str(scn.get("background_image", "")) == "user://content/bg/map1.png", "background emitted in scenario")
+	var proj2: ScenarioProject = ScenarioProject.new()
+	_check(proj2.from_scenario(scn), "scenario with background loads")
+	_check(proj2.background_image == "user://content/bg/map1.png", "background survived round-trip")
+	# Clear.
+	proj.clear_background_image()
+	_check(not proj.has_background_image(), "background cleared")
+
+
+func test_mb7_move_entity_building_unit_object() -> void:
+	print("test_mb7_move_entity_building_unit_object")
+	var proj: ScenarioProject = ScenarioProject.new()
+	# Building move.
+	_check(proj.place_building("hq", 0, 5, 5), "building placed")
+	_check(proj.move_entity(5, 5, 8, 6), "building moved")
+	_check((proj.entity_at(8, 6) as Dictionary).get("kind", "") == "building", "building at new cell")
+	_check((proj.entity_at(5, 5) as Dictionary).is_empty(), "old building cell empty")
+	# Unit move.
+	_check(proj.place_unit("soldier", 1, 2, 2), "unit placed")
+	_check(proj.move_entity(2, 2, 3, 4), "unit moved")
+	_check((proj.entity_at(3, 4) as Dictionary).get("kind", "") == "unit", "unit at new cell")
+	_check(int((proj.entity_at(3, 4) as Dictionary).get("owner", -1)) == 1, "unit kept its owner")
+	# Object move (objects live in map_objects, not entity_at).
+	_check(proj.place_object("tree", 9, 9), "object placed")
+	_check(proj.object_count() == 1, "one object present")
+	_check(proj.move_entity(9, 9, 10, 10), "object moved")
+	_check(proj.object_count() == 1, "still exactly one object after move")
+	var found_moved: bool = false
+	var found_old: bool = false
+	for o in proj.map_objects:
+		if int(o.get("x", -1)) == 10 and int(o.get("y", -1)) == 10:
+			found_moved = true
+		if int(o.get("x", -1)) == 9 and int(o.get("y", -1)) == 9:
+			found_old = true
+	_check(found_moved, "object at new cell (10,10)")
+	_check(not found_old, "old object cell (9,9) empty")
+
+
+func test_mb7_move_entity_flag_and_rejections() -> void:
+	print("test_mb7_move_entity_flag_and_rejections")
+	var proj: ScenarioProject = ScenarioProject.new()
+	_check(proj.place_flag(0, 4, 4, 0), "flag placed")
+	_check(proj.move_entity(4, 4, 7, 7), "flag moved")
+	var moved: Dictionary = proj.flag_at(7, 7)
+	_check(not moved.is_empty(), "flag present at new cell")
+	_check(int(moved.get("team", -1)) == 0, "flag kept its team")
+	_check(proj.flag_at(4, 4).is_empty(), "old flag cell empty")
+	# Rejections: out-of-bounds destination.
+	_check(proj.place_unit("soldier", 0, 1, 1), "unit for reject test placed")
+	_check(not proj.move_entity(1, 1, -1, -1), "out-of-bounds destination rejected")
+	# Moving from an empty cell fails.
+	_check(not proj.move_entity(12, 12, 13, 13), "moving from empty cell fails")
+
+
+func test_mb7_palette_16_colors_stable_and_clamped() -> void:
+	print("test_mb7_palette_16_colors_stable_and_clamped")
+	_check(MapPaletteUtil.SLOT_COUNT == 16, "palette exposes 16 slots")
+	_check(MapPaletteUtil.all_hex().size() == 16, "all_hex returns 16 colours")
+	# Deterministic mapping: owner N always maps to the same colour.
+	_check(MapPaletteUtil.color_hex(0) == MapPaletteUtil.all_hex()[0], "owner 0 maps to first colour")
+	_check(MapPaletteUtil.color_hex(3) == "4363d8", "owner 3 colour is stable")
+	# Clamping negative + overflow into range.
+	_check(MapPaletteUtil.clamp_slot(-5) == 0, "negative owner clamps to 0")
+	_check(MapPaletteUtil.clamp_slot(999) == 15, "overflow owner clamps to last slot")
+	_check(MapPaletteUtil.color_hex(999) == MapPaletteUtil.all_hex()[15], "overflow colour = last")
+	# all_hex is a defensive copy.
+	var copy: Array = MapPaletteUtil.all_hex()
+	copy[0] = "000000"
+	_check(MapPaletteUtil.all_hex()[0] != "000000", "all_hex returns a defensive copy")
+
+
+func test_mb7_catalog_list_util_sorted_and_defaults() -> void:
+	print("test_mb7_catalog_list_util_sorted_and_defaults")
+	var catalog: Dictionary = {
+		"tank": { "display_name_key": "unit.tank.name" },
+		"soldier": { "display_name_key": "unit.soldier.name" },
+		"scout": {},  # no display_name_key -> falls back to id
+	}
+	var entries: Array = CatalogListUtil.list_entries(catalog)
+	_check(entries.size() == 3, "all catalog entries listed")
+	# Sorted ascending by id: scout, soldier, tank.
+	_check(str(entries[0].get("id", "")) == "scout", "entries sorted by id (scout first)")
+	_check(str(entries[2].get("id", "")) == "tank", "entries sorted by id (tank last)")
+	_check(str(entries[0].get("name_key", "")) == "scout", "missing name_key falls back to id")
+	_check(str(entries[1].get("name_key", "")) == "unit.soldier.name", "name_key carried when present")
+	# list_ids + first_id.
+	_check(CatalogListUtil.list_ids(catalog) == ["scout", "soldier", "tank"], "list_ids sorted")
+	_check(CatalogListUtil.first_id(catalog, "fallback") == "scout", "first_id is the lowest id")
+	_check(CatalogListUtil.first_id({}, "fallback") == "fallback", "empty catalog returns fallback id")
+
+
+func test_mb7_match_setup_rescans_user_packs_static_guard() -> void:
+	print("test_mb7_match_setup_rescans_user_packs_static_guard")
+	var src: String = FileAccess.get_file_as_string("res://ui/shared/match_setup.gd")
+	_check(src != "", "match_setup.gd source is readable")
+	# MB7.6 (bug 24): _populate_scenarios must re-scan writable packs so newly
+	# saved editor maps appear without an app restart.
+	var body: String = _mb5_func_body(src, "func _populate_scenarios")
+	_check(body.contains("GameBootstrap.load_packs"), "populate re-scans user content packs")
+	_check(body.contains("ScenarioLoader.list_scenarios"), "populate lists scenarios after rescan")
+
+
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
 	print("test_phase_e_editor_keys_localized_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
