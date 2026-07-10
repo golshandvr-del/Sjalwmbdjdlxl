@@ -285,6 +285,12 @@ func _rebuild_ai_groups() -> void:
 func _populate_scenarios() -> void:
 	_scenario_option.clear()
 	_scenario_ids.clear()
+	# MB7.6 (bug 24): re-scan the writable content root so maps just saved by the
+	# Map Editor (user://content/<id>.nexpack) show up here WITHOUT restarting the
+	# app. load_packs merges any new scenarios into the catalog idempotently
+	# (last-writer-wins), so re-scanning is safe to call every time this opens.
+	if Nexus != null and Nexus.get("data_loader") != null:
+		GameBootstrap.load_packs(Nexus)
 	var scenarios: Array = ScenarioLoader.list_scenarios(Nexus)
 	if scenarios.is_empty():
 		# Fallback: at least offer the default shipped skirmish id.
