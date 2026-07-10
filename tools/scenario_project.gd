@@ -96,6 +96,13 @@ var flags: Array = []
 # Optional simple tech tree (E.5): id -> tech definition Dictionary.
 var tech: Dictionary = {}
 
+# MB7.2 (bug 20): optional background image drawn UNDER the grid (cosmetic map
+# art). Stored as a path string (empty = none). The image itself lives under the
+# writable content root (user://); only the reference is serialised so the
+# scenario JSON stays small and portable. Render-only -> never affects the sim
+# hash (golden rule #1 / #3).
+var background_image: String = ""
+
 
 func _init() -> void:
 	new_scenario("new_scenario", "New Scenario")
@@ -135,6 +142,7 @@ func new_scenario(id: String, name: String = "") -> void:
 	game_mode = "ffa"
 	team_layout = "clustered"
 	tech = {}
+	background_image = ""
 
 
 # MB7.1 (bug 22): start a fresh scenario with an author-chosen NAME and explicit
@@ -256,6 +264,7 @@ func from_scenario(scenario: Variant) -> bool:
 	flags = new_flags
 	game_mode = str(s.get("game_mode", "ffa"))
 	team_layout = str(s.get("team_layout", "clustered"))
+	background_image = str(s.get("background_image", ""))
 	return true
 
 
@@ -493,6 +502,23 @@ func set_difficulty(preset: String) -> void:
 		difficulty = p
 
 
+# --- Background image (MB7.2 / bug 20) --------------------------------------
+
+# Set the cosmetic background image path (empty clears it). Only the reference is
+# stored; the editor is responsible for having copied the source image into the
+# writable content root first. Pure/side-effect-free so it is headless testable.
+func set_background_image(path: String) -> void:
+	background_image = path.strip_edges()
+
+
+func clear_background_image() -> void:
+	background_image = ""
+
+
+func has_background_image() -> bool:
+	return background_image.strip_edges() != ""
+
+
 # --- Simple tech tree (E.5) -------------------------------------------------
 
 # Author one tech node. Prerequisites reference other tech ids; effects are a
@@ -623,6 +649,7 @@ func to_scenario() -> Dictionary:
 		"units": _sorted_entities(units),
 		"objects": _sorted_objects(),
 		"flags": _sorted_flags(),
+		"background_image": background_image,
 	}
 
 
