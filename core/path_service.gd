@@ -65,6 +65,17 @@ static func find_path(width: int, height: int, tiles: Array, start: Vector2i, go
 	return []
 
 
+# MC1.2 (request 1): find a path on the viewer's BELIEF grid instead of the real
+# grid. HIDDEN tiles are assumed walkable, so the unit plans without cheating
+# through undiscovered walls; when it later walks into sight of a real obstacle
+# the caller replans (units_module, MC1.3). Deterministic: the belief grid is a
+# pure function of (tiles, fog, viewer), and A* is already deterministic, so all
+# peers compute the identical path.
+static func find_path_on_belief(width: int, height: int, tiles: Array, fog: Dictionary, viewer: int, start: Vector2i, goal: Vector2i) -> Array:
+	var belief: Array = BeliefGridUtil.build_belief_grid(width, height, tiles, fog, viewer)
+	return find_path(width, height, belief, start, goal)
+
+
 static func _in_bounds(width: int, height: int, p: Vector2i) -> bool:
 	return p.x >= 0 and p.y >= 0 and p.x < width and p.y < height
 
