@@ -44,6 +44,8 @@
 extends Control
 
 const MAIN_MENU_SCENE: String = "res://scenes/main_menu.tscn"
+# MB10.2 (bug 29): shared loading overlay shown while a mod pack is written.
+const ProgressOverlayScript = preload("res://ui/shared/progress_overlay.gd")
 
 # Context-menu action ids (kept as ints for PopupMenu.id_pressed).
 const MENU_RENAME: int = 0
@@ -56,6 +58,8 @@ var _project: ModProject = null
 var _loc: Localization = null
 var _settings: GameSettings = null
 var _storage: StorageService = null
+# MB10.2 (bug 29): the loading overlay, created lazily on first save.
+var _overlay: ProgressOverlay = null
 
 # Which catalog the tree currently shows ("units" / "buildings" / "objects").
 var _active_catalog: String = ModProject.UNITS_CATALOG
@@ -965,11 +969,35 @@ func _on_save() -> void:
 	if not problems.is_empty():
 		_set_status("%s: %s" % [_loc.t("ui.modeditor.status.invalid"), str(problems[0])])
 		return
+	# MB10.2 (bug 29): writing the .nexpack can block briefly, so drive the shared
+	# ProgressOverlay through the OP_SAVE_MOD stage plan (Saving... -> Saved) so
+	# the editor never looks frozen during the write.
+	_begin_overlay(LoadingStages.OP_SAVE_MOD)
 	var out_path: String = _storage.resolve_pack(_project.get_id())
-	if _project.save_pack(out_path):
+	var ok: bool = _project.save_pack(out_path)
+	_finish_overlay()
+	if ok:
 		_set_status("%s %s" % [_loc.t("ui.modeditor.status.saved"), out_path])
 	else:
 		_set_status(_loc.t("ui.modeditor.status.save_failed"))
+
+
+# MB10.2 (bug 29): show the shared overlay for a determinate operation described
+# by LoadingStages, starting at its first stage. Created lazily and kept alive
+# (finished with keep=true) so it can be reused for the next save.
+func _begin_overlay(op: String) -> void:
+	if not _has_tree():
+		return
+	if _overlay == null:
+		_overlay = ProgressOverlayScript.new()
+		add_child(_overlay)
+	_overlay.begin(_loc.t(LoadingStages.title_key(op)), _loc.t(LoadingStages.stage_key(op, 0)))
+
+
+func _finish_overlay() -> void:
+	if _overlay != null:
+		_overlay.finish(true)
+		_overlay.visible = false
 
 
 func _on_back() -> void:
