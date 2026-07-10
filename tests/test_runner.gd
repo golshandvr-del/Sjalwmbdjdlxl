@@ -291,6 +291,12 @@ func _init() -> void:
 	test_mb7_palette_16_colors_stable_and_clamped()
 	test_mb7_catalog_list_util_sorted_and_defaults()
 	test_mb7_match_setup_rescans_user_packs_static_guard()
+	# Phase MB10 (bug 29): global loading overlay -- pure LoadingStages logic.
+	test_mb10_determinate_plans_are_monotonic_and_end_full()
+	test_mb10_indeterminate_ops_have_no_plan_but_a_label()
+	test_mb10_stage_helpers_clamp_out_of_range_index()
+	test_mb10_titles_exist_for_every_known_op()
+	test_mb10_known_ops_sorted_and_unique()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3376,6 +3382,82 @@ func test_mb7_match_setup_rescans_user_packs_static_guard() -> void:
 	var body: String = _mb5_func_body(src, "func _populate_scenarios")
 	_check(body.contains("GameBootstrap.load_packs"), "populate re-scans user content packs")
 	_check(body.contains("ScenarioLoader.list_scenarios"), "populate lists scenarios after rescan")
+
+
+# --- Phase MB10 (bug 29): global loading overlay stage descriptors -----------
+#
+# LoadingStages is the pure brain that tells every caller how to drive the
+# ProgressOverlay for each wait-operation. These tests guard the invariants the
+# UI relies on: determinate plans go 0->1 monotonically, indeterminate ops have
+# a label but no plan, index helpers never crash, and every op has a title.
+
+func test_mb10_determinate_plans_are_monotonic_and_end_full() -> void:
+	print("test_mb10_determinate_plans_are_monotonic_and_end_full")
+	var determinate: Array = [
+		LoadingStages.OP_START_MATCH, LoadingStages.OP_ONLINE_CONNECT,
+		LoadingStages.OP_SAVE_MAP, LoadingStages.OP_LOAD_MAP, LoadingStages.OP_SAVE_MOD,
+	]
+	for op in determinate:
+		var plan: Array = LoadingStages.plan_for(op)
+		_check(plan.size() >= 2, "%s has at least 2 stages" % op)
+		_check(float(plan[0].get("ratio", -1.0)) == 0.0, "%s starts at ratio 0.0" % op)
+		_check(float(plan[plan.size() - 1].get("ratio", -1.0)) == 1.0, "%s ends at ratio 1.0" % op)
+		# Ratios must be non-decreasing and every stage must carry a label key.
+		var prev: float = -1.0
+		var ok: bool = true
+		for stage in plan:
+			var r: float = float(stage.get("ratio", 0.0))
+			if r < prev or str(stage.get("key", "")) == "":
+				ok = false
+			prev = r
+		_check(ok, "%s ratios are monotonic and every stage has a key" % op)
+		_check(not LoadingStages.is_indeterminate(op), "%s is determinate" % op)
+
+
+func test_mb10_indeterminate_ops_have_no_plan_but_a_label() -> void:
+	print("test_mb10_indeterminate_ops_have_no_plan_but_a_label")
+	for op in [LoadingStages.OP_SCAN_NETWORK, LoadingStages.OP_VALIDATE_IMAGE]:
+		_check(LoadingStages.is_indeterminate(op), "%s is indeterminate" % op)
+		_check(LoadingStages.plan_for(op).is_empty(), "%s has no determinate plan" % op)
+		_check(LoadingStages.stage_count(op) == 0, "%s stage_count is 0" % op)
+		_check(LoadingStages.indeterminate_key(op) != "", "%s has an indeterminate label key" % op)
+
+
+func test_mb10_stage_helpers_clamp_out_of_range_index() -> void:
+	print("test_mb10_stage_helpers_clamp_out_of_range_index")
+	var op: String = LoadingStages.OP_START_MATCH
+	var last: int = LoadingStages.stage_count(op) - 1
+	# Negative and too-large indices clamp to the first / last stage (no crash).
+	_check(LoadingStages.stage_ratio(op, -5) == LoadingStages.stage_ratio(op, 0), "negative index clamps to first")
+	_check(LoadingStages.stage_ratio(op, 999) == LoadingStages.stage_ratio(op, last), "huge index clamps to last")
+	_check(LoadingStages.stage_key(op, 999) == LoadingStages.stage_key(op, last), "key index clamps to last")
+	# An unknown op returns safe empties/zero.
+	_check(LoadingStages.stage_ratio("nope", 0) == 0.0, "unknown op ratio is 0.0")
+	_check(LoadingStages.stage_key("nope", 0) == "", "unknown op key is empty")
+
+
+func test_mb10_titles_exist_for_every_known_op() -> void:
+	print("test_mb10_titles_exist_for_every_known_op")
+	for op in LoadingStages.known_ops():
+		_check(LoadingStages.title_key(op) != "", "%s has a title key" % op)
+	_check(LoadingStages.title_key("unknown_op") == "", "unknown op has no title key")
+
+
+func test_mb10_known_ops_sorted_and_unique() -> void:
+	print("test_mb10_known_ops_sorted_and_unique")
+	var ops: Array = LoadingStages.known_ops()
+	_check(ops.has(LoadingStages.OP_START_MATCH), "known ops include start_match")
+	_check(ops.has(LoadingStages.OP_SCAN_NETWORK), "known ops include scan_network")
+	var sorted_copy: Array = ops.duplicate()
+	sorted_copy.sort()
+	_check(ops == sorted_copy, "known ops are returned sorted")
+	var seen: Dictionary = {}
+	var unique: bool = true
+	for op in ops:
+		if seen.has(op):
+			unique = false
+		seen[op] = true
+	_check(unique, "known ops contain no duplicates")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
