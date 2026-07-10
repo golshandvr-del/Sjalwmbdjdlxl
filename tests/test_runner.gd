@@ -303,6 +303,11 @@ func _init() -> void:
 	test_mb9_normalize_converts_float_image_to_rgba8()
 	test_mb9_normalize_leaves_rgba8_untouched()
 	test_mb9_normalize_is_null_safe()
+	# MB9.1 (bug 27): LAN-no-TLS invariant + benign -29184 handshake classifier.
+	test_mb9_lan_stack_uses_no_tls()
+	test_mb9_known_handshake_error_is_benign()
+	test_mb9_non_tls_codes_are_not_benign()
+	test_mb9_describe_tls_error_only_for_benign()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3507,6 +3512,40 @@ func test_mb9_normalize_leaves_rgba8_untouched() -> void:
 func test_mb9_normalize_is_null_safe() -> void:
 	print("test_mb9_normalize_is_null_safe")
 	_check(ImageFormatUtil.normalize_for_gl_compat(null) == null, "null input returns null")
+
+
+# --- Phase MB9 (bug 27): LAN-no-TLS invariant + benign handshake classifier --
+# Project Nexus never opens a TLS/HTTPS connection (LAN is plain UDP/ENet), so
+# the Android "TLS handshake error -29184" is engine noise, not a game bug.
+# These pure checks guard that invariant and the benign-error classifier.
+
+func test_mb9_lan_stack_uses_no_tls() -> void:
+	print("test_mb9_lan_stack_uses_no_tls")
+	_check(not NetSecurityPolicy.uses_tls(), "LAN networking uses no TLS (bug 27 invariant)")
+
+
+func test_mb9_known_handshake_error_is_benign() -> void:
+	print("test_mb9_known_handshake_error_is_benign")
+	_check(NetSecurityPolicy.is_benign_tls_error(NetSecurityPolicy.TLS_HANDSHAKE_ERROR),
+		"the reported -29184 handshake code is classified benign")
+	_check(NetSecurityPolicy.is_benign_tls_error(-30000),
+		"a lower mbedTLS code in range is benign")
+
+
+func test_mb9_non_tls_codes_are_not_benign() -> void:
+	print("test_mb9_non_tls_codes_are_not_benign")
+	_check(not NetSecurityPolicy.is_benign_tls_error(0), "OK (0) is not a benign TLS error")
+	_check(not NetSecurityPolicy.is_benign_tls_error(-1), "generic -1 is not a benign TLS error")
+	_check(not NetSecurityPolicy.is_benign_tls_error(-100000),
+		"a code below the TLS floor is not classified benign")
+
+
+func test_mb9_describe_tls_error_only_for_benign() -> void:
+	print("test_mb9_describe_tls_error_only_for_benign")
+	_check(NetSecurityPolicy.describe_tls_error(NetSecurityPolicy.TLS_HANDSHAKE_ERROR) != "",
+		"benign handshake code has a friendly description")
+	_check(NetSecurityPolicy.describe_tls_error(-1) == "",
+		"non-benign code has no TLS description")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
