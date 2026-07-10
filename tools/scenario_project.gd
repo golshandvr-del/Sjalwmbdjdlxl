@@ -436,6 +436,41 @@ func entity_at(x: int, y: int) -> Dictionary:
 	return {}
 
 
+# MB7.5 (bug 21c): MOVE the entity (building / unit / map object / flag) sitting
+# on (from_x, from_y) to (to_x, to_y). This is the model side of the editor's
+# select-then-move (or drag) tool. The moved entity keeps its type/owner; the
+# destination cell is cleared first so a move is unambiguous (same rule as a
+# fresh place). Returns true if an entity was found and moved. A no-op move
+# (same cell) still succeeds. Nothing happens if the destination is off-map.
+func move_entity(from_x: int, from_y: int, to_x: int, to_y: int) -> bool:
+	if not in_bounds(to_x, to_y):
+		return false
+	if from_x == to_x and from_y == to_y:
+		return not entity_at(from_x, from_y).is_empty() or not flag_at(from_x, from_y).is_empty()
+	# Flags carry an index/team, so move them via their own dedicated path.
+	var flag: Dictionary = flag_at(from_x, from_y)
+	if not flag.is_empty():
+		return place_flag(int(flag.get("index", next_flag_index())), to_x, to_y, int(flag.get("team", 0)))
+	var hit: Dictionary = entity_at(from_x, from_y)
+	if not hit.is_empty():
+		var kind: String = str(hit.get("kind", ""))
+		var type_id: String = str(hit.get("type", ""))
+		var owner: int = int(hit.get("owner", 0))
+		remove_entity_at(from_x, from_y)
+		if kind == "building":
+			return place_building(type_id, owner, to_x, to_y)
+		if kind == "unit":
+			return place_unit(type_id, owner, to_x, to_y)
+		return false
+	# Map object (decoration / resource node): move by object id.
+	for o in map_objects:
+		if int(o.get("x", -1)) == from_x and int(o.get("y", -1)) == from_y:
+			var object_id: String = str(o.get("object", ""))
+			remove_entity_at(from_x, from_y)
+			return place_object(object_id, to_x, to_y)
+	return false
+
+
 func _clear_cell(x: int, y: int) -> void:
 	paint_cell(x, y, TERRAIN_GROUND)  # never place on a wall
 	remove_entity_at(x, y)
