@@ -31,6 +31,17 @@
 #
 # Anything after the lone "--" is passed to the tool as its own arguments.
 #
+# BUILD-STABILITY NOTE (MB8.3 / bug 23): This is a DEVELOPER-ONLY headless CLI
+# tool. It intentionally writes into `res://mods` (the source tree) while
+# authoring content on desktop, which is writable during development but is
+# READ-ONLY in an exported/installed build (Android especially). It must NEVER
+# be invoked at runtime inside a shipped build. The runtime, in-game authoring
+# path is `ui/shared/mod_editor.gd`, which routes ALL user-content writes through
+# StorageService to `user://content/` (the only writable location on every
+# export target). Base/shipped content is read from `res://`; authored/imported
+# content is written to and read from `user://`. Keep this separation to avoid
+# the installed-build hang described in bug 23.
+#
 # CODE LANGUAGE POLICY: English-only identifiers/comments.
 # ----------------------------------------------------------------------------
 extends SceneTree
