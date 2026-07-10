@@ -281,6 +281,15 @@ func _init() -> void:
 	test_mb6_net_address_range_classifiers()
 	test_mb6_net_address_best_lan_selection()
 	test_mb6_lobby_ip_and_rescan_static_guard()
+	# Phase MB7.7 (Android v2, bugs 20/21/22/24): Map Editor rebuild model tests.
+	test_mb7_validate_new_map_flags_bad_inputs()
+	test_mb7_new_scenario_sized_resizes_and_reseats()
+	test_mb7_background_image_set_clear_roundtrip()
+	test_mb7_move_entity_building_unit_object()
+	test_mb7_move_entity_flag_and_rejections()
+	test_mb7_palette_16_colors_stable_and_clamped()
+	test_mb7_catalog_list_util_sorted_and_defaults()
+	test_mb7_match_setup_rescans_user_packs_static_guard()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
