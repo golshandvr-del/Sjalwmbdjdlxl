@@ -297,6 +297,12 @@ func _init() -> void:
 	test_mb10_stage_helpers_clamp_out_of_range_index()
 	test_mb10_titles_exist_for_every_known_op()
 	test_mb10_known_ops_sorted_and_unique()
+	# Phase MB9 (bug 28): GL-compat image format normalization (RGBAFloat fix).
+	test_mb9_float_formats_flagged_for_normalize()
+	test_mb9_byte_formats_not_flagged()
+	test_mb9_normalize_converts_float_image_to_rgba8()
+	test_mb9_normalize_leaves_rgba8_untouched()
+	test_mb9_normalize_is_null_safe()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3458,6 +3464,49 @@ func test_mb10_known_ops_sorted_and_unique() -> void:
 			unique = false
 		seen[op] = true
 	_check(unique, "known ops contain no duplicates")
+
+
+# --- Phase MB9 (bug 28): GL-compat image format normalization ---------------
+# ImageFormatUtil silences the "RGBAFloat not supported" warning by converting
+# any float-format runtime image to RGBA8 before it reaches the GPU. These are
+# pure, headless-safe checks of the decision + conversion logic.
+
+func test_mb9_float_formats_flagged_for_normalize() -> void:
+	print("test_mb9_float_formats_flagged_for_normalize")
+	for fmt in ImageFormatUtil.FLOAT_FORMATS:
+		_check(ImageFormatUtil.is_float_format(fmt), "format %d flagged as float" % fmt)
+		_check(ImageFormatUtil.needs_normalize(fmt), "format %d needs normalize" % fmt)
+	_check(ImageFormatUtil.is_float_format(Image.FORMAT_RGBAF), "RGBAF flagged as float")
+
+
+func test_mb9_byte_formats_not_flagged() -> void:
+	print("test_mb9_byte_formats_not_flagged")
+	_check(not ImageFormatUtil.is_float_format(Image.FORMAT_RGBA8), "RGBA8 not float")
+	_check(not ImageFormatUtil.is_float_format(Image.FORMAT_RGB8), "RGB8 not float")
+	_check(not ImageFormatUtil.is_float_format(Image.FORMAT_L8), "L8 not float")
+	_check(not ImageFormatUtil.needs_normalize(Image.FORMAT_RGBA8), "RGBA8 needs no normalize")
+
+
+func test_mb9_normalize_converts_float_image_to_rgba8() -> void:
+	print("test_mb9_normalize_converts_float_image_to_rgba8")
+	var img: Image = Image.create(2, 2, false, Image.FORMAT_RGBAF)
+	_check(img.get_format() == Image.FORMAT_RGBAF, "source image starts as RGBAF")
+	var out: Image = ImageFormatUtil.normalize_for_gl_compat(img)
+	_check(out != null, "normalize returns an image")
+	_check(out.get_format() == Image.FORMAT_RGBA8, "float image converted to RGBA8")
+
+
+func test_mb9_normalize_leaves_rgba8_untouched() -> void:
+	print("test_mb9_normalize_leaves_rgba8_untouched")
+	var img: Image = Image.create(2, 2, false, Image.FORMAT_RGBA8)
+	var out: Image = ImageFormatUtil.normalize_for_gl_compat(img)
+	_check(out != null, "normalize returns an image for RGBA8 input")
+	_check(out.get_format() == Image.FORMAT_RGBA8, "RGBA8 image stays RGBA8")
+
+
+func test_mb9_normalize_is_null_safe() -> void:
+	print("test_mb9_normalize_is_null_safe")
+	_check(ImageFormatUtil.normalize_for_gl_compat(null) == null, "null input returns null")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
