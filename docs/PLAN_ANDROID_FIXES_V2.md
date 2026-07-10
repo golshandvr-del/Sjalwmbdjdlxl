@@ -408,7 +408,7 @@ read-only باز می‌شود؛ leave→re-join بدونِ بستنِ اپ کا
 
 ---
 
-## فاز MB10 — نوارِ Loading سراسری (باگ ۲۹) 🟠
+## فاز MB10 — نوارِ Loading سراسری (باگ ۲۹) ✅ (انجام شد)
 
 **فایل‌ها:** `ui/shared/progress_overlay.gd` (موجود),
 `core/game_bootstrap.gd`, `ui/shared/*` (منوها), `ui/shared/lobby.gd`,
