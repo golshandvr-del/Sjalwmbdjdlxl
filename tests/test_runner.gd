@@ -277,6 +277,10 @@ func _init() -> void:
 	test_mb5_placements_cover_every_slot()
 	test_mb5_lobby_teardown_static_guard()
 	test_mb5_lobby_client_readonly_view_static_guard()
+	test_mb6_net_address_is_ipv4_validation()
+	test_mb6_net_address_range_classifiers()
+	test_mb6_net_address_best_lan_selection()
+	test_mb6_lobby_ip_and_rescan_static_guard()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3946,6 +3950,88 @@ func test_mb5_lobby_client_readonly_view_static_guard() -> void:
 	# Team editing is host-only (clients get a disabled control).
 	_check(src.contains("team_option.disabled = (_role != \"host\")"),
 		"clients cannot edit teams in the read-only view")
+
+
+# --- Phase MB6: host IP display + network rescan (bugs 12, 19) --------------
+
+# Bug 12: NetAddressUtil.is_ipv4 accepts canonical dotted-quads and rejects
+# IPv6 / malformed / out-of-range / leading-zero text.
+func test_mb6_net_address_is_ipv4_validation() -> void:
+	print("test_mb6_net_address_is_ipv4_validation")
+	_check(NetAddressUtil.is_ipv4("192.168.1.10"), "accepts a normal LAN IPv4")
+	_check(NetAddressUtil.is_ipv4("0.0.0.0"), "accepts all-zero IPv4")
+	_check(NetAddressUtil.is_ipv4("255.255.255.255"), "accepts broadcast IPv4")
+	_check(not NetAddressUtil.is_ipv4("256.1.1.1"), "rejects octet > 255")
+	_check(not NetAddressUtil.is_ipv4("1.2.3"), "rejects three-octet string")
+	_check(not NetAddressUtil.is_ipv4("1.2.3.4.5"), "rejects five-octet string")
+	_check(not NetAddressUtil.is_ipv4("fe80::1"), "rejects IPv6")
+	_check(not NetAddressUtil.is_ipv4("192.168.01.1"), "rejects leading-zero octet")
+	_check(not NetAddressUtil.is_ipv4("a.b.c.d"), "rejects non-numeric octets")
+
+
+# Bug 12: classifiers for loopback / link-local / private LAN ranges.
+func test_mb6_net_address_range_classifiers() -> void:
+	print("test_mb6_net_address_range_classifiers")
+	_check(NetAddressUtil.is_loopback_v4("127.0.0.1"), "127.0.0.1 is loopback")
+	_check(not NetAddressUtil.is_loopback_v4("192.168.1.1"), "LAN is not loopback")
+	_check(NetAddressUtil.is_link_local_v4("169.254.5.6"), "169.254.x is link-local")
+	_check(not NetAddressUtil.is_link_local_v4("192.168.5.6"), "LAN is not link-local")
+	_check(NetAddressUtil.is_private_lan_v4("10.0.0.5"), "10.x is private")
+	_check(NetAddressUtil.is_private_lan_v4("192.168.0.42"), "192.168.x is private")
+	_check(NetAddressUtil.is_private_lan_v4("172.16.0.1"), "172.16.x is private")
+	_check(NetAddressUtil.is_private_lan_v4("172.31.255.254"), "172.31.x is private")
+	_check(not NetAddressUtil.is_private_lan_v4("172.15.0.1"), "172.15.x is NOT private")
+	_check(not NetAddressUtil.is_private_lan_v4("172.32.0.1"), "172.32.x is NOT private")
+	_check(not NetAddressUtil.is_private_lan_v4("8.8.8.8"), "public IPv4 is not private")
+
+
+# Bug 12: best_lan_ipv4 prefers a private LAN address, skips loopback/link-local
+# and IPv6, falls back to any other IPv4, and returns "" when nothing is usable.
+func test_mb6_net_address_best_lan_selection() -> void:
+	print("test_mb6_net_address_best_lan_selection")
+	# Loopback + IPv6 + a real LAN address -> the LAN address wins.
+	_check(NetAddressUtil.best_lan_ipv4(["127.0.0.1", "fe80::1", "192.168.1.20"]) == "192.168.1.20",
+		"private LAN address is chosen over loopback/IPv6")
+	# Private beats a non-private public IPv4 regardless of order.
+	_check(NetAddressUtil.best_lan_ipv4(["8.8.8.8", "10.1.2.3"]) == "10.1.2.3",
+		"private LAN beats a public IPv4")
+	# Link-local is skipped in favour of a private address.
+	_check(NetAddressUtil.best_lan_ipv4(["169.254.1.1", "192.168.5.5"]) == "192.168.5.5",
+		"link-local is skipped for a private address")
+	# No private address: fall back to the first non-loopback IPv4.
+	_check(NetAddressUtil.best_lan_ipv4(["127.0.0.1", "203.0.113.7", "198.51.100.9"]) == "203.0.113.7",
+		"falls back to first usable public IPv4 in list order")
+	# Only loopback/IPv6 -> nothing usable.
+	_check(NetAddressUtil.best_lan_ipv4(["127.0.0.1", "fe80::1"]) == "",
+		"returns empty when only loopback/IPv6 present")
+	_check(NetAddressUtil.best_lan_ipv4([]) == "", "empty input returns empty")
+
+
+# Bugs 12/19: static guard that lobby.gd actually wires host-address display,
+# the rescan button, the auto-rescan timer, and the no-servers hint.
+func test_mb6_lobby_ip_and_rescan_static_guard() -> void:
+	print("test_mb6_lobby_ip_and_rescan_static_guard")
+	var src: String = FileAccess.get_file_as_string("res://ui/shared/lobby.gd")
+	_check(src != "", "lobby.gd source is readable")
+	# MB6.1: host address label filled via the pure util + IP.get_local_addresses.
+	_check(src.contains("func _update_host_address_label"), "lobby has host-address helper")
+	var addr_body: String = _mb5_func_body(src, "func _update_host_address_label")
+	_check(addr_body.contains("NetAddressUtil.best_lan_ipv4"), "host address uses NetAddressUtil")
+	_check(addr_body.contains("IP.get_local_addresses"), "host address reads local addresses")
+	_check(_mb5_func_body(src, "func _start_as_host").contains("_update_host_address_label()"),
+		"host start fills the address label")
+	# MB6.2: rescan button + auto-rescan timer + hint.
+	_check(src.contains("_rescan_button"), "lobby has a rescan button")
+	_check(src.contains("func _on_rescan_pressed"), "lobby has a manual rescan handler")
+	_check(src.contains("_rescan_timer"), "lobby has an auto-rescan timer")
+	_check(src.contains("AUTO_RESCAN_INTERVAL"), "auto-rescan interval constant exists")
+	_check(_mb5_func_body(src, "func _on_rescan_tick").contains("_refresh_server_list"),
+		"auto-rescan tick re-lists servers")
+	_check(_mb5_func_body(src, "func _refresh_server_list").contains("ui.lobby.no_servers"),
+		"empty server list shows the no-servers hint")
+	# Teardown must also stop the timer (no live ticks after leaving).
+	_check(_mb5_func_body(src, "func _teardown_network").contains("_rescan_timer.stop()"),
+		"teardown stops the auto-rescan timer")
 
 
 # Extract the body of `header` (up to the next top-level func) from GDScript
