@@ -41,6 +41,10 @@ const ProgressOverlayScript = preload("res://ui/shared/progress_overlay.gd")
 const LanDiscoveryScript = preload("res://modules/multiplayer/lan_discovery.gd")
 const ModSyncScript = preload("res://modules/multiplayer/mod_sync.gd")
 
+# MB6.2 (bug 19): how often the join view re-lists discovered servers even
+# without a user gesture, so a host that comes online is picked up automatically.
+const AUTO_RESCAN_INTERVAL: float = 2.0
+
 # A fixed shared seed for LAN matches; the host is authoritative and every peer
 # uses the same catalogs (guaranteed by mod sync), so the deterministic core
 # does the rest. (A future enhancement could negotiate a random seed.)
@@ -77,10 +81,16 @@ var _status_label: Label
 var _slots_box: VBoxContainer
 var _servers_box: VBoxContainer
 var _search_edit: LineEdit
+var _rescan_button: Button
 var _ready_button: Button
 var _start_button: Button
 var _back_button: Button
 var _overlay: ProgressOverlay
+# MB6.1 (bug 12): a host-only label showing this machine's LAN address so a
+# joining player knows where to connect. Empty/hidden for join clients.
+var _address_label: Label
+# MB6.2 (bug 19): drives the periodic auto-rescan of the discovered-server list.
+var _rescan_timer: Timer
 
 
 func _ready() -> void:
@@ -145,6 +155,15 @@ func _build_ui() -> void:
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_status_label)
 
+	# --- Host-only: this machine's LAN address (MB6.1/bug12) ----------------
+	# Shows "Host address: 192.168.x.y" so joining players know where to point
+	# a manual connect; hidden for join clients (set in _apply_labels).
+	_address_label = Label.new()
+	_address_label.name = "AddressLabel"
+	_address_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_address_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_address_label)
+
 	# --- Join-only: server search + discovered list -------------------------
 	var search_row: HBoxContainer = HBoxContainer.new()
 	search_row.name = "SearchRow"
@@ -158,6 +177,13 @@ func _build_ui() -> void:
 	_search_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_search_edit.text_changed.connect(func(_t: String) -> void: _refresh_server_list())
 	search_row.add_child(_search_edit)
+	# MB6.2 (bug 19): an explicit rescan button next to the search box. Both a
+	# periodic auto-rescan (timer) AND this manual button drive discovery so a
+	# host is found without the user guessing.
+	_rescan_button = Button.new()
+	_rescan_button.name = "RescanButton"
+	_rescan_button.pressed.connect(_on_rescan_pressed)
+	search_row.add_child(_rescan_button)
 
 	var servers_scroll: ScrollContainer = ScrollContainer.new()
 	servers_scroll.name = "ServersScroll"
@@ -198,6 +224,16 @@ func _build_ui() -> void:
 	_overlay.visible = false
 	add_child(_overlay)
 
+	# MB6.2 (bug 19): auto-rescan timer. Only armed for a browsing join client
+	# (started in _start_as_join); a repeating tick re-lists discovered servers.
+	_rescan_timer = Timer.new()
+	_rescan_timer.name = "RescanTimer"
+	_rescan_timer.wait_time = AUTO_RESCAN_INTERVAL
+	_rescan_timer.one_shot = false
+	_rescan_timer.autostart = false
+	_rescan_timer.timeout.connect(_on_rescan_tick)
+	add_child(_rescan_timer)
+
 
 func _apply_labels() -> void:
 	if _role == "host":
@@ -207,6 +243,8 @@ func _apply_labels() -> void:
 	_ready_button.text = _loc.t("ui.lobby.ready")
 	_start_button.text = _loc.t("ui.lobby.start")
 	_back_button.text = _loc.t("ui.menu.back")
+	if _rescan_button != null:
+		_rescan_button.text = _loc.t("ui.lobby.rescan")
 
 	# Show/hide the search UI depending on role (join browses; host advertises).
 	# A join client is in one of two phases: BROWSING (search box + server list
@@ -218,6 +256,19 @@ func _apply_labels() -> void:
 	_servers_box.get_parent().visible = show_search
 	# Only the host can start the match.
 	_start_button.visible = (_role == "host")
+
+	# MB6.1 (bug 12): the host shows its LAN address; the join view hides it.
+	if _address_label != null:
+		_address_label.visible = (_role == "host")
+
+	# MB6.2 (bug 19): only browse-mode join clients auto-rescan. A connected
+	# client or a host must not keep re-listing servers.
+	if _rescan_timer != null:
+		if show_search:
+			if _rescan_timer.is_stopped():
+				_rescan_timer.start()
+		else:
+			_rescan_timer.stop()
 
 
 # --- HOST -------------------------------------------------------------------
@@ -238,8 +289,21 @@ func _start_as_host() -> void:
 	add_child(_discovery)
 	_discovery.start_advertising(_beacon_info())
 	_status_label.text = _loc.t("ui.net.waiting_for_players")
+	_update_host_address_label()
 	_rebuild_slot_rows()
 	_update_start_enabled()
+
+
+# MB6.1 (bug 12): fill the host-address label with this machine's best LAN IPv4
+# (via the pure NetAddressUtil), or a "no LAN detected" hint if none is usable.
+func _update_host_address_label() -> void:
+	if _address_label == null:
+		return
+	var best: String = NetAddressUtil.best_lan_ipv4(IP.get_local_addresses())
+	if best == "":
+		_address_label.text = _loc.t("ui.lobby.host_address_none")
+	else:
+		_address_label.text = _loc.t("ui.lobby.host_address").format([best])
 
 
 func _beacon_info() -> Dictionary:
@@ -266,9 +330,31 @@ func _start_as_join() -> void:
 	_discovery.start_browsing()
 	Nexus.subscribe(LanDiscoveryScript.EVENT_SERVERS_CHANGED, self, "_on_servers_changed")
 	_status_label.text = _loc.t("ui.lobby.searching")
+	# MB6.2 (bug 19): arm the periodic auto-rescan for the browsing phase.
+	if _rescan_timer != null and _rescan_timer.is_stopped():
+		_rescan_timer.start()
+	_refresh_server_list()
 
 
 func _on_servers_changed(_event_name: String, _payload: Dictionary) -> void:
+	_refresh_server_list()
+
+
+# MB6.2 (bug 19): the user tapped the magnifier/rescan button. Restart browsing
+# (drops any stale entries) and immediately re-list.
+func _on_rescan_pressed() -> void:
+	if _discovery == null:
+		return
+	_discovery.start_browsing()
+	_status_label.text = _loc.t("ui.lobby.scanning")
+	_refresh_server_list()
+
+
+# MB6.2 (bug 19): periodic auto-rescan tick. Only re-lists while the join client
+# is still browsing (not connected); the timer is stopped otherwise.
+func _on_rescan_tick() -> void:
+	if _role != "join" or _connected:
+		return
 	_refresh_server_list()
 
 
@@ -278,6 +364,7 @@ func _refresh_server_list() -> void:
 	for child in _servers_box.get_children():
 		child.queue_free()
 	var filter_text: String = _search_edit.text.strip_edges().to_lower()
+	var shown: int = 0
 	for server in _discovery.servers():
 		var name: String = str(server.get("name", "?"))
 		if filter_text != "" and not name.to_lower().contains(filter_text):
@@ -294,6 +381,15 @@ func _refresh_server_list() -> void:
 		var port: int = int(server.get("port", EnetTransport.DEFAULT_PORT))
 		row.pressed.connect(func() -> void: _connect_to(address, port))
 		_servers_box.add_child(row)
+		shown += 1
+	# MB6.2 (bug 19): when nothing is discovered yet, show an explanatory hint
+	# instead of a blank box so the user knows scanning is live, not broken.
+	if shown == 0:
+		var hint: Label = Label.new()
+		hint.text = _loc.t("ui.lobby.no_servers")
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_servers_box.add_child(hint)
 
 
 func _connect_to(address: String, port: int) -> void:
@@ -436,6 +532,8 @@ func _on_connected(_event_name: String, _payload: Dictionary) -> void:
 	# MB5.3 (bug 13): switch to the read-only lobby view (hide the search UI,
 	# keep the slot list + Ready/Leave) now that we are connected.
 	_connected = true
+	# MB6.2 (bug 19): once connected we are no longer browsing; _apply_labels
+	# hides the search UI and stops the auto-rescan timer.
 	_apply_labels()
 	_status_label.text = _loc.t("ui.lobby.waiting_host")
 	if _slots.is_empty():
@@ -596,6 +694,9 @@ func _on_back() -> void:
 # advertising/browsing, and (3) removes ALL of this node's event-bus
 # subscriptions so no stale listener from a previous lobby instance survives.
 func _teardown_network() -> void:
+	# MB6.2: stop the auto-rescan timer so a torn-down lobby leaves no live ticks.
+	if _rescan_timer != null:
+		_rescan_timer.stop()
 	if _session != null:
 		_session.close()
 		_session.queue_free()
