@@ -335,14 +335,14 @@ func from_dict(data: Dictionary) -> bool:
 			var bg: Variant = page.get("background", null)
 			if bg is Dictionary:
 				set_page_background(page_name, str((bg as Dictionary).get("kind", BG_COLOR)), str((bg as Dictionary).get("value", DEFAULT_BG_COLOR)))
-		var widgets: Variant = page.get("widgets", [])
-				if widgets is Array:
-					for w in (widgets as Array):
-						if not (w is Dictionary):
-							continue
-						var wd: Dictionary = w
-						add_widget(page_name, str(wd.get("logical_id", "")), wd.get("rect", []), str(wd.get("icon_path", "")), str(wd.get("display_name", "")))
-		return true
+			var widgets: Variant = page.get("widgets", [])
+			if widgets is Array:
+				for w in (widgets as Array):
+					if not (w is Dictionary):
+						continue
+					var wd: Dictionary = w
+					add_widget(page_name, str(wd.get("logical_id", "")), wd.get("rect", []), str(wd.get("icon_path", "")), str(wd.get("display_name", "")))
+	return true
 
 
 # --- JSON round-trip (MC7.2) ------------------------------------------------
