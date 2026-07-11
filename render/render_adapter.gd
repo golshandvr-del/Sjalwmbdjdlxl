@@ -77,6 +77,13 @@ const FOG_VISIBLE: int = 2
 var _fog_snapshot: FogSnapshotUtil = FogSnapshotUtil.new()
 
 
+# MC2.3 (request 2): expose the cosmetic last-image memory (read-only use) so
+# the minimap can render the SAME frozen snapshot on EXPLORED tiles as the main
+# view, instead of keeping a second diverging memory.
+func fog_snapshot() -> FogSnapshotUtil:
+	return _fog_snapshot
+
+
 func _ready() -> void:
 	if style == null:
 		set_style(style_id)
