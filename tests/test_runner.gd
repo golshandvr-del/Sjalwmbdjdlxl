@@ -330,6 +330,15 @@ func _init() -> void:
 	test_mc1_move_mode_no_selection_is_noop()
 	test_mc1_move_keys_localized_in_all_locales()
 	test_mc1_desktop_hud_wires_move_mode()
+	# Phase MC2 (request 2): three-state fog "last image" snapshot memory.
+	test_mc2_fog_snapshot_starts_empty()
+	test_mc2_fog_snapshot_remembers_visible_entity()
+	test_mc2_fog_snapshot_freezes_after_losing_sight()
+	test_mc2_fog_snapshot_clears_when_seen_empty()
+	test_mc2_fog_snapshot_building_wins_over_unit()
+	test_mc2_fog_snapshot_layer_for_states()
+	test_mc2_fog_snapshot_is_deterministic()
+	test_mc2_fog_snapshot_does_not_affect_state_hash()
 	# Phase MC5 (request 6): EditHistoryUtil undo/redo snapshot stack.
 	test_mc5_history_starts_empty()
 	test_mc5_history_push_and_current()
@@ -3928,6 +3937,126 @@ func test_mc5_history_snapshots_are_isolated() -> void:
 	stored["nested"]["count"] = -5
 	var again: Dictionary = hist.current() as Dictionary
 	_check((again["nested"] as Dictionary).get("count", -1) == 1, "current deep-copies on the way out")
+
+
+# --- Phase MC2 (request 2): three-state fog "last image" memory -------------
+# HIDDEN -> solid black; VISIBLE -> live truth; EXPLORED -> dimmed last image.
+# FogSnapshotUtil keeps the frozen memory of the last entity seen per tile. It
+# is a pure RENDER aid and must NEVER touch the deterministic state hash: two
+# peers keeping different snapshots must still hash identically. These checks
+# pin observe -> remember -> serve + the layer decision + hash isolation.
+
+func _mc2_fog_section(w: int, h: int, viewer: int, visible_tiles: Array) -> Dictionary:
+	# Build a fog section where `visible_tiles` (Array of [x,y]) are VISIBLE for
+	# `viewer` and everything else HIDDEN, in the shape FogSnapshotUtil expects.
+	var grid: Array = []
+	grid.resize(w * h)
+	for i in range(grid.size()):
+		grid[i] = FogSnapshotUtil.FOG_HIDDEN
+	for t in visible_tiles:
+		var idx: int = int(t[1]) * w + int(t[0])
+		if idx >= 0 and idx < grid.size():
+			grid[idx] = FogSnapshotUtil.FOG_VISIBLE
+	return { "width": w, "height": h, "visible": { str(viewer): grid } }
+
+
+func test_mc2_fog_snapshot_starts_empty() -> void:
+	print("test_mc2_fog_snapshot_starts_empty")
+	var snap: FogSnapshotUtil = FogSnapshotUtil.new()
+	_check(snap.size() == 0, "fresh snapshot remembers nothing")
+	_check(snap.remembered(0, 0).is_empty(), "unseen tile yields empty memory")
+	_check(not snap.has_memory(0, 0), "unseen tile has no memory flag")
+
+
+func test_mc2_fog_snapshot_remembers_visible_entity() -> void:
+	print("test_mc2_fog_snapshot_remembers_visible_entity")
+	var snap: FogSnapshotUtil = FogSnapshotUtil.new()
+	var fog: Dictionary = _mc2_fog_section(4, 4, 0, [[2, 1]])
+	var buildings: Dictionary = { "b1": { "x": 2, "y": 1, "owner": 3, "type": "hq" } }
+	snap.observe(0, fog, buildings, {})
+	var mem: Dictionary = snap.remembered(2, 1)
+	_check(mem.get("kind", "") == FogSnapshotUtil.KIND_BUILDING, "remembers building on seen tile")
+	_check(int(mem.get("owner", -1)) == 3, "remembers building owner")
+	_check(str(mem.get("type", "")) == "hq", "remembers building type")
+
+
+func test_mc2_fog_snapshot_freezes_after_losing_sight() -> void:
+	print("test_mc2_fog_snapshot_freezes_after_losing_sight")
+	var snap: FogSnapshotUtil = FogSnapshotUtil.new()
+	var seen: Dictionary = _mc2_fog_section(3, 3, 0, [[1, 1]])
+	snap.observe(0, seen, { "b1": { "x": 1, "y": 1, "owner": 2, "type": "hq" } }, {})
+	# Now the tile is no longer VISIBLE (all hidden); the building is razed in the
+	# live truth, but the frozen memory must stay = "last image" the player saw.
+	var hidden: Dictionary = _mc2_fog_section(3, 3, 0, [])
+	snap.observe(0, hidden, {}, {})
+	var mem: Dictionary = snap.remembered(1, 1)
+	_check(mem.get("kind", "") == FogSnapshotUtil.KIND_BUILDING, "EXPLORED tile keeps last image after loss of sight")
+
+
+func test_mc2_fog_snapshot_clears_when_seen_empty() -> void:
+	print("test_mc2_fog_snapshot_clears_when_seen_empty")
+	var snap: FogSnapshotUtil = FogSnapshotUtil.new()
+	var fog: Dictionary = _mc2_fog_section(3, 3, 0, [[1, 1]])
+	snap.observe(0, fog, { "b1": { "x": 1, "y": 1, "owner": 2, "type": "hq" } }, {})
+	_check(snap.has_memory(1, 1), "building remembered while in sight")
+	# Re-observe the same tile still VISIBLE but now empty -> stale image forgotten.
+	snap.observe(0, fog, {}, {})
+	_check(not snap.has_memory(1, 1), "seeing a tile empty forgets its stale image")
+
+
+func test_mc2_fog_snapshot_building_wins_over_unit() -> void:
+	print("test_mc2_fog_snapshot_building_wins_over_unit")
+	var snap: FogSnapshotUtil = FogSnapshotUtil.new()
+	var fog: Dictionary = _mc2_fog_section(3, 3, 0, [[0, 0]])
+	# A unit and a building share the tile; the more permanent building wins.
+	snap.observe(0, fog,
+		{ "b1": { "x": 0, "y": 0, "owner": 1, "type": "factory" } },
+		{ "u1": { "x": 0, "y": 0, "owner": 1, "type": "scout" } })
+	_check(snap.remembered(0, 0).get("kind", "") == FogSnapshotUtil.KIND_BUILDING,
+		"building takes precedence over a co-located unit")
+
+
+func test_mc2_fog_snapshot_layer_for_states() -> void:
+	print("test_mc2_fog_snapshot_layer_for_states")
+	var snap: FogSnapshotUtil = FogSnapshotUtil.new()
+	_check(snap.layer_for(FogSnapshotUtil.FOG_VISIBLE, 0, 0).get("layer", "") == "visible",
+		"VISIBLE -> live visible layer")
+	_check(snap.layer_for(FogSnapshotUtil.FOG_HIDDEN, 0, 0).get("layer", "") == "hidden",
+		"HIDDEN -> solid black cover layer")
+	var explored: Dictionary = snap.layer_for(FogSnapshotUtil.FOG_EXPLORED, 0, 0)
+	_check(explored.get("layer", "") == "explored", "EXPLORED -> dimmed explored layer")
+	_check(explored.has("memory"), "EXPLORED layer carries the remembered last image")
+
+
+func test_mc2_fog_snapshot_is_deterministic() -> void:
+	print("test_mc2_fog_snapshot_is_deterministic")
+	var fog: Dictionary = _mc2_fog_section(4, 4, 1, [[0, 0], [3, 3]])
+	var b: Dictionary = { "b1": { "x": 0, "y": 0, "owner": 5, "type": "hq" } }
+	var u: Dictionary = { "u1": { "x": 3, "y": 3, "owner": 5, "type": "tank" } }
+	var s1: FogSnapshotUtil = FogSnapshotUtil.new()
+	var s2: FogSnapshotUtil = FogSnapshotUtil.new()
+	s1.observe(1, fog, b, u)
+	s2.observe(1, fog, b, u)
+	_check(s1.remembered(0, 0) == s2.remembered(0, 0), "same inputs -> identical building memory")
+	_check(s1.remembered(3, 3) == s2.remembered(3, 3), "same inputs -> identical unit memory")
+
+
+func test_mc2_fog_snapshot_does_not_affect_state_hash() -> void:
+	print("test_mc2_fog_snapshot_does_not_affect_state_hash")
+	# The snapshot is cosmetic: it is derived from world data but never fed back.
+	# Prove the deterministic hash of a world dictionary is identical whether or
+	# not a snapshot has observed it (the snapshot lives outside hashed state).
+	var world: Dictionary = {
+		"buildings": { "b1": { "x": 1, "y": 1, "owner": 2, "type": "hq" } },
+		"units": {},
+	}
+	var h_before: int = StateHasher.hash_variant(world)
+	var snap: FogSnapshotUtil = FogSnapshotUtil.new()
+	var fog: Dictionary = _mc2_fog_section(3, 3, 0, [[1, 1]])
+	snap.observe(0, fog, world["buildings"], world["units"])
+	var h_after: int = StateHasher.hash_variant(world)
+	_check(h_before == h_after, "observing a snapshot never mutates or rehashes the world")
+	_check(snap.size() > 0, "snapshot did record memory (guard: the observe actually ran)")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
