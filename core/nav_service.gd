@@ -37,6 +37,7 @@ const LOBBY: String = "res://scenes/lobby.tscn"
 const OPTIONS: String = "res://scenes/options_menu.tscn"
 const MOD_EDITOR: String = "res://scenes/mod_editor.tscn"
 const MAP_EDITOR: String = "res://scenes/map_editor.tscn"
+const GUI_EDITOR: String = "res://scenes/gui_editor.tscn"
 const CUSTOM_GAMES: String = "res://scenes/custom_games.tscn"
 const SAVE_LOAD: String = "res://scenes/save_load_menu.tscn"
 const GAME_MOBILE: String = "res://scenes/game_main.tscn"
@@ -53,6 +54,7 @@ const PARENTS: Dictionary = {
 	OPTIONS: MAIN_MENU,
 	MOD_EDITOR: MAIN_MENU,
 	MAP_EDITOR: MAIN_MENU,
+	GUI_EDITOR: MAIN_MENU,
 	CUSTOM_GAMES: MAIN_MENU,
 	SAVE_LOAD: MAIN_MENU,
 	# In-game scenes route to the menu but only AFTER a confirm (see is_in_game).
