@@ -335,11 +335,67 @@ func from_dict(data: Dictionary) -> bool:
 			var bg: Variant = page.get("background", null)
 			if bg is Dictionary:
 				set_page_background(page_name, str((bg as Dictionary).get("kind", BG_COLOR)), str((bg as Dictionary).get("value", DEFAULT_BG_COLOR)))
-			var widgets: Variant = page.get("widgets", [])
-			if widgets is Array:
-				for w in (widgets as Array):
-					if not (w is Dictionary):
-						continue
-					var wd: Dictionary = w
-					add_widget(page_name, str(wd.get("logical_id", "")), wd.get("rect", []), str(wd.get("icon_path", "")), str(wd.get("display_name", "")))
-	return true
+		var widgets: Variant = page.get("widgets", [])
+				if widgets is Array:
+					for w in (widgets as Array):
+						if not (w is Dictionary):
+							continue
+						var wd: Dictionary = w
+						add_widget(page_name, str(wd.get("logical_id", "")), wd.get("rect", []), str(wd.get("icon_path", "")), str(wd.get("display_name", "")))
+		return true
+
+
+# --- JSON round-trip (MC7.2) ------------------------------------------------
+#
+# `to_json` / `from_json` are the pure, headless-testable heart of save / export
+# / import: a valid project serialises to a deterministic pretty-JSON STRING and
+# reloads byte-for-byte identically. The file helpers below are thin IO wrappers
+# so the round-trip logic stays testable without touching disk.
+
+# Deterministic pretty JSON for this project, or "" if it is not valid. Because
+# to_dict sorts pages + widgets, the same project always yields identical text.
+func to_json() -> String:
+	var data: Dictionary = to_dict()
+	if data.is_empty():
+		return ""
+	return JSON.stringify(data, "\t")
+
+
+# Rebuild this project from a JSON string produced by to_json (or an external
+# .nexgui file). Returns false on malformed JSON or a missing id.
+func from_json(text: String) -> bool:
+	var parsed: Variant = JSON.parse_string(str(text))
+	if not (parsed is Dictionary):
+		return false
+	return from_dict(parsed as Dictionary)
+
+
+# Save the project to `path` as pretty JSON. Refuses to write an invalid project
+# (no id / no pages). Returns [ok: bool, reason_key: String].
+func save_to_file(path: String) -> Array:
+	if not is_valid():
+		return [false, "ui.guieditor.save_invalid"]
+	var text: String = to_json()
+	if text == "":
+		return [false, "ui.guieditor.save_invalid"]
+	var f: FileAccess = FileAccess.open(str(path), FileAccess.WRITE)
+	if f == null:
+		return [false, "ui.guieditor.save_io"]
+	f.store_string(text)
+	f.close()
+	return [true, ""]
+
+
+# Load a project from a .nexgui file at `path`. Returns [ok: bool, reason_key].
+func load_from_file(path: String) -> Array:
+	var p: String = str(path)
+	if not FileAccess.file_exists(p):
+		return [false, "ui.guieditor.load_missing"]
+	var f: FileAccess = FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return [false, "ui.guieditor.load_io"]
+	var text: String = f.get_as_text()
+	f.close()
+	if not from_json(text):
+		return [false, "ui.guieditor.load_malformed"]
+	return [true, ""]
