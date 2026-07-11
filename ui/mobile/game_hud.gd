@@ -104,6 +104,11 @@ var _move_mode_button: Button = null
 var _move_confirm_button: Button = null
 var _move_cancel_button: Button = null
 
+# MC3.3 (req 3): data-driven icon service. Loads data/ui_icons/manifest.json and
+# resolves logical icon names to textures, falling back to a drawn glyph so the
+# HUD never breaks when real art is missing.
+var _icons: IconService = IconService.new()
+
 # P3.5 (R12.1/R12.2): references to the P3 overlay containers so the responsive
 # layout pass can reposition them for portrait vs landscape. In landscape the
 # action controls hug the left/right edges (thumb-reachable); in portrait they
@@ -944,6 +949,10 @@ func _build_select_mode_widgets() -> void:
 # (bottom-left, thumb-reachable). Confirm/Cancel start hidden and only appear in
 # MANUAL mode with a pending route (see _update_move_mode_buttons).
 func _build_move_mode_widgets() -> void:
+	# MC3.3 (req 3): load the icon manifest once; apply_to_button below resolves
+	# logical names with a safe fallback glyph.
+	_icons.load_manifest()
+
 	_move_mode_button = Button.new()
 	_move_mode_button.name = "MoveModeButton"
 	_move_mode_button.text = _local_text("ui.move.mode_direct")
@@ -953,6 +962,7 @@ func _build_move_mode_widgets() -> void:
 	_move_mode_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_move_mode_button.position = Vector2(12, -300)
 	_move_mode_button.pressed.connect(_on_move_mode_pressed)
+	_icons.apply_to_button(_move_mode_button, "move")
 	add_child(_move_mode_button)
 
 	_move_confirm_button = Button.new()
@@ -962,6 +972,7 @@ func _build_move_mode_widgets() -> void:
 	_move_confirm_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_move_confirm_button.position = Vector2(130, -300)
 	_move_confirm_button.pressed.connect(_on_move_confirm_pressed)
+	_icons.apply_to_button(_move_confirm_button, "play")
 	add_child(_move_confirm_button)
 
 	_move_cancel_button = Button.new()
@@ -971,6 +982,7 @@ func _build_move_mode_widgets() -> void:
 	_move_cancel_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_move_cancel_button.position = Vector2(248, -300)
 	_move_cancel_button.pressed.connect(_on_move_cancel_pressed)
+	_icons.apply_to_button(_move_cancel_button, "back")
 	add_child(_move_cancel_button)
 
 	_update_move_mode_buttons()
