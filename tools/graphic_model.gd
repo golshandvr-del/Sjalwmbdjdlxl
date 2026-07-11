@@ -67,6 +67,103 @@ static func default_part(layer: int, px_w: int = 64, px_h: int = 64, texture: St
 	return { "layer": int(layer), "px": { "w": int(px_w), "h": int(px_h) }, "texture": texture }
 
 
+# --- MC4.2 (request 5): optional animation sprites --------------------------
+# An entity may OPTIONALLY carry an `animation` block describing the cosmetic
+# art the AnimationEventUtil layer plays. This is PURELY visual (out of the
+# deterministic hash) and every field is optional -- an entity with no
+# animation block falls back to the simple programmatic animation (MC4.3).
+#
+#   animation: {
+#     projectile: { texture, px: {w,h} },     # the flying shot sprite
+#     explosion:  { texture, frames, fps, px: {w,h} },  # death spritesheet
+#   }
+#
+# `frames`/`fps` describe how to read the explosion spritesheet (horizontal
+# strip of `frames` cells) at the given playback rate.
+const ANIM_MIN_FRAMES: int = 1
+const ANIM_MAX_FRAMES: int = 64
+const ANIM_MIN_FPS: int = 1
+const ANIM_MAX_FPS: int = 60
+
+
+# A safe default animation block: no textures yet (programmatic fallback), with
+# sane frame/fps defaults for the explosion spritesheet.
+static func default_animation() -> Dictionary:
+	return {
+		"projectile": { "texture": "", "px": { "w": 16, "h": 16 } },
+		"explosion": { "texture": "", "frames": 8, "fps": 12, "px": { "w": 64, "h": 64 } },
+	}
+
+
+# True if a graphic carries a usable (non-empty texture) projectile sprite.
+static func has_projectile_sprite(graphic: Variant) -> bool:
+	if not (graphic is Dictionary):
+		return false
+	var anim: Variant = (graphic as Dictionary).get("animation", {})
+	if not (anim is Dictionary):
+		return false
+	var proj: Variant = (anim as Dictionary).get("projectile", {})
+	return proj is Dictionary and str((proj as Dictionary).get("texture", "")) != ""
+
+
+# True if a graphic carries a usable (non-empty texture) explosion spritesheet.
+static func has_explosion_sprite(graphic: Variant) -> bool:
+	if not (graphic is Dictionary):
+		return false
+	var anim: Variant = (graphic as Dictionary).get("animation", {})
+	if not (anim is Dictionary):
+		return false
+	var expl: Variant = (anim as Dictionary).get("explosion", {})
+	return expl is Dictionary and str((expl as Dictionary).get("texture", "")) != ""
+
+
+# Validate an OPTIONAL animation block. Absent -> valid (empty problems). When
+# present, validates px bounds + frames/fps ranges. Textures may be empty
+# (programmatic fallback) but if given must be non-blank strings.
+static func validate_animation(animation: Variant) -> Array:
+	var problems: Array = []
+	if animation == null:
+		return problems
+	if not (animation is Dictionary):
+		return ["graphic.animation is not a dictionary"]
+	var a: Dictionary = animation as Dictionary
+
+	if a.has("projectile"):
+		var proj: Variant = a["projectile"]
+		if not (proj is Dictionary):
+			problems.append("animation.projectile is not a dictionary")
+		else:
+			problems.append_array(_validate_anim_px(proj as Dictionary, "projectile"))
+
+	if a.has("explosion"):
+		var expl: Variant = a["explosion"]
+		if not (expl is Dictionary):
+			problems.append("animation.explosion is not a dictionary")
+		else:
+			var e: Dictionary = expl as Dictionary
+			problems.append_array(_validate_anim_px(e, "explosion"))
+			var frames: int = int(e.get("frames", ANIM_MIN_FRAMES))
+			if frames < ANIM_MIN_FRAMES or frames > ANIM_MAX_FRAMES:
+				problems.append("animation.explosion.frames out of bounds (%d..%d)" % [ANIM_MIN_FRAMES, ANIM_MAX_FRAMES])
+			var fps: int = int(e.get("fps", ANIM_MIN_FPS))
+			if fps < ANIM_MIN_FPS or fps > ANIM_MAX_FPS:
+				problems.append("animation.explosion.fps out of bounds (%d..%d)" % [ANIM_MIN_FPS, ANIM_MAX_FPS])
+	return problems
+
+
+static func _validate_anim_px(block: Dictionary, label: String) -> Array:
+	var problems: Array = []
+	var px: Variant = block.get("px", {})
+	if not (px is Dictionary):
+		problems.append("animation.%s has no px size" % label)
+		return problems
+	var pw: int = int((px as Dictionary).get("w", 0))
+	var ph: int = int((px as Dictionary).get("h", 0))
+	if pw < MIN_PX or pw > MAX_PX or ph < MIN_PX or ph > MAX_PX:
+		problems.append("animation.%s px out of bounds (%d..%d)" % [label, MIN_PX, MAX_PX])
+	return problems
+
+
 # --- Validation -------------------------------------------------------------
 
 # Validate the whole graphic block. Returns an Array of problem strings; empty
@@ -117,6 +214,10 @@ static func validate(graphic: Variant) -> Array:
 			problems.append("part %d px out of bounds (%d..%d)" % [i, MIN_PX, MAX_PX])
 
 	problems.append_array(validate_layer_sizes(pa))
+
+	# MC4.2: optional animation block (cosmetic; absent -> no problems).
+	if g.has("animation"):
+		problems.append_array(validate_animation(g["animation"]))
 	return problems
 
 
