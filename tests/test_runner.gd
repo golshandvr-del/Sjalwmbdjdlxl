@@ -5004,6 +5004,144 @@ func test_mb6_lobby_ip_and_rescan_static_guard() -> void:
 		"teardown stops the auto-rescan timer")
 
 
+# ----------------------------------------------------------------------------
+# Phase MC3 (request 3): data-driven UI icon system.
+#
+# IconManifestUtil is a PURE helper over the parsed manifest Dictionary; it is
+# tested headlessly with no engine textures. IconService is the engine half: it
+# resolves a logical name to a Texture2D, returning a drawn RGBA8 fallback glyph
+# whenever the real art file is missing, so the HUD never breaks. These tests
+# guarantee the fallback path is null-safe and that the bundled manifest is
+# well-formed. A static guard confirms the mobile HUD actually wires the service.
+# ----------------------------------------------------------------------------
+
+# The bundled manifest at data/ui_icons/manifest.json parses and is shaped.
+func test_mc3_manifest_is_valid_and_shaped() -> void:
+	print("test_mc3_manifest_is_valid_and_shaped")
+	var text: String = FileAccess.get_file_as_string("res://data/ui_icons/manifest.json")
+	var parsed: Variant = JSON.parse_string(text)
+	_check(parsed is Dictionary, "manifest parses to a Dictionary")
+	var manifest: Dictionary = parsed as Dictionary
+	_check(IconManifestUtil.is_valid(manifest), "bundled manifest is valid")
+	_check(IconManifestUtil.base_size(manifest) == 128, "base size is 128")
+	_check(manifest.get("schema", "") == "nexus_ui_icons_v1", "schema tag present")
+
+
+# icon_names returns a sorted list and known logical names are declared.
+func test_mc3_manifest_util_names_sorted_and_present() -> void:
+	print("test_mc3_manifest_util_names_sorted_and_present")
+	var text: String = FileAccess.get_file_as_string("res://data/ui_icons/manifest.json")
+	var manifest: Dictionary = JSON.parse_string(text) as Dictionary
+	var names: Array = IconManifestUtil.icon_names(manifest)
+	_check(names.size() >= 17, "at least 17 logical icons declared")
+	var sorted_copy: Array = names.duplicate()
+	sorted_copy.sort()
+	_check(names == sorted_copy, "icon_names is returned in stable sorted order")
+	for expected in ["select", "assign", "move", "play", "back", "settings_gear"]:
+		_check(IconManifestUtil.has_icon(manifest, expected), "declares icon '%s'" % expected)
+
+
+# path_for / size_for read the real entry values.
+func test_mc3_manifest_util_path_and_size_lookup() -> void:
+	print("test_mc3_manifest_util_path_and_size_lookup")
+	var text: String = FileAccess.get_file_as_string("res://data/ui_icons/manifest.json")
+	var manifest: Dictionary = JSON.parse_string(text) as Dictionary
+	_check(IconManifestUtil.path_for(manifest, "move") == "res://assets/ui_icons/move.png",
+		"path_for returns the declared file path")
+	_check(IconManifestUtil.size_for(manifest, "move") == 128, "size_for returns the declared size")
+
+
+# Missing icons return safe defaults, not errors.
+func test_mc3_manifest_util_missing_icon_defaults() -> void:
+	print("test_mc3_manifest_util_missing_icon_defaults")
+	var text: String = FileAccess.get_file_as_string("res://data/ui_icons/manifest.json")
+	var manifest: Dictionary = JSON.parse_string(text) as Dictionary
+	_check(not IconManifestUtil.has_icon(manifest, "no_such_icon"), "unknown icon is absent")
+	_check(IconManifestUtil.path_for(manifest, "no_such_icon") == "", "missing path is empty string")
+	_check(IconManifestUtil.size_for(manifest, "no_such_icon") == IconManifestUtil.base_size(manifest),
+		"missing size falls back to base size")
+
+
+# A malformed manifest is rejected without crashing.
+func test_mc3_manifest_util_rejects_malformed() -> void:
+	print("test_mc3_manifest_util_rejects_malformed")
+	_check(not IconManifestUtil.is_valid({}), "empty dict is not a valid manifest")
+	_check(not IconManifestUtil.is_valid({"icons": "not_a_dict"}), "icons must be a Dictionary")
+	_check(IconManifestUtil.icon_names({}) == [], "invalid manifest yields no names")
+	_check(IconManifestUtil.base_size({"base_size": -5}) == IconManifestUtil.DEFAULT_BASE_SIZE,
+		"non-positive base size falls back to default")
+
+
+# IconService loads the bundled manifest and exposes its icons.
+func test_mc3_icon_service_loads_bundled_manifest() -> void:
+	print("test_mc3_icon_service_loads_bundled_manifest")
+	var svc: IconService = IconService.new()
+	svc.load_manifest()
+	_check(IconManifestUtil.is_valid(svc.manifest()), "service loaded a valid manifest")
+	_check(svc.has_icon("move"), "service reports declared icon present")
+	_check(not svc.has_icon("no_such_icon"), "service reports unknown icon absent")
+
+
+# icon_texture never returns null, even for real and unknown names.
+func test_mc3_icon_service_fallback_never_null() -> void:
+	print("test_mc3_icon_service_fallback_never_null")
+	var svc: IconService = IconService.new()
+	svc.load_manifest()
+	_check(svc.icon_texture("move") != null, "declared icon resolves to a texture")
+	_check(svc.icon_texture("no_such_icon") != null, "unknown icon still resolves (fallback glyph)")
+	var tex: Texture2D = svc.icon_texture("no_such_icon")
+	_check(tex.get_width() == IconService.FALLBACK_SIZE, "fallback glyph is the expected size")
+
+
+# The fallback texture is cached, so repeated lookups return the same instance.
+func test_mc3_icon_service_fallback_cached_and_stable() -> void:
+	print("test_mc3_icon_service_fallback_cached_and_stable")
+	var svc: IconService = IconService.new()
+	svc.load_manifest()
+	var a: Texture2D = svc.icon_texture("build")
+	var b: Texture2D = svc.icon_texture("build")
+	_check(a == b, "same logical name returns the cached texture instance")
+	var c: Texture2D = svc.icon_texture("attack")
+	_check(a != c, "different names produce distinct fallback glyphs")
+
+
+# has_real_art is false while placeholder art files are absent on disk.
+func test_mc3_icon_service_has_real_art_false_without_files() -> void:
+	print("test_mc3_icon_service_has_real_art_false_without_files")
+	var svc: IconService = IconService.new()
+	svc.load_manifest()
+	# The manifest declares the paths, but the PNG files are not shipped yet, so
+	# every logical icon must currently resolve to a fallback glyph.
+	var any_real: bool = false
+	for name in IconManifestUtil.icon_names(svc.manifest()):
+		if svc.has_real_art(name):
+			any_real = true
+	_check(not any_real or FileAccess.file_exists("res://assets/ui_icons/move.png"),
+		"has_real_art is false until real art files are added")
+
+
+# Loading a missing manifest degrades to fallback-only without crashing.
+func test_mc3_icon_service_survives_missing_manifest() -> void:
+	print("test_mc3_icon_service_survives_missing_manifest")
+	var svc: IconService = IconService.new()
+	svc.load_manifest("res://data/ui_icons/does_not_exist.json")
+	_check(svc.manifest().is_empty(), "missing manifest leaves an empty dict")
+	_check(not svc.has_icon("move"), "no icons declared without a manifest")
+	_check(svc.icon_texture("move") != null, "still serves a fallback glyph with no manifest")
+
+
+# Static guard: the mobile HUD owns an IconService and applies icons to buttons.
+func test_mc3_mobile_hud_wires_icon_service() -> void:
+	print("test_mc3_mobile_hud_wires_icon_service")
+	var src: String = FileAccess.get_file_as_string("res://ui/mobile/game_hud.gd")
+	_check(src.contains("IconService.new()"), "mobile HUD owns an IconService instance")
+	_check(src.contains("_icons.load_manifest()"), "HUD loads the icon manifest")
+	_check(src.contains("_icons.apply_to_button("), "HUD applies icons to buttons via the service")
+	_check(src.contains("\"move\""), "wires the move icon")
+	_check(src.contains("\"play\""), "wires the play (confirm) icon")
+	_check(src.contains("\"back\""), "wires the back (cancel) icon")
+
+
 # Extract the body of `header` (up to the next top-level func) from GDScript
 # source, for the MB5 static guards.
 func _mb5_func_body(src: String, header: String) -> String:
