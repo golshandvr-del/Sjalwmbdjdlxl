@@ -419,6 +419,9 @@ func _init() -> void:
 	test_mc7_render_resolve_page_scales_authored()
 	test_mc7_render_resolve_page_falls_back_to_default()
 	test_mc7_render_resolve_page_sorted_and_drops_blank()
+	# Phase MC7.4/7.7 (request 8): editor wiring + i18n key coverage.
+	test_mc7_gui_editor_back_route_and_scene_registered()
+	test_mc7_guieditor_i18n_keys_present_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -4885,6 +4888,43 @@ func test_mc7_render_resolve_page_sorted_and_drops_blank() -> void:
 	_check(out.size() == 2, "blank logical_id dropped")
 	_check(str(out[0]["logical_id"]) == "quit", "output sorted (quit < single)")
 	_check(str(out[1]["logical_id"]) == "single", "output sorted second")
+
+
+# MC7.4 (request 8): the GUI editor scene must be reachable and its BACK must
+# route to the main menu, exactly like the other editors. Pure NavService check
+# (no SceneTree) so it runs headless.
+func test_mc7_gui_editor_back_route_and_scene_registered() -> void:
+	print("test_mc7_gui_editor_back_route_and_scene_registered")
+	_check(NavService.GUI_EDITOR == "res://scenes/gui_editor.tscn", "gui editor scene path constant")
+	_check(NavService.PARENTS.has(NavService.GUI_EDITOR), "gui editor registered in nav table")
+	_check(NavService.back_target(NavService.GUI_EDITOR) == NavService.MAIN_MENU, "gui editor back is main menu")
+	_check(not NavService.is_root(NavService.GUI_EDITOR), "gui editor is not root")
+	_check(not NavService.is_in_game(NavService.GUI_EDITOR), "gui editor is not in-game")
+	# The main-menu page in the widget catalog must offer the gui_editor function
+	# so the editor can wire that button.
+	_check(GuiWidgetCatalog.is_allowed(GuiWidgetCatalog.PAGE_MAIN, "gui_editor"), "gui_editor is a main-page function")
+
+
+# MC7.7 (request 8): every ui.guieditor.* key the code references must exist in
+# BOTH locales (parity guards a missing translation crashing an author screen).
+func test_mc7_guieditor_i18n_keys_present_in_all_locales() -> void:
+	print("test_mc7_guieditor_i18n_keys_present_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	var required: Array = [
+		"ui.guieditor.title", "ui.guieditor.pages", "ui.guieditor.widgets",
+		"ui.guieditor.new", "ui.guieditor.save", "ui.guieditor.export",
+		"ui.guieditor.import", "ui.guieditor.add_widget", "ui.guieditor.remove_widget",
+		"ui.guieditor.rename", "ui.guieditor.background", "ui.guieditor.drag_hint",
+		"ui.guieditor.catalog_bad_id", "ui.guieditor.catalog_no_pages",
+		"ui.guieditor.save_invalid", "ui.guieditor.save_io", "ui.guieditor.load_missing",
+		"ui.guieditor.load_io", "ui.guieditor.load_malformed",
+		"ui.guieditor.video_blank", "ui.guieditor.video_format",
+		"ui.guieditor.video_too_long", "ui.guieditor.video_too_big",
+	]
+	for key in required:
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
