@@ -354,6 +354,18 @@ func _init() -> void:
 	test_mc5_autosave_parse_rejects_malformed()
 	test_mc5_autosave_should_offer_recovery()
 	test_mc5_autosave_throttle_blocks_rapid_saves()
+	# Phase MC3 (request 3): data-driven UI icon manifest + service with fallback.
+	test_mc3_manifest_is_valid_and_shaped()
+	test_mc3_manifest_util_names_sorted_and_present()
+	test_mc3_manifest_util_path_and_size_lookup()
+	test_mc3_manifest_util_missing_icon_defaults()
+	test_mc3_manifest_util_rejects_malformed()
+	test_mc3_icon_service_loads_bundled_manifest()
+	test_mc3_icon_service_fallback_never_null()
+	test_mc3_icon_service_fallback_cached_and_stable()
+	test_mc3_icon_service_has_real_art_false_without_files()
+	test_mc3_icon_service_survives_missing_manifest()
+	test_mc3_mobile_hud_wires_icon_service()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
