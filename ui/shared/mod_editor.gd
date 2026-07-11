@@ -124,6 +124,11 @@ func _ready() -> void:
 	# very first edit has a baseline to fall back to.
 	_record_history()
 
+	# MC6.4 (req7): before editing anything, ask which mod to edit (or start a new
+	# one). If nothing is on disk yet the chooser is skipped -- a fresh project is
+	# already loaded above, so the author lands straight in the editor.
+	_open_choice_dialog()
+
 
 # --- UI construction --------------------------------------------------------
 
