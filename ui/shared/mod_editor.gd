@@ -92,6 +92,11 @@ var _name_dialog: AcceptDialog
 var _name_dialog_edit: LineEdit
 var _build_dialog: AcceptDialog
 var _file_dialog: FileDialog
+# MC6.4 (req7): "which mod do you want to edit?" chooser shown on open. It lists
+# the editable mods discovered on disk plus a "new mod" option; picking a mod
+# opens its pack, picking "new mod" starts a fresh project.
+var _choice_dialog: AcceptDialog
+var _choice_paths: Array = []
 
 # The stat-value spinboxes currently on screen, keyed by "part:<i>:<stat>" so a
 # value edit can find its way back into the right part. Rebuilt every render.
