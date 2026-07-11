@@ -366,6 +366,16 @@ func _init() -> void:
 	test_mc3_icon_service_has_real_art_false_without_files()
 	test_mc3_icon_service_survives_missing_manifest()
 	test_mc3_mobile_hud_wires_icon_service()
+	# Phase MC4 (request 5): cosmetic animation events (projectile/explosion).
+	test_mc4_anim_starts_empty()
+	test_mc4_anim_spawn_projectile_and_explosion()
+	test_mc4_anim_maps_attack_event()
+	test_mc4_anim_maps_death_events()
+	test_mc4_anim_ignores_unknown_event()
+	test_mc4_anim_resolves_explicit_tile_payload()
+	test_mc4_anim_advance_expires_events()
+	test_mc4_anim_clear_and_ids_monotonic()
+	test_mc4_anim_does_not_affect_state_hash()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -4165,6 +4175,114 @@ func test_mc2_fog_snapshot_does_not_affect_state_hash() -> void:
 	var h_after: int = StateHasher.hash_variant(world)
 	_check(h_before == h_after, "observing a snapshot never mutates or rehashes the world")
 	_check(snap.size() > 0, "snapshot did record memory (guard: the observe actually ran)")
+
+
+# --- Phase MC4 (request 5): cosmetic animation events -----------------------
+func test_mc4_anim_starts_empty() -> void:
+	print("test_mc4_anim_starts_empty")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	_check(anim.active_count() == 0, "fresh util has no active animations")
+	_check(anim.active_events().is_empty(), "no active events listed")
+
+
+func test_mc4_anim_spawn_projectile_and_explosion() -> void:
+	print("test_mc4_anim_spawn_projectile_and_explosion")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	var p: Dictionary = anim.spawn_projectile(Vector2i(1, 1), Vector2i(4, 2), 0)
+	_check(p.get("kind", "") == AnimationEventUtil.ANIM_PROJECTILE, "projectile kind set")
+	_check(p.get("from", Vector2i.ZERO) == Vector2i(1, 1), "projectile from tile")
+	_check(p.get("to", Vector2i.ZERO) == Vector2i(4, 2), "projectile to tile")
+	var e: Dictionary = anim.spawn_explosion(Vector2i(4, 2), 1)
+	_check(e.get("kind", "") == AnimationEventUtil.ANIM_EXPLOSION, "explosion kind set")
+	_check(e.get("from", Vector2i.ZERO) == Vector2i(4, 2), "explosion at tile")
+	_check(anim.active_count() == 2, "two animations active")
+
+
+func test_mc4_anim_maps_attack_event() -> void:
+	print("test_mc4_anim_maps_attack_event")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	var lookup: Callable = func(id: int) -> Vector2i:
+		if id == 7:
+			return Vector2i(2, 0)
+		return Vector2i(5, 5)
+	var ev: Dictionary = anim.on_sim_event(
+		AnimationEventUtil.SIM_EVENT_ATTACK,
+		{ "attacker": 7, "target": 9, "owner": 3 }, lookup)
+	_check(ev.get("kind", "") == AnimationEventUtil.ANIM_PROJECTILE, "attack -> projectile")
+	_check(ev.get("from", Vector2i.ZERO) == Vector2i(2, 0), "attacker tile resolved via lookup")
+	_check(ev.get("to", Vector2i.ZERO) == Vector2i(5, 5), "target tile resolved via lookup")
+	_check(int(ev.get("owner", -1)) == 3, "owner carried through")
+
+
+func test_mc4_anim_maps_death_events() -> void:
+	print("test_mc4_anim_maps_death_events")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	var lookup: Callable = func(id: int) -> Vector2i:
+		return Vector2i(3, 3)
+	var u: Dictionary = anim.on_sim_event(
+		AnimationEventUtil.SIM_EVENT_UNIT_DIED, { "id": 1, "owner": 2 }, lookup)
+	_check(u.get("kind", "") == AnimationEventUtil.ANIM_EXPLOSION, "unit death -> explosion")
+	var b: Dictionary = anim.on_sim_event(
+		AnimationEventUtil.SIM_EVENT_BUILDING_DESTROYED, { "id": 2, "owner": 2 }, lookup)
+	_check(b.get("kind", "") == AnimationEventUtil.ANIM_EXPLOSION, "building destroyed -> explosion")
+	_check(anim.active_count() == 2, "both deaths produced an animation")
+
+
+func test_mc4_anim_ignores_unknown_event() -> void:
+	print("test_mc4_anim_ignores_unknown_event")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	var none: Dictionary = anim.on_sim_event("economy.gold_changed", { "amount": 5 })
+	_check(none.is_empty(), "unrelated sim event produces no animation")
+	_check(anim.active_count() == 0, "no animation enqueued for unknown event")
+
+
+func test_mc4_anim_resolves_explicit_tile_payload() -> void:
+	print("test_mc4_anim_resolves_explicit_tile_payload")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	# Payload with explicit tile coords (array form) and no lookup Callable.
+	var ev: Dictionary = anim.on_sim_event(
+		AnimationEventUtil.SIM_EVENT_ATTACK,
+		{ "from": [1, 2], "to": [3, 4], "owner": 0 })
+	_check(ev.get("from", Vector2i.ZERO) == Vector2i(1, 2), "explicit from tile used")
+	_check(ev.get("to", Vector2i.ZERO) == Vector2i(3, 4), "explicit to tile used")
+
+
+func test_mc4_anim_advance_expires_events() -> void:
+	print("test_mc4_anim_advance_expires_events")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	anim.spawn_projectile(Vector2i.ZERO, Vector2i(1, 1), 0, 0.2)
+	anim.spawn_explosion(Vector2i(2, 2), 0, 0.5)
+	_check(anim.active_count() == 2, "two animations before advancing")
+	var ended: int = anim.advance(0.3)
+	_check(ended == 1, "the 0.2s projectile expired after 0.3s")
+	_check(anim.active_count() == 1, "explosion still alive")
+	anim.advance(0.5)
+	_check(anim.active_count() == 0, "explosion expired after enough time")
+
+
+func test_mc4_anim_clear_and_ids_monotonic() -> void:
+	print("test_mc4_anim_clear_and_ids_monotonic")
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	var a: Dictionary = anim.spawn_explosion(Vector2i.ZERO, 0)
+	var b: Dictionary = anim.spawn_explosion(Vector2i.ONE, 0)
+	_check(int(b.get("id", -1)) > int(a.get("id", -1)), "ids are monotonic")
+	anim.clear()
+	_check(anim.active_count() == 0, "clear removes all animations")
+
+
+func test_mc4_anim_does_not_affect_state_hash() -> void:
+	print("test_mc4_anim_does_not_affect_state_hash")
+	# Animation events are cosmetic: producing them never touches hashed state.
+	var world: Dictionary = {
+		"units": { "u1": { "x": 1, "y": 1, "owner": 0, "hp": 10 } },
+		"buildings": {},
+	}
+	var h_before: int = StateHasher.hash_variant(world)
+	var anim: AnimationEventUtil = AnimationEventUtil.new()
+	anim.on_sim_event(AnimationEventUtil.SIM_EVENT_UNIT_DIED, { "id": 1, "owner": 0, "at": [1, 1] })
+	anim.advance(1.0)
+	var h_after: int = StateHasher.hash_variant(world)
+	_check(h_before == h_after, "animations never mutate or rehash the world")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
