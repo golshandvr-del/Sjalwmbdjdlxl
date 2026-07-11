@@ -115,6 +115,9 @@ func _ready() -> void:
 
 	_build_ui()
 	_refresh_all()
+	# MC5.3 (req6): seed the undo stack with the freshly-created project so the
+	# very first edit has a baseline to fall back to.
+	_record_history()
 
 
 # --- UI construction --------------------------------------------------------
@@ -975,6 +978,9 @@ func _on_image_selected(path: String) -> void:
 func _on_new() -> void:
 	_project.new_project("new_mod", "New Mod")
 	_selected_id = ""
+	# MC5.3 (req6): a brand-new project starts a fresh undo timeline.
+	_history.clear()
+	_record_history()
 	_set_status(_loc.t("ui.modeditor.status.new"))
 	_refresh_all()
 
