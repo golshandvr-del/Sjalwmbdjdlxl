@@ -329,6 +329,7 @@ func _init() -> void:
 	test_mc1_move_mode_cancel_clears_pending()
 	test_mc1_move_mode_no_selection_is_noop()
 	test_mc1_move_keys_localized_in_all_locales()
+	test_mc1_desktop_hud_wires_move_mode()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3808,6 +3809,25 @@ func test_mc1_move_keys_localized_in_all_locales() -> void:
 	for key in required:
 		_check(en.has(key), "en has '%s'" % key)
 		_check(fa.has(key), "fa has '%s'" % key)
+
+
+# MC1.5 (request 1): the desktop HUD must share the SAME MoveModeUtil-driven
+# two-mode movement as the mobile HUD (direct vs manual waypoint routing), so the
+# two never diverge. Static source guard -- the desktop HUD depends on the Nexus
+# autoload + a live SceneTree, so it cannot be instantiated headlessly; instead we
+# assert the wiring is present in the source.
+func test_mc1_desktop_hud_wires_move_mode() -> void:
+	print("test_mc1_desktop_hud_wires_move_mode")
+	var src: String = FileAccess.get_file_as_string("res://ui/desktop/desktop_hud.gd")
+	_check(src.contains("MoveModeUtil.new()"), "desktop HUD owns a MoveModeUtil instance")
+	_check(src.contains("_move_mode.resolve_ground_tap("), "right-click routes through MoveModeUtil")
+	_check(src.contains("MoveModeUtil.ACTION_MOVE_DIRECT"), "handles direct-move plan")
+	_check(src.contains("MoveModeUtil.ACTION_ADD_WAYPOINT"), "handles manual waypoint plan")
+	_check(src.contains("_move_mode.commit()"), "confirm commits the manual route")
+	_check(src.contains("_move_mode.cancel()"), "cancel discards the pending route")
+	_check(src.contains("\"waypoints\": plan.get(\"waypoints\""), "commit issues a waypoint move_unit")
+	_check(src.contains("KEY_M"), "M hotkey toggles move mode")
+	_check(src.contains("KEY_ENTER"), "Enter hotkey confirms the route")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
