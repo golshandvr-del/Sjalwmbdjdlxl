@@ -628,6 +628,52 @@ func _update_select_button() -> void:
 	_select_button.text = _local_text("ui.game.select_mode")
 
 
+# --- MC1.5 (request 1): direct / manual move-mode controls ------------------
+
+# Toggle DIRECT <-> MANUAL. Switching modes discards any half-plotted route
+# (handled inside MoveModeUtil.toggle_mode).
+func _on_move_mode_pressed() -> void:
+	_move_mode.toggle_mode()
+	_update_move_mode_buttons()
+
+
+# Confirm the plotted route: issue ONE move_unit carrying the whole waypoint
+# array. units_module stitches the belief-aware path (WaypointUtil), so the unit
+# travels exactly through the drawn tiles. Routed through player_command so it is
+# lockstep-scheduled in a networked session (MA7.1), else applied immediately.
+func _on_move_confirm_pressed() -> void:
+	var plan: Dictionary = _move_mode.commit()
+	if str(plan.get("action", "")) == MoveModeUtil.ACTION_MOVE_PATH and not _selected_unit_ids.is_empty():
+		Nexus.player_command("move_unit", {
+			"unit_ids": _selected_unit_ids.duplicate(),
+			"waypoints": plan.get("waypoints", []),
+		}, 1)
+	_update_move_mode_buttons()
+
+
+# Cancel the plotted route without moving.
+func _on_move_cancel_pressed() -> void:
+	_move_mode.cancel()
+	_update_move_mode_buttons()
+
+
+# Refresh the move-mode buttons: the toggle shows the active mode; Confirm/Cancel
+# are visible only in MANUAL mode and enabled only when a route is pending.
+func _update_move_mode_buttons() -> void:
+	if _move_mode_button != null:
+		_move_mode_button.button_pressed = _move_mode.is_manual()
+		var mode_key: String = "ui.move.mode_manual" if _move_mode.is_manual() else "ui.move.mode_direct"
+		_move_mode_button.text = _local_text(mode_key)
+	var manual: bool = _move_mode.is_manual()
+	var has_pending: bool = _move_mode.has_pending()
+	if _move_confirm_button != null:
+		_move_confirm_button.visible = manual
+		_move_confirm_button.disabled = not has_pending
+	if _move_cancel_button != null:
+		_move_cancel_button.visible = manual
+		_move_cancel_button.disabled = not has_pending
+
+
 # Return the ids of every unit owned by `owner_filter` whose tile lies inside the
 # screen-space rectangle defined by the two corner points. Thin wrapper that
 # reads the live world state + adapter, then delegates to the shared, pure
