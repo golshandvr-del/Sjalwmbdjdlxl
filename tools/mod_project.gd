@@ -217,6 +217,37 @@ func set_unit(id: String, definition: Dictionary) -> bool:
 	return true
 
 
+# MC4.2 (request 5): attach/replace the OPTIONAL cosmetic animation block on a
+# unit or building's graphic. Kind is "unit" or "building". Returns true when
+# the entity exists and the block was written. The animation block round-trips
+# through to_snapshot/from_snapshot automatically (deep copy).
+func set_animation(kind: String, id: String, animation: Dictionary) -> bool:
+	var clean: String = normalise_id(id)
+	if clean == "":
+		return false
+	var table: Dictionary = units if kind == "unit" else buildings
+	if not table.has(clean):
+		return false
+	var def: Dictionary = table[clean]
+	if not (def.get("graphic") is Dictionary):
+		def["graphic"] = GraphicModel.default_graphic()
+	(def["graphic"] as Dictionary)["animation"] = animation.duplicate(true)
+	return true
+
+
+# MC4.2: read back an entity's animation block (empty Dictionary if none).
+func get_animation(kind: String, id: String) -> Dictionary:
+	var clean: String = normalise_id(id)
+	var table: Dictionary = units if kind == "unit" else buildings
+	if not table.has(clean):
+		return {}
+	var g: Variant = (table[clean] as Dictionary).get("graphic", {})
+	if not (g is Dictionary):
+		return {}
+	var anim: Variant = (g as Dictionary).get("animation", {})
+	return (anim as Dictionary) if anim is Dictionary else {}
+
+
 func remove_unit(id: String) -> bool:
 	var clean: String = normalise_id(id)
 	if units.has(clean):
