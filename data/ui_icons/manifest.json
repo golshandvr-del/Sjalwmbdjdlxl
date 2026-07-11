@@ -1,0 +1,24 @@
+{
+	"schema": "nexus_ui_icons_v1",
+	"base_size": 128,
+	"note": "Logical icon name -> file path (res:// or user://) + intended square size in px. IconService loads the file if present and falls back to a built-in drawn glyph otherwise, so the game never breaks when an art file is missing. Replace the placeholder files with real PNG-32bit-with-alpha art per docs/ASSET_PROMPTS_fa.md.",
+	"icons": {
+		"select": { "path": "res://assets/ui_icons/select.png", "size": 128 },
+		"assign": { "path": "res://assets/ui_icons/assign.png", "size": 128 },
+		"move": { "path": "res://assets/ui_icons/move.png", "size": 128 },
+		"move_manual": { "path": "res://assets/ui_icons/move_manual.png", "size": 128 },
+		"attack": { "path": "res://assets/ui_icons/attack.png", "size": 128 },
+		"stop": { "path": "res://assets/ui_icons/stop.png", "size": 128 },
+		"zoom_in": { "path": "res://assets/ui_icons/zoom_in.png", "size": 128 },
+		"zoom_out": { "path": "res://assets/ui_icons/zoom_out.png", "size": 128 },
+		"settings_gear": { "path": "res://assets/ui_icons/settings_gear.png", "size": 128 },
+		"pause": { "path": "res://assets/ui_icons/pause.png", "size": 128 },
+		"play": { "path": "res://assets/ui_icons/play.png", "size": 128 },
+		"back": { "path": "res://assets/ui_icons/back.png", "size": 128 },
+		"message": { "path": "res://assets/ui_icons/message.png", "size": 128 },
+		"build": { "path": "res://assets/ui_icons/build.png", "size": 128 },
+		"minimap": { "path": "res://assets/ui_icons/minimap.png", "size": 128 },
+		"undo": { "path": "res://assets/ui_icons/undo.png", "size": 128 },
+		"redo": { "path": "res://assets/ui_icons/redo.png", "size": 128 }
+	}
+}
