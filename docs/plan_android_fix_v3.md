@@ -188,7 +188,7 @@
 
 ---
 
-## فاز MC5 — autosave + undo/redo در map/mod editor (درخواست ۶) 🟠
+## فاز MC5 — autosave + undo/redo در map/mod editor (درخواست ۶) ✅ (انجام شد)
 
 **هدف:** جلوگیری از گم‌شدنِ کارِ کاربر + تاریخچه‌ی ویرایش.
 
