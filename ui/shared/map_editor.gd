@@ -44,6 +44,11 @@ var _storage: StorageService = null
 var _history: EditHistoryUtil = EditHistoryUtil.new()
 var _restoring: bool = false
 
+# MC5.4 (request 6): throttled autosave of the scenario draft to
+# user://autosave/map.autosave.json so an unexpected exit never loses work; on
+# the next entry the editor offers to recover it. Cosmetic to the sim.
+var _autosave: AutosaveUtil = AutosaveUtil.new()
+
 var _active_tool: String = TOOL_WALL
 var _active_owner: int = 0
 # The unit/building type the place tools spawn (kept simple for the core editor).
@@ -269,6 +274,40 @@ func _after_edit(status_key: String) -> void:
 	_refresh_grid()
 	# MC5.2 (request 6): capture the post-edit state so it can be undone. Skipped
 	# while we are restoring a snapshot to avoid recording the restore itself.
+	_record_history()
+	# MC5.4 (request 6): throttled autosave of the current draft (no-op while
+	# restoring, and rate-limited so rapid edits do not thrash the disk).
+	_maybe_autosave()
+
+
+# --- Autosave (MC5.4, request 6) --------------------------------------------
+
+# Persist the current scenario as the rolling "map" autosave draft, throttled by
+# AutosaveUtil so a burst of edits writes at most once per interval. No-op during
+# a restore (undo/redo should not overwrite the recovery draft with itself).
+func _maybe_autosave() -> void:
+	if _restoring or _project == null:
+		return
+	_autosave.maybe_autosave(AutosaveUtil.KIND_MAP, _project.to_scenario())
+
+
+# Offer to recover a previous autosave draft if one is present and non-empty.
+# Returns the recovered scenario snapshot (Dictionary) or an empty Dictionary
+# when there is nothing to recover. The caller decides whether to apply it.
+func peek_autosave_recovery() -> Dictionary:
+	var parsed: Dictionary = _autosave.read_snapshot(AutosaveUtil.KIND_MAP)
+	if not AutosaveUtil.should_offer_recovery(parsed, AutosaveUtil.KIND_MAP):
+		return {}
+	return parsed.get("snapshot", {}) as Dictionary
+
+
+# Apply a recovered scenario snapshot into the project (used after the recovery
+# prompt is accepted). Seeds history so the recovered state is undoable.
+func apply_autosave_recovery(snapshot: Dictionary) -> void:
+	if snapshot.is_empty() or _project == null:
+		return
+	_restore_snapshot(snapshot)
+	_history.clear()
 	_record_history()
 
 
