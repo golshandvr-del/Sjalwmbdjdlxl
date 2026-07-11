@@ -360,6 +360,10 @@ func _init() -> void:
 	test_mc6_active_mod_sanitise_drops_missing()
 	test_mc6_active_mod_toggle()
 	test_mc6_active_mod_resolve_main()
+	# Phase MC6.2 (request 7): active_mods/main_mod persistence in GameSettings.
+	test_mc6_settings_active_mods_default_empty()
+	test_mc6_settings_active_mods_setters_and_validation()
+	test_mc6_settings_active_mods_persist_round_trip()
 	# Phase MC3 (request 3): data-driven UI icon manifest + service with fallback.
 	test_mc3_manifest_is_valid_and_shaped()
 	test_mc3_manifest_util_names_sorted_and_present()
@@ -4148,6 +4152,69 @@ func test_mc6_active_mod_resolve_main() -> void:
 	_check(ActiveModUtil.resolve_main("bravo", ["alpha"], discovered) == "", "main not enabled -> empty")
 	_check(ActiveModUtil.resolve_main("ghost", ["ghost"], discovered) == "", "main not on disk -> empty")
 	_check(ActiveModUtil.resolve_main("", ["alpha"], discovered) == "", "empty main id -> empty")
+
+
+# --- Phase MC6.2 (request 7): active_mods/main_mod persistence --------------
+# GameSettings now stores the ENABLED mod ids + the chosen MAIN mod so the
+# selection survives across sessions. These tests pin the defaults, the
+# validated setters, and the JSON disk round-trip (the same durability contract
+# the other settings enjoy). Reconciliation against disk is ActiveModUtil's job
+# (already covered above), so here we only prove raw storage fidelity.
+
+func test_mc6_settings_active_mods_default_empty() -> void:
+	print("test_mc6_settings_active_mods_default_empty")
+	var s: GameSettings = _new_settings()
+	s.ensure_defaults()
+	_check(s.get_active_mods() == [], "active_mods empty by default")
+	_check(s.get_main_mod() == "", "main_mod empty by default")
+	# The getter must hand back a private copy: mutating it never leaks into state.
+	var borrowed: Array = s.get_active_mods()
+	borrowed.append("intruder")
+	_check(s.get_active_mods() == [], "get_active_mods returns a defensive copy")
+
+
+func test_mc6_settings_active_mods_setters_and_validation() -> void:
+	print("test_mc6_settings_active_mods_setters_and_validation")
+	var s: GameSettings = _new_settings()
+	s.ensure_defaults()
+	# A clean String array is accepted and stored verbatim (order preserved).
+	_check(s.set_active_mods(["bravo", "alpha"]), "string-array active_mods accepted")
+	_check(s.get_active_mods() == ["bravo", "alpha"], "active_mods stored verbatim")
+	# Setting the main mod (any String, including "" to clear) is accepted.
+	_check(s.set_main_mod("bravo"), "main_mod accepted")
+	_check(s.get_main_mod() == "bravo", "main_mod stored")
+	_check(s.set_main_mod(""), "empty main_mod (clear) accepted")
+	_check(s.get_main_mod() == "", "main_mod cleared")
+	# A non-string element is rejected WITHOUT corrupting the current value.
+	_check(s.set_active_mods(["bravo"]), "reset active_mods for reject test")
+	_check(not s.set_active_mods(["ok", 123]), "non-string element rejected")
+	_check(s.get_active_mods() == ["bravo"], "active_mods unchanged after bad write")
+	# An empty list is a valid selection.
+	_check(s.set_active_mods([]), "empty active_mods accepted")
+	_check(s.get_active_mods() == [], "active_mods cleared")
+
+
+func test_mc6_settings_active_mods_persist_round_trip() -> void:
+	print("test_mc6_settings_active_mods_persist_round_trip")
+	var path: String = _temp_settings_path()
+	var s: GameSettings = _new_settings()
+	s.set_active_mods(["alpha", "charlie"])
+	s.set_main_mod("charlie")
+	_check(s.save_to_file(path), "settings with active mods saved")
+
+	var loaded: GameSettings = _new_settings()
+	_check(loaded.load_from_file(path), "settings with active mods loaded")
+	_check(loaded.get_active_mods() == ["alpha", "charlie"], "active_mods persisted")
+	_check(loaded.get_main_mod() == "charlie", "main_mod persisted")
+	# A structurally valid file with a corrupt active_mods field falls back safely.
+	var g: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	g.store_string(JSON.stringify({"active_mods": "not-a-list", "main_mod": 42}))
+	g.close()
+	var s2: GameSettings = _new_settings()
+	_check(s2.load_from_file(path), "partially-valid mod file loads")
+	_check(s2.get_active_mods() == [], "corrupt active_mods defaulted")
+	_check(s2.get_main_mod() == "", "corrupt main_mod defaulted")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 # --- Phase MC2 (request 2): three-state fog "last image" memory -------------
