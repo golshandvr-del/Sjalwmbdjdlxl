@@ -76,6 +76,9 @@ func _ready() -> void:
 	_status_label = get_node_or_null("Root/Footer/StatusLabel")
 	_wire_controls()
 	_refresh_all()
+	# MC5.2 (request 6): seed the history with the initial (empty) scenario so the
+	# very first edit has a baseline state to undo back to.
+	_record_history()
 
 
 # --- Control wiring (defensive: only connects nodes that exist) -------------
@@ -94,6 +97,10 @@ func _wire_controls() -> void:
 	_connect_button("Root/Footer/SaveButton", _on_save)
 	_connect_button("Root/Footer/PlaytestButton", _on_playtest)
 	_connect_button("Root/Footer/BackButton", _on_back)
+	# MC5.2 (request 6): optional toolbar undo/redo buttons (present when the scene
+	# provides them; the keyboard actions below work regardless).
+	_connect_button("Root/Body/Tools/UndoButton", _do_undo)
+	_connect_button("Root/Body/Tools/RedoButton", _do_redo)
 	if _grid != null and _grid.has_signal("cell_clicked"):
 		_grid.connect("cell_clicked", Callable(self, "_on_cell_clicked"))
 
@@ -157,6 +164,9 @@ func _on_new() -> void:
 	_project.new_scenario("new_scenario", "New Scenario")
 	_set_status(_loc.t("ui.mapeditor.status.new"))
 	_refresh_all()
+	# MC5.2 (request 6): a fresh scenario resets the undo history to a new baseline.
+	_history.clear()
+	_record_history()
 
 
 func _on_save() -> void:
@@ -241,6 +251,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and is_inside_tree():
 		get_viewport().set_input_as_handled()
 		_on_back()
+		return
+	# MC5.2 (request 6): keyboard undo/redo (Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z).
+	if event.is_action_pressed("ui_undo") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_do_undo()
+		return
+	if event.is_action_pressed("ui_redo") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_do_redo()
 
 
 # --- Rendering --------------------------------------------------------------
@@ -248,6 +267,51 @@ func _unhandled_input(event: InputEvent) -> void:
 func _after_edit(status_key: String) -> void:
 	_set_status(_loc.t("ui.mapeditor.status." + status_key))
 	_refresh_grid()
+	# MC5.2 (request 6): capture the post-edit state so it can be undone. Skipped
+	# while we are restoring a snapshot to avoid recording the restore itself.
+	_record_history()
+
+
+# --- Undo / redo (MC5.2, request 6) -----------------------------------------
+
+# Push a snapshot of the current scenario onto the history stack. No-op while a
+# restore is in progress (the `_restoring` guard) so undo/redo do not fork the
+# future.
+func _record_history() -> void:
+	if _restoring:
+		return
+	_history.push(_project.to_scenario())
+
+
+# Step back one edit, restoring the scenario to its previous state.
+func _do_undo() -> void:
+	if not _history.can_undo():
+		_set_status(_loc.t("ui.mapeditor.status.undo_none"))
+		return
+	var snap: Variant = _history.undo()
+	_restore_snapshot(snap)
+	_set_status(_loc.t("ui.mapeditor.status.undo"))
+
+
+# Re-apply an undone edit.
+func _do_redo() -> void:
+	if not _history.can_redo():
+		_set_status(_loc.t("ui.mapeditor.status.redo_none"))
+		return
+	var snap: Variant = _history.redo()
+	_restore_snapshot(snap)
+	_set_status(_loc.t("ui.mapeditor.status.redo"))
+
+
+# Load a stored snapshot back into the project without recording a new history
+# entry (guarded so `_after_edit` -> `_record_history` becomes a no-op).
+func _restore_snapshot(snapshot: Variant) -> void:
+	if not (snapshot is Dictionary):
+		return
+	_restoring = true
+	_project.from_scenario(snapshot)
+	_restoring = false
+	_refresh_all()
 
 
 func _refresh_all() -> void:
@@ -271,6 +335,8 @@ func _refresh_labels() -> void:
 	_set_text("Root/Body/Tools/FillButton", _loc.t("ui.mapeditor.tool.fill"))
 	_set_text("Root/Body/Tools/BorderButton", _loc.t("ui.mapeditor.tool.border"))
 	_set_text("Root/Body/Tools/ClearButton", _loc.t("ui.mapeditor.tool.clear"))
+	_set_text("Root/Body/Tools/UndoButton", _loc.t("ui.mapeditor.tool.undo"))
+	_set_text("Root/Body/Tools/RedoButton", _loc.t("ui.mapeditor.tool.redo"))
 	_set_text("Root/Footer/NewButton", _loc.t("ui.mapeditor.new"))
 	_set_text("Root/Footer/SaveButton", _loc.t("ui.mapeditor.save"))
 	_set_text("Root/Footer/PlaytestButton", _loc.t("ui.mapeditor.playtest"))
