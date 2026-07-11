@@ -376,6 +376,13 @@ func _init() -> void:
 	test_mc4_anim_advance_expires_events()
 	test_mc4_anim_clear_and_ids_monotonic()
 	test_mc4_anim_does_not_affect_state_hash()
+	# Phase MC4.2 (request 5): animation sprite fields + round-trip.
+	test_mc4_graphic_default_animation_valid()
+	test_mc4_graphic_animation_optional()
+	test_mc4_graphic_animation_rejects_bad_ranges()
+	test_mc4_graphic_has_sprite_flags()
+	test_mc4_modproject_animation_roundtrip()
+	test_mc4_modproject_animation_missing_entity()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -4283,6 +4290,70 @@ func test_mc4_anim_does_not_affect_state_hash() -> void:
 	anim.advance(1.0)
 	var h_after: int = StateHasher.hash_variant(world)
 	_check(h_before == h_after, "animations never mutate or rehash the world")
+
+
+# --- Phase MC4.2 (request 5): animation sprite fields + round-trip ----------
+func test_mc4_graphic_default_animation_valid() -> void:
+	print("test_mc4_graphic_default_animation_valid")
+	var anim: Dictionary = GraphicModel.default_animation()
+	_check(GraphicModel.validate_animation(anim).is_empty(), "default animation block validates")
+	_check(anim.has("projectile") and anim.has("explosion"), "default has projectile + explosion")
+
+
+func test_mc4_graphic_animation_optional() -> void:
+	print("test_mc4_graphic_animation_optional")
+	# A graphic with no animation block is still valid (optional field).
+	var g: Dictionary = GraphicModel.default_graphic()
+	_check(GraphicModel.validate(g).is_empty(), "graphic without animation is valid")
+	_check(GraphicModel.validate_animation(null).is_empty(), "null animation is valid (absent)")
+	_check(not GraphicModel.has_projectile_sprite(g), "no projectile sprite by default graphic")
+	_check(not GraphicModel.has_explosion_sprite(g), "no explosion sprite by default graphic")
+
+
+func test_mc4_graphic_animation_rejects_bad_ranges() -> void:
+	print("test_mc4_graphic_animation_rejects_bad_ranges")
+	var bad: Dictionary = {
+		"projectile": { "texture": "p.png", "px": { "w": 4, "h": 4 } },
+		"explosion": { "texture": "e.png", "frames": 999, "fps": 0, "px": { "w": 64, "h": 64 } },
+	}
+	var problems: Array = GraphicModel.validate_animation(bad)
+	_check(problems.size() >= 3, "bad px + frames + fps all flagged")
+
+
+func test_mc4_graphic_has_sprite_flags() -> void:
+	print("test_mc4_graphic_has_sprite_flags")
+	var g: Dictionary = GraphicModel.default_graphic()
+	g["animation"] = {
+		"projectile": { "texture": "shot.png", "px": { "w": 16, "h": 16 } },
+		"explosion": { "texture": "", "frames": 8, "fps": 12, "px": { "w": 64, "h": 64 } },
+	}
+	_check(GraphicModel.has_projectile_sprite(g), "projectile sprite detected when texture set")
+	_check(not GraphicModel.has_explosion_sprite(g), "explosion sprite absent when texture blank")
+	_check(GraphicModel.validate(g).is_empty(), "graphic with partial animation still valid")
+
+
+func test_mc4_modproject_animation_roundtrip() -> void:
+	print("test_mc4_modproject_animation_roundtrip")
+	var mp: ModProject = ModProject.new()
+	mp.set_unit("tank", ModProject.default_unit("tank"))
+	var anim: Dictionary = GraphicModel.default_animation()
+	anim["projectile"]["texture"] = "tank_shot.png"
+	_check(mp.set_animation("unit", "tank", anim), "animation attached to unit")
+	# Snapshot round-trip preserves the animation block.
+	var snap: Dictionary = mp.to_snapshot()
+	var mp2: ModProject = ModProject.new()
+	_check(mp2.from_snapshot(snap), "snapshot restored")
+	var back: Dictionary = mp2.get_animation("unit", "tank")
+	_check(str(back.get("projectile", {}).get("texture", "")) == "tank_shot.png",
+		"projectile texture survives snapshot round-trip")
+
+
+func test_mc4_modproject_animation_missing_entity() -> void:
+	print("test_mc4_modproject_animation_missing_entity")
+	var mp: ModProject = ModProject.new()
+	_check(not mp.set_animation("unit", "ghost", GraphicModel.default_animation()),
+		"cannot attach animation to a non-existent entity")
+	_check(mp.get_animation("unit", "ghost").is_empty(), "no animation for missing entity")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
