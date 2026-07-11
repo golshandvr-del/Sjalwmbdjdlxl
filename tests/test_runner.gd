@@ -354,6 +354,12 @@ func _init() -> void:
 	test_mc5_autosave_parse_rejects_malformed()
 	test_mc5_autosave_should_offer_recovery()
 	test_mc5_autosave_throttle_blocks_rapid_saves()
+	# Phase MC6 (request 7): active-mod selection logic (ActiveModUtil).
+	test_mc6_active_mod_list_sorted_and_flags()
+	test_mc6_active_mod_ignores_invalid_manifests()
+	test_mc6_active_mod_sanitise_drops_missing()
+	test_mc6_active_mod_toggle()
+	test_mc6_active_mod_resolve_main()
 	# Phase MC3 (request 3): data-driven UI icon manifest + service with fallback.
 	test_mc3_manifest_is_valid_and_shaped()
 	test_mc3_manifest_util_names_sorted_and_present()
@@ -4062,6 +4068,86 @@ func test_mc5_autosave_throttle_blocks_rapid_saves() -> void:
 	_check(au.should_autosave_now(AutosaveUtil.KIND_MOD, 105.0), "different kind has its own clock")
 	au.reset_throttle(AutosaveUtil.KIND_MAP)
 	_check(au.should_autosave_now(AutosaveUtil.KIND_MAP, 121.0), "reset lets the next save through")
+
+
+# --- Phase MC6 (request 7): active-mod selection logic ----------------------
+# ActiveModUtil turns ModLoader.discover_mods() output into a stable UI list and
+# owns the enable/main-mod selection logic. It is pure + deterministic (sorted
+# by id) and fail-safe: a persisted selection that names a mod no longer on disk
+# is silently dropped. These checks pin listing, sanitising, toggling, and the
+# effective-main resolution.
+
+func _mc6_discovered() -> Array:
+	# Three mods on disk; one carries a display name, one is disabled by manifest.
+	return [
+		{ "id": "bravo", "name": "Bravo Pack", "enabled": true },
+		{ "id": "alpha", "display_name_key": "mod.alpha.name", "enabled": true },
+		{ "id": "charlie", "enabled": false },
+	]
+
+
+func test_mc6_active_mod_list_sorted_and_flags() -> void:
+	print("test_mc6_active_mod_list_sorted_and_flags")
+	var discovered: Array = _mc6_discovered()
+	# No persisted active list -> fall back to each manifest's own enabled flag.
+	var rows: Array = ActiveModUtil.list_mods(discovered, [], "")
+	_check(rows.size() == 3, "all valid mods listed")
+	_check(str(rows[0]["id"]) == "alpha", "sorted by id: alpha first")
+	_check(str(rows[1]["id"]) == "bravo", "sorted by id: bravo second")
+	_check(str(rows[2]["id"]) == "charlie", "sorted by id: charlie last")
+	_check(str(rows[0]["name_key"]) == "mod.alpha.name", "display_name_key preferred")
+	_check(str(rows[1]["name_key"]) == "Bravo Pack", "name field used when no key")
+	_check(str(rows[2]["name_key"]) == "charlie", "name_key falls back to id")
+	_check(bool(rows[2]["enabled"]) == false, "manifest disabled respected when no active list")
+	# A persisted active list is authoritative over the manifest default.
+	var rows2: Array = ActiveModUtil.list_mods(discovered, ["charlie"], "charlie")
+	_check(bool(rows2[2]["enabled"]) == true, "persisted active overrides manifest disabled")
+	_check(bool(rows2[0]["enabled"]) == false, "unlisted mod is inactive under a persisted list")
+	_check(bool(rows2[2]["is_main"]) == true, "main mod flagged")
+	_check(bool(rows2[0]["is_main"]) == false, "non-main mod not flagged")
+
+
+func test_mc6_active_mod_ignores_invalid_manifests() -> void:
+	print("test_mc6_active_mod_ignores_invalid_manifests")
+	var messy: Array = [ { "id": "ok" }, { "no_id": true }, "not_a_dict", { "id": "" } ]
+	var rows: Array = ActiveModUtil.list_mods(messy, [], "")
+	_check(rows.size() == 1, "only the valid, id-bearing manifest survives")
+	_check(str(rows[0]["id"]) == "ok", "surviving row is the valid one")
+	_check(ActiveModUtil.discovered_ids(messy) == ["ok"], "discovered_ids skips invalid entries")
+
+
+func test_mc6_active_mod_sanitise_drops_missing() -> void:
+	print("test_mc6_active_mod_sanitise_drops_missing")
+	var discovered: Array = _mc6_discovered()
+	# "ghost" is not on disk; duplicates + blanks are removed; result is sorted.
+	var clean: Array = ActiveModUtil.sanitise_active(["bravo", "ghost", "bravo", "", "alpha"], discovered)
+	_check(clean == ["alpha", "bravo"], "missing/duplicate/blank ids dropped, sorted")
+
+
+func test_mc6_active_mod_toggle() -> void:
+	print("test_mc6_active_mod_toggle")
+	var discovered: Array = _mc6_discovered()
+	# Toggling an on-disk id that is off turns it on.
+	var a: Array = ActiveModUtil.toggle(["alpha"], "bravo", discovered)
+	_check(a == ["alpha", "bravo"], "toggle adds an existing disabled mod")
+	# Toggling it again turns it off.
+	var b: Array = ActiveModUtil.toggle(a, "bravo", discovered)
+	_check(b == ["alpha"], "toggle removes an enabled mod")
+	# Toggling a mod that is not on disk is refused (list unchanged, sanitised).
+	var c: Array = ActiveModUtil.toggle(["alpha"], "ghost", discovered)
+	_check(c == ["alpha"], "toggle refuses an unknown-on-disk id")
+	_check(ActiveModUtil.is_active(["alpha", "bravo"], "bravo", discovered), "is_active true for listed present mod")
+	_check(not ActiveModUtil.is_active(["alpha"], "bravo", discovered), "is_active false for unlisted mod")
+
+
+func test_mc6_active_mod_resolve_main() -> void:
+	print("test_mc6_active_mod_resolve_main")
+	var discovered: Array = _mc6_discovered()
+	# Main must be present AND enabled to resolve.
+	_check(ActiveModUtil.resolve_main("alpha", ["alpha", "bravo"], discovered) == "alpha", "enabled+present main resolves")
+	_check(ActiveModUtil.resolve_main("bravo", ["alpha"], discovered) == "", "main not enabled -> empty")
+	_check(ActiveModUtil.resolve_main("ghost", ["ghost"], discovered) == "", "main not on disk -> empty")
+	_check(ActiveModUtil.resolve_main("", ["alpha"], discovered) == "", "empty main id -> empty")
 
 
 # --- Phase MC2 (request 2): three-state fog "last image" memory -------------
