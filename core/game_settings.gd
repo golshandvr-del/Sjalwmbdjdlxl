@@ -82,6 +82,14 @@ const DEFAULTS: Dictionary = {
 	# to "auto" so the game adapts to the device out of the box.
 	"screen_orientation": "auto",
 	"ui_mode": "auto",
+	# MC6.2 (request 7): the persisted set of ENABLED mod ids and the single chosen
+	# MAIN mod id. Both start empty so a fresh install falls back to each manifest's
+	# own "enabled" flag (see ActiveModUtil.list_mods) with no main override. The
+	# authoritative list/selection LOGIC lives in ActiveModUtil; this section only
+	# stores the raw values so they survive across sessions. Purely a content-
+	# selection preference -- it never feeds the deterministic simulation hash.
+	"active_mods": [],
+	"main_mod": "",
 }
 
 var _world: WorldState = null
@@ -154,6 +162,21 @@ func get_screen_orientation() -> String:
 # MB4.4 (bug 15): the chosen HUD variant ("auto"/"desktop"/"mobile").
 func get_ui_mode() -> String:
 	return str(_get_pref("ui_mode"))
+
+
+# MC6.2 (request 7): the persisted list of ENABLED mod ids. Always returns a
+# fresh Array of Strings (never the stored reference) so callers cannot mutate
+# the settings section by accident.
+func get_active_mods() -> Array:
+	var out: Array = []
+	for raw in (_get_pref("active_mods") as Array):
+		out.append(str(raw))
+	return out
+
+
+# MC6.2 (request 7): the persisted MAIN mod id ("" when none is chosen).
+func get_main_mod() -> String:
+	return str(_get_pref("main_mod"))
 
 
 # --- Validated setters (return true when the value was accepted) ------------
@@ -236,6 +259,28 @@ func set_ui_mode(value: String) -> bool:
 	if not UI_MODES.has(value):
 		return false
 	_set_pref("ui_mode", value)
+	return true
+
+
+# MC6.2 (request 7): set the persisted list of ENABLED mod ids. Rejected (state
+# untouched) when the value is not an Array of Strings, so a corrupt write can
+# never make the section unusable. The list is stored verbatim (order + blanks
+# preserved); ActiveModUtil.sanitise_active is responsible for reconciling it
+# against what is actually on disk when the list is consumed.
+func set_active_mods(value: Array) -> bool:
+	if not _is_string_array(value):
+		return false
+	var copy: Array = []
+	for raw in value:
+		copy.append(str(raw))
+	_set_pref("active_mods", copy)
+	return true
+
+
+# MC6.2 (request 7): set the persisted MAIN mod id. Any String (including "" to
+# clear the selection) is accepted; a non-String is rejected.
+func set_main_mod(value: String) -> bool:
+	_set_pref("main_mod", value)
 	return true
 
 
@@ -436,7 +481,26 @@ func _is_valid(key: String, value: Variant) -> bool:
 			return value is String and SCREEN_ORIENTATIONS.has(value)
 		"ui_mode":
 			return value is String and UI_MODES.has(value)
+		"active_mods":
+			# MC6.2: must be an Array whose every element is a String. Emptiness is
+			# valid (the documented default). Content is NOT reconciled against disk
+			# here -- that is ActiveModUtil.sanitise_active's job at consume time.
+			return _is_string_array(value)
+		"main_mod":
+			# MC6.2: any String (including "") is a valid stored main id.
+			return value is String
 	return false
+
+
+# MC6.2: true when `value` is an Array whose every element is a String. Used to
+# validate the persisted active-mods list on both set and import.
+func _is_string_array(value: Variant) -> bool:
+	if not (value is Array):
+		return false
+	for item in (value as Array):
+		if not (item is String):
+			return false
+	return true
 
 
 func _coerce(key: String, value: Variant) -> Variant:
