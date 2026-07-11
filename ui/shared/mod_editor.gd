@@ -281,6 +281,106 @@ func _build_dialogs() -> void:
 	add_child(_choice_dialog)
 
 
+# --- MC6.4 (req7): "which mod to edit?" chooser -----------------------------
+# On open the editor asks which existing mod to edit or offers a brand-new one.
+# Discovery uses the same StorageService content root the game saves/loads from;
+# ModChoiceUtil turns the pack paths into a deterministic, id-sorted choice list.
+# The chooser is skipped when nothing is on disk (a fresh project is already
+# loaded), so a first-time author is never blocked by an empty dialog.
+
+func _discover_choices() -> Array:
+	if _storage == null:
+		return []
+	return _storage.list_packs()
+
+
+func _open_choice_dialog() -> void:
+	_choice_paths = _discover_choices()
+	# Rebuild the body from scratch every open (the on-disk set can change).
+	for child in _choice_dialog.get_children():
+		if child is VBoxContainer:
+			child.queue_free()
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	box.custom_minimum_size = Vector2(320, 0)
+	_choice_dialog.add_child(box)
+
+	var prompt: Label = Label.new()
+	prompt.text = _loc.t("ui.modeditor.choose.prompt")
+	prompt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(prompt)
+
+	# A "start a new mod" option always comes first so it is never lost among a
+	# long list of existing mods.
+	var new_btn: Button = Button.new()
+	new_btn.text = _loc.t("ui.modeditor.choose.new")
+	new_btn.pressed.connect(_on_choice_new)
+	box.add_child(new_btn)
+
+	var choices: Array = ModChoiceUtil.list_choices(_choice_paths)
+	if choices.is_empty():
+		var none: Label = Label.new()
+		none.text = _loc.t("ui.modeditor.choose.none")
+		none.modulate = Color(0.7, 0.7, 0.7)
+		box.add_child(none)
+	else:
+		var sep: HSeparator = HSeparator.new()
+		box.add_child(sep)
+		for i in range(choices.size()):
+			var row: Dictionary = choices[i] as Dictionary
+			var b: Button = Button.new()
+			b.text = str(row.get("id", ""))
+			b.pressed.connect(_on_choice_selected.bind(i))
+			box.add_child(b)
+
+	# The chooser is a hard gate before editing: closing it (X / ESC) starts a new
+	# mod rather than leaving a half-initialised screen.
+	if not _choice_dialog.canceled.is_connected(_on_choice_new):
+		_choice_dialog.canceled.connect(_on_choice_new)
+	_choice_dialog.popup_centered()
+
+
+func _on_choice_selected(index: int) -> void:
+	var choice: Dictionary = ModChoiceUtil.resolve_choice(_choice_paths, index)
+	_choice_dialog.hide()
+	if choice.is_empty():
+		_start_new_mod()
+		return
+	_open_mod(str(choice.get("path", "")))
+
+
+func _on_choice_new() -> void:
+	_choice_dialog.hide()
+	_start_new_mod()
+
+
+# Open an existing mod pack into the editor. On failure the editor falls back to
+# a fresh project so it is never left blank.
+func _open_mod(path: String) -> void:
+	if path == "" or not _project.open_pack(path):
+		_set_status(_loc.t("ui.modeditor.status.open_failed"))
+		_start_new_mod()
+		return
+	_selected_id = ""
+	_active_catalog = ModProject.UNITS_CATALOG
+	# A freshly-opened mod starts its own undo timeline.
+	_history.clear()
+	_record_history()
+	_set_status(_loc.t("ui.modeditor.status.opened"))
+	_refresh_all()
+
+
+# Start editing a brand-new mod (the same reset _on_new performs, without the
+# "new" status flavour when it is the initial open).
+func _start_new_mod() -> void:
+	_project.new_project("new_mod", "New Mod")
+	_selected_id = ""
+	_active_catalog = ModProject.UNITS_CATALOG
+	_history.clear()
+	_record_history()
+	_refresh_all()
+
+
 # --- Catalog + tree ---------------------------------------------------------
 
 func _set_catalog(catalog: String) -> void:
