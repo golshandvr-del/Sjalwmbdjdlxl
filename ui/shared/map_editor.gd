@@ -37,6 +37,12 @@ var _project: ScenarioProject = null
 var _loc: Localization = null
 var _settings: GameSettings = null
 var _storage: StorageService = null
+# MC5.2 (request 6): undo/redo history of full scenario snapshots. Every edit
+# funnels through `_after_edit`, which records a snapshot; `ui_undo`/`ui_redo`
+# (and the toolbar buttons) restore the project from a stored snapshot. The
+# restore itself must NOT record a new snapshot, hence the `_restoring` guard.
+var _history: EditHistoryUtil = EditHistoryUtil.new()
+var _restoring: bool = false
 
 var _active_tool: String = TOOL_WALL
 var _active_owner: int = 0
