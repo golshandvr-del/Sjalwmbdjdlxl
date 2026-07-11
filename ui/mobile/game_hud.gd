@@ -93,6 +93,17 @@ var _select_button: Button = null
 var _selection_box: ColorRect = null
 var _is_box_selecting: bool = false
 
+# MC1.5 (request 1): two movement modes. In DIRECT mode a tap on empty ground
+# moves the selection immediately (the long-standing behaviour). In MANUAL mode
+# consecutive taps plot an ordered waypoint route; a "Confirm" issues one
+# move_unit carrying the whole route (belief-aware, stitched by WaypointUtil),
+# and "Cancel" discards it. All state/logic lives in the pure MoveModeUtil so the
+# HUD only issues authoritative commands (no WorldState mutation here).
+var _move_mode: MoveModeUtil = MoveModeUtil.new()
+var _move_mode_button: Button = null
+var _move_confirm_button: Button = null
+var _move_cancel_button: Button = null
+
 # P3.5 (R12.1/R12.2): references to the P3 overlay containers so the responsive
 # layout pass can reposition them for portrait vs landscape. In landscape the
 # action controls hug the left/right edges (thumb-reachable); in portrait they
