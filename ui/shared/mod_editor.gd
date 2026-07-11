@@ -272,6 +272,14 @@ func _build_dialogs() -> void:
 	_file_dialog.file_selected.connect(_on_image_selected)
 	add_child(_file_dialog)
 
+	# MC6.4 (req7): the "which mod to edit?" chooser. Its body is rebuilt each
+	# time it opens (the on-disk mod set can change between opens), so the node
+	# here is just an empty AcceptDialog shell.
+	_choice_dialog = AcceptDialog.new()
+	_choice_dialog.title = _loc.t("ui.modeditor.choose.title")
+	_choice_dialog.get_ok_button().visible = false
+	add_child(_choice_dialog)
+
 
 # --- Catalog + tree ---------------------------------------------------------
 
