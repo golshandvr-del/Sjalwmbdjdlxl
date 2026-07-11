@@ -315,12 +315,59 @@ func _issue_move(screen_pos: Vector2) -> void:
 	if _selected_unit_ids.is_empty():
 		return
 	var tile: Vector2i = _render_adapter.screen_to_tile(screen_pos)
-	# Simulation command -> lockstep when networked (MA7.1), immediate otherwise.
-	Nexus.player_command("move_unit", {
-		"unit_ids": _selected_unit_ids.duplicate(),
-		"x": tile.x,
-		"y": tile.y,
-	}, 1)
+	# MC1.5 (request 1): route the right-click through MoveModeUtil so DIRECT vs
+	# MANUAL is decided by the shared pure state machine. In DIRECT mode this
+	# issues the immediate single-goal move exactly as before; in MANUAL mode it
+	# only buffers a waypoint (no command yet) until the player confirms.
+	var plan: Dictionary = _move_mode.resolve_ground_tap(tile, not _selected_unit_ids.is_empty())
+	match str(plan.get("action", MoveModeUtil.ACTION_NONE)):
+		MoveModeUtil.ACTION_MOVE_DIRECT:
+			# Simulation command -> lockstep when networked (MA7.1), immediate otherwise.
+			Nexus.player_command("move_unit", {
+				"unit_ids": _selected_unit_ids.duplicate(),
+				"x": tile.x,
+				"y": tile.y,
+			}, 1)
+		MoveModeUtil.ACTION_ADD_WAYPOINT:
+			# Buffered a waypoint; reflect the pending route on the toggle button.
+			_update_move_mode_button()
+
+
+# MC1.5 (request 1): toggle DIRECT <-> MANUAL. Switching away from manual clears
+# any half-drawn route (handled inside MoveModeUtil.set_mode).
+func _on_move_mode_pressed() -> void:
+	_move_mode.toggle_mode()
+	_update_move_mode_button()
+
+
+# Commit the plotted MANUAL route: issue ONE move_unit carrying the whole waypoint
+# array so units_module stitches an exact belief-aware path (WaypointUtil).
+func _on_move_confirm() -> void:
+	var plan: Dictionary = _move_mode.commit()
+	if str(plan.get("action", "")) == MoveModeUtil.ACTION_MOVE_PATH and not _selected_unit_ids.is_empty():
+		Nexus.player_command("move_unit", {
+			"unit_ids": _selected_unit_ids.duplicate(),
+			"waypoints": plan.get("waypoints", []),
+		}, 1)
+	_update_move_mode_button()
+
+
+# Cancel the pending MANUAL route without moving.
+func _on_move_cancel() -> void:
+	_move_mode.cancel()
+	_update_move_mode_button()
+
+
+# Reflect the current mode + pending route on the toggle button label.
+func _update_move_mode_button() -> void:
+	if _move_mode_button == null:
+		return
+	_move_mode_button.button_pressed = _move_mode.is_manual()
+	var mode_key: String = "ui.move.mode_manual" if _move_mode.is_manual() else "ui.move.mode_direct"
+	var label: String = _loc.t(mode_key)
+	if _move_mode.is_manual() and _move_mode.has_pending():
+		label += " (%d)" % _move_mode.waypoints().size()
+	_move_mode_button.text = label
 
 
 func _push_selection() -> void:
