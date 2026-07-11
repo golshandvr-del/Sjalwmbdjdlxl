@@ -397,6 +397,16 @@ func _init() -> void:
 	test_mc4_graphic_has_sprite_flags()
 	test_mc4_modproject_animation_roundtrip()
 	test_mc4_modproject_animation_missing_entity()
+	# Phase MC7 (request 8): data-driven GUI authoring model (GuiProject).
+	test_mc7_gui_new_and_pages()
+	test_mc7_gui_add_widget_unique_and_clamped()
+	test_mc7_gui_edit_rect_icon_name()
+	test_mc7_gui_remove_widget()
+	test_mc7_gui_background_kinds_and_fallback()
+	test_mc7_gui_validate_video_background()
+	test_mc7_gui_to_dict_deterministic_sorted()
+	test_mc7_gui_json_round_trip()
+	test_mc7_gui_from_json_rejects_malformed()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -4566,6 +4576,161 @@ func test_mc4_modproject_animation_missing_entity() -> void:
 	_check(not mp.set_animation("unit", "ghost", GraphicModel.default_animation()),
 		"cannot attach animation to a non-existent entity")
 	_check(mp.get_animation("unit", "ghost").is_empty(), "no animation for missing entity")
+
+
+# --- Phase MC7 (request 8): GuiProject data-driven GUI authoring model -------
+
+func test_mc7_gui_new_and_pages() -> void:
+	print("test_mc7_gui_new_and_pages")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("skin_a")
+	_check(g.get_id() == "skin_a", "id set by init_new")
+	_check(not g.is_valid(), "empty project (no pages) is not valid")
+	_check(g.ensure_page("main"), "ensure_page main ok")
+	_check(not g.ensure_page("  "), "blank page name rejected")
+	_check(g.has_page("main"), "has main page")
+	_check(g.ensure_page("options"), "ensure_page options ok")
+	# page_names is sorted + deterministic.
+	_check(g.page_names() == ["main", "options"], "page_names sorted")
+	_check(g.is_valid(), "id + at least one page => valid")
+	# ensure_page on an existing page keeps its widgets (idempotent).
+	g.add_widget("main", "single", [10, 10, 100, 40])
+	g.ensure_page("main")
+	_check(g.widget_count("main") == 1, "ensure_page does not wipe existing widgets")
+
+
+func test_mc7_gui_add_widget_unique_and_clamped() -> void:
+	print("test_mc7_gui_add_widget_unique_and_clamped")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("skin_b")
+	g.ensure_page("main")
+	_check(g.add_widget("main", "single", [10, 10, 100, 40]), "add single ok")
+	_check(not g.add_widget("main", "single", [0, 0, 50, 50]), "duplicate logical_id rejected")
+	_check(not g.add_widget("main", "  ", [0, 0, 50, 50]), "blank logical_id rejected")
+	_check(not g.add_widget("ghost", "host", [0, 0, 50, 50]), "unknown page rejected")
+	# Rect clamping: out-of-bounds + tiny sizes are clamped into design space.
+	_check(g.add_widget("main", "host", [-50, -50, 2, 2]), "add host ok")
+	var w: Dictionary = g.get_widget("main", "host")
+	var r: Array = w.get("rect", [])
+	_check(r[0] >= 0 and r[1] >= 0, "rect origin clamped non-negative")
+	_check(r[2] >= GuiProject.MIN_WIDGET_SIZE and r[3] >= GuiProject.MIN_WIDGET_SIZE,
+		"rect size clamped to minimum")
+	_check(g.widget_count("main") == 2, "widget_count reflects adds")
+
+
+func test_mc7_gui_edit_rect_icon_name() -> void:
+	print("test_mc7_gui_edit_rect_icon_name")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("skin_c")
+	g.ensure_page("main")
+	g.add_widget("main", "single", [10, 10, 100, 40], "", "Play")
+	_check(g.set_widget_rect("main", "single", [200, 100, 150, 60]), "set_widget_rect ok")
+	_check(not g.set_widget_rect("main", "ghost", [0, 0, 20, 20]), "rect on missing widget fails")
+	_check(g.set_widget_icon("main", "single", " icons/play.png "), "set icon ok")
+	_check(g.set_widget_display_name("main", "single", "Start Game"), "rename ok")
+	var w: Dictionary = g.get_widget("main", "single")
+	_check(w.get("rect", []) == [200, 100, 150, 60], "rect updated")
+	_check(str(w.get("icon_path", "")) == "icons/play.png", "icon trimmed + stored")
+	_check(str(w.get("display_name", "")) == "Start Game", "display name updated")
+	# logical_id (function) is NOT mutated by any editor op.
+	_check(str(w.get("logical_id", "")) == "single", "logical_id fixed")
+
+
+func test_mc7_gui_remove_widget() -> void:
+	print("test_mc7_gui_remove_widget")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("skin_d")
+	g.ensure_page("main")
+	g.add_widget("main", "single", [0, 0, 40, 40])
+	g.add_widget("main", "quit", [0, 50, 40, 40])
+	_check(g.remove_widget("main", "single"), "remove ok")
+	_check(not g.remove_widget("main", "single"), "removing twice fails")
+	_check(g.widget_count("main") == 1, "count decremented")
+	_check(g.get_widget("main", "quit").size() > 0, "other widget intact")
+
+
+func test_mc7_gui_background_kinds_and_fallback() -> void:
+	print("test_mc7_gui_background_kinds_and_fallback")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("skin_e")
+	g.ensure_page("main")
+	_check(g.set_page_background("main", GuiProject.BG_IMAGE, "bg/menu.png"), "image bg ok")
+	var bg: Dictionary = g.get_page_background("main")
+	_check(str(bg.get("kind", "")) == GuiProject.BG_IMAGE, "kind image stored")
+	_check(str(bg.get("value", "")) == "bg/menu.png", "value stored")
+	# An unknown kind falls back to a safe solid color.
+	_check(g.set_page_background("main", "hologram", "x"), "unknown kind still returns true")
+	var bg2: Dictionary = g.get_page_background("main")
+	_check(str(bg2.get("kind", "")) == GuiProject.BG_COLOR, "unknown kind falls back to color")
+	_check(str(bg2.get("value", "")) == GuiProject.DEFAULT_BG_COLOR, "fallback uses default color")
+	_check(not g.set_page_background("ghost", GuiProject.BG_COLOR, "#fff"), "bg on missing page fails")
+
+
+func test_mc7_gui_validate_video_background() -> void:
+	print("test_mc7_gui_validate_video_background")
+	var ok: Array = GuiProject.validate_video_background("bg/intro.ogv", 10.0, 4 * 1024 * 1024)
+	_check(bool(ok[0]), "valid ogv within budget accepted")
+	_check(not bool(GuiProject.validate_video_background("", 1.0, 1)[0]), "blank path rejected")
+	_check(not bool(GuiProject.validate_video_background("bg/intro.mp4", 1.0, 1)[0]),
+		"non-ogv extension rejected")
+	var too_long: Array = GuiProject.validate_video_background("bg/x.ogv", 999.0, 1)
+	_check(not bool(too_long[0]) and str(too_long[1]) == "ui.guieditor.video_too_long",
+		"over-long video rejected with reason")
+	var too_big: Array = GuiProject.validate_video_background("bg/x.ogv", 1.0, 999 * 1024 * 1024)
+	_check(not bool(too_big[0]) and str(too_big[1]) == "ui.guieditor.video_too_big",
+		"over-size video rejected with reason")
+
+
+func test_mc7_gui_to_dict_deterministic_sorted() -> void:
+	print("test_mc7_gui_to_dict_deterministic_sorted")
+	# Build the same logical project two ways (different insertion order) and
+	# confirm to_dict yields byte-identical JSON (pages + widgets sorted).
+	var a: GuiProject = GuiProject.new()
+	a.init_new("det")
+	a.ensure_page("options")
+	a.ensure_page("main")
+	a.add_widget("main", "quit", [0, 0, 40, 40])
+	a.add_widget("main", "single", [0, 50, 40, 40])
+	var b: GuiProject = GuiProject.new()
+	b.init_new("det")
+	b.ensure_page("main")
+	b.ensure_page("options")
+	b.add_widget("main", "single", [0, 50, 40, 40])
+	b.add_widget("main", "quit", [0, 0, 40, 40])
+	_check(a.to_json() == b.to_json(), "insertion order does not change serialised JSON")
+	_check(a.to_json() != "", "valid project serialises to non-empty JSON")
+	var empty: GuiProject = GuiProject.new()
+	empty.init_new("x")
+	_check(empty.to_json() == "", "invalid (page-less) project serialises to empty string")
+
+
+func test_mc7_gui_json_round_trip() -> void:
+	print("test_mc7_gui_json_round_trip")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("round")
+	g.set_display_name_key("ui.gui.round")
+	g.ensure_page("main")
+	g.add_widget("main", "single", [10, 20, 120, 48], "icons/play.png", "Play")
+	g.set_page_background("main", GuiProject.BG_IMAGE, "bg/menu.png")
+	var text: String = g.to_json()
+	var g2: GuiProject = GuiProject.new()
+	_check(g2.from_json(text), "from_json parses valid text")
+	_check(g2.to_json() == text, "round-trip is byte-identical")
+	_check(g2.get_display_name_key() == "ui.gui.round", "display name key survives")
+	var w: Dictionary = g2.get_widget("main", "single")
+	_check(str(w.get("display_name", "")) == "Play", "widget name survives round-trip")
+	_check(str(g2.get_page_background("main").get("kind", "")) == GuiProject.BG_IMAGE,
+		"background survives round-trip")
+
+
+func test_mc7_gui_from_json_rejects_malformed() -> void:
+	print("test_mc7_gui_from_json_rejects_malformed")
+	var g: GuiProject = GuiProject.new()
+	_check(not g.from_json("{ this is not json"), "malformed JSON rejected")
+	_check(not g.from_json("[1,2,3]"), "non-object JSON rejected")
+	_check(not g.from_json("{\"pages\":{}}"), "object without id rejected")
+	_check(g.from_json("{\"id\":\"ok\",\"pages\":{\"main\":{\"widgets\":[]}}}"),
+		"minimal valid object accepted")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
