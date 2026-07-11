@@ -70,6 +70,12 @@ const FOG_HIDDEN: int = 0
 const FOG_EXPLORED: int = 1
 const FOG_VISIBLE: int = 2
 
+# MC2 (request 2): cosmetic "last-image" memory. Each draw we let it observe the
+# currently-VISIBLE tiles so EXPLORED tiles can be redrawn with the frozen image
+# the viewer last saw (rather than leaking live enemy state). Purely a render
+# aid -- never fed back into the simulation or the deterministic hash.
+var _fog_snapshot: FogSnapshotUtil = FogSnapshotUtil.new()
+
 
 func _ready() -> void:
 	if style == null:
