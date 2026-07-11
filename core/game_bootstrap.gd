@@ -58,6 +58,11 @@ static func register_modules(nexus: Object) -> void:
 		nexus.register_module(StrategicAiModule.new())
 	if nexus.get_module("ai_commander") == null:
 		nexus.register_module(AiCommanderModule.new())
+	# MC10: dynamic diplomacy runs BEFORE combat so any alliance change this tick
+	# is mapped onto match.teams before CombatModule._is_hostile reads it (so
+	# freshly-allied owners stop firing on each other the same tick - request 17).
+	if nexus.get_module("diplomacy") == null:
+		nexus.register_module(DiplomacyModule.new())
 	if nexus.get_module("combat") == null:
 		nexus.register_module(CombatModule.new())
 	if nexus.get_module("fog_of_war") == null:
