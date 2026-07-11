@@ -413,6 +413,12 @@ func _init() -> void:
 	test_mc7_catalog_validate_project_dict_ok()
 	test_mc7_catalog_validate_project_dict_rejects_bad_id()
 	test_mc7_catalog_validate_ignores_unknown_page()
+	# Phase MC7.6 (request 8): data-driven layout resolver + default fallback.
+	test_mc7_render_fit_transform_uniform_and_centered()
+	test_mc7_render_resolve_rect()
+	test_mc7_render_resolve_page_scales_authored()
+	test_mc7_render_resolve_page_falls_back_to_default()
+	test_mc7_render_resolve_page_sorted_and_drops_blank()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -4807,6 +4813,78 @@ func test_mc7_catalog_validate_ignores_unknown_page() -> void:
 	}
 	var res: Array = GuiWidgetCatalog.validate_project_dict(data)
 	_check(bool(res[0]), "unknown page passes through (not policed)")
+
+
+# --- Phase MC7.6: GuiRenderUtil ----------------------------------------------
+
+func test_mc7_render_fit_transform_uniform_and_centered() -> void:
+	print("test_mc7_render_fit_transform_uniform_and_centered")
+	# Exact design-space viewport: scale 1, no offset.
+	var t1: Dictionary = GuiRenderUtil.fit_transform(1920.0, 1080.0)
+	_check(abs(float(t1["scale"]) - 1.0) < 0.0001, "exact size => scale 1")
+	_check(abs(float(t1["offset_x"])) < 0.0001, "no x offset at exact size")
+	# Wider-than-design viewport letterboxes horizontally (scale limited by y).
+	var t2: Dictionary = GuiRenderUtil.fit_transform(3840.0, 1080.0)
+	_check(abs(float(t2["scale"]) - 1.0) < 0.0001, "scale limited by height")
+	_check(float(t2["offset_x"]) > 0.0, "horizontal letterbox offset > 0")
+	_check(abs(float(t2["offset_y"])) < 0.0001, "no vertical offset")
+	# Degenerate viewport is safe.
+	var t3: Dictionary = GuiRenderUtil.fit_transform(0.0, 0.0)
+	_check(abs(float(t3["scale"]) - 1.0) < 0.0001, "zero viewport => safe scale 1")
+
+
+func test_mc7_render_resolve_rect() -> void:
+	print("test_mc7_render_resolve_rect")
+	# Half-scale transform with a 100px x offset.
+	var t: Dictionary = { "scale": 0.5, "offset_x": 100.0, "offset_y": 0.0 }
+	var r: Array = GuiRenderUtil.resolve_rect([200, 100, 400, 80], t)
+	_check(abs(float(r[0]) - (200.0 * 0.5 + 100.0)) < 0.0001, "x scaled + offset")
+	_check(abs(float(r[1]) - 50.0) < 0.0001, "y scaled")
+	_check(abs(float(r[2]) - 200.0) < 0.0001, "w scaled")
+	_check(abs(float(r[3]) - 40.0) < 0.0001, "h scaled")
+	# Bad rect is safe.
+	_check(GuiRenderUtil.resolve_rect([], t) == [0.0, 0.0, 0.0, 0.0], "empty rect safe")
+
+
+func test_mc7_render_resolve_page_scales_authored() -> void:
+	print("test_mc7_render_resolve_page_scales_authored")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("skin")
+	g.ensure_page("main")
+	g.add_widget("main", "single", [0, 0, 1920, 1080])
+	var page: Dictionary = g.to_dict()["pages"]["main"]
+	# Half-size viewport => scale 0.5, no letterbox (same aspect).
+	var out: Array = GuiRenderUtil.resolve_page(page, { "w": 960.0, "h": 540.0 }, [])
+	_check(out.size() == 1, "one authored widget resolved")
+	var r: Array = out[0]["rect"]
+	_check(abs(float(r[2]) - 960.0) < 0.0001, "full-page widget scaled to viewport width")
+	_check(abs(float(r[3]) - 540.0) < 0.0001, "full-page widget scaled to viewport height")
+
+
+func test_mc7_render_resolve_page_falls_back_to_default() -> void:
+	print("test_mc7_render_resolve_page_falls_back_to_default")
+	var defaults: Array = [ { "logical_id": "single", "rect": [10.0, 10.0, 20.0, 20.0] } ]
+	# Unauthored page (null) => defaults returned unchanged.
+	var out1: Array = GuiRenderUtil.resolve_page(null, { "w": 800.0, "h": 600.0 }, defaults)
+	_check(out1.size() == 1 and str(out1[0]["logical_id"]) == "single", "null page falls back")
+	# Authored page with EMPTY widgets => defaults too.
+	var out2: Array = GuiRenderUtil.resolve_page({ "widgets": [] }, { "w": 800.0, "h": 600.0 }, defaults)
+	_check(out2.size() == 1, "empty widgets falls back to defaults")
+
+
+func test_mc7_render_resolve_page_sorted_and_drops_blank() -> void:
+	print("test_mc7_render_resolve_page_sorted_and_drops_blank")
+	var page: Dictionary = {
+		"widgets": [
+			{ "logical_id": "quit", "rect": [0, 0, 40, 40] },
+			{ "logical_id": "", "rect": [0, 0, 40, 40] },
+			{ "logical_id": "single", "rect": [0, 0, 40, 40] },
+		],
+	}
+	var out: Array = GuiRenderUtil.resolve_page(page, { "w": 1920.0, "h": 1080.0 }, [])
+	_check(out.size() == 2, "blank logical_id dropped")
+	_check(str(out[0]["logical_id"]) == "quit", "output sorted (quit < single)")
+	_check(str(out[1]["logical_id"]) == "single", "output sorted second")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
