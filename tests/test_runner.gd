@@ -360,6 +360,10 @@ func _init() -> void:
 	test_mc6_active_mod_sanitise_drops_missing()
 	test_mc6_active_mod_toggle()
 	test_mc6_active_mod_resolve_main()
+	# Phase MC6.4 (request 7): mod-editor chooser list/resolve logic (ModChoiceUtil).
+	test_mc6_mod_choice_list_sorted_and_deduped()
+	test_mc6_mod_choice_id_and_has_choices()
+	test_mc6_mod_choice_resolve_index()
 	# Phase MC6.2 (request 7): active_mods/main_mod persistence in GameSettings.
 	test_mc6_settings_active_mods_default_empty()
 	test_mc6_settings_active_mods_setters_and_validation()
@@ -4152,6 +4156,60 @@ func test_mc6_active_mod_resolve_main() -> void:
 	_check(ActiveModUtil.resolve_main("bravo", ["alpha"], discovered) == "", "main not enabled -> empty")
 	_check(ActiveModUtil.resolve_main("ghost", ["ghost"], discovered) == "", "main not on disk -> empty")
 	_check(ActiveModUtil.resolve_main("", ["alpha"], discovered) == "", "empty main id -> empty")
+
+
+# --- Phase MC6.4 (request 7): mod-editor chooser (ModChoiceUtil) ------------
+# ModChoiceUtil turns StorageService.list_packs() output (full .nexpack paths)
+# into a stable, id-sorted list of editable choices for the mod editor's
+# "which mod do you want to edit?" dialog. Pure + deterministic: same input ->
+# same order on every machine, blank/duplicate/non-pack paths dropped, and an
+# out-of-range index resolves to the "new mod" sentinel (empty dict).
+
+func test_mc6_mod_choice_list_sorted_and_deduped() -> void:
+	print("test_mc6_mod_choice_list_sorted_and_deduped")
+	# Unsorted input with a blank entry, a non-pack path, and a duplicate id.
+	var paths: Array = [
+		"user://content/mods/charlie.nexpack",
+		"user://content/mods/alpha.nexpack",
+		"   ",
+		"user://content/mods/notes.txt",
+		"user://other/alpha.nexpack",  # duplicate id "alpha" -> dropped
+		"user://content/mods/bravo.nexpack",
+	]
+	var rows: Array = ModChoiceUtil.list_choices(paths)
+	# Only alpha/bravo/charlie survive, sorted by id, first occurrence wins.
+	_check(rows.size() == 3, "three distinct pack choices survive filtering")
+	_check(str(rows[0]["id"]) == "alpha", "choices sorted by id (alpha first)")
+	_check(str(rows[1]["id"]) == "bravo", "choices sorted by id (bravo second)")
+	_check(str(rows[2]["id"]) == "charlie", "choices sorted by id (charlie third)")
+	_check(str(rows[0]["path"]) == "user://content/mods/alpha.nexpack", "first alpha path kept, duplicate dropped")
+
+
+func test_mc6_mod_choice_id_and_has_choices() -> void:
+	print("test_mc6_mod_choice_id_and_has_choices")
+	_check(ModChoiceUtil.mod_id_for("user://content/mods/alpha.nexpack") == "alpha", "id strips dir + .nexpack")
+	_check(ModChoiceUtil.mod_id_for("BRAVO.NEXPACK") == "BRAVO", "id strips suffix case-insensitively, keeps name case")
+	_check(ModChoiceUtil.mod_id_for("   ") == "", "blank path -> empty id")
+	_check(ModChoiceUtil.mod_id_for("plain.txt") == "plain.txt", "non-pack file keeps its full name")
+	_check(ModChoiceUtil.has_choices(["user://content/mods/alpha.nexpack"]), "has_choices true when a pack exists")
+	_check(not ModChoiceUtil.has_choices(["", "notes.txt"]), "has_choices false when nothing editable")
+
+
+func test_mc6_mod_choice_resolve_index() -> void:
+	print("test_mc6_mod_choice_resolve_index")
+	var paths: Array = [
+		"user://content/mods/bravo.nexpack",
+		"user://content/mods/alpha.nexpack",
+	]
+	# Index 0 resolves to the FIRST sorted row (alpha), not the input order.
+	var first: Dictionary = ModChoiceUtil.resolve_choice(paths, 0)
+	_check(str(first.get("id", "")) == "alpha", "resolve index 0 -> alpha (sorted)")
+	# Out-of-range (incl. the "new mod" option) resolves to the empty sentinel.
+	_check(ModChoiceUtil.resolve_choice(paths, 2).is_empty(), "out-of-range index -> new-mod sentinel")
+	_check(ModChoiceUtil.resolve_choice(paths, -1).is_empty(), "negative index -> new-mod sentinel")
+	# A resolved row is a defensive copy (mutating it never touches source state).
+	first["id"] = "mutated"
+	_check(str(ModChoiceUtil.resolve_choice(paths, 0)["id"]) == "alpha", "resolve returns a defensive copy")
 
 
 # --- Phase MC6.2 (request 7): active_mods/main_mod persistence --------------
