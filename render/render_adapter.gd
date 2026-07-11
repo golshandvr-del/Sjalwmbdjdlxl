@@ -246,11 +246,15 @@ func _fog_state(world: Object, x: int, y: int) -> int:
 	return int(grid[idx])
 
 
-# An enemy building on a never-explored tile should not be drawn at all.
+# MC2 (request 2): an enemy entity is only drawn LIVE on a tile we can currently
+# SEE (VISIBLE). On HIDDEN tiles it is fully hidden; on EXPLORED tiles the live
+# entity is suppressed too and the dimmed "last image" from the snapshot memory
+# is drawn instead (see _draw_fog) -- this stops the map leaking the enemy's
+# current state on tiles we no longer see.
 func _hidden_to_viewer(world: Object, owner: int, x: int, y: int) -> bool:
 	if fog_viewer < 0 or owner == fog_viewer:
 		return false
-	return _fog_state(world, x, y) == FOG_HIDDEN
+	return _fog_state(world, x, y) != FOG_VISIBLE
 
 
 # Phase B.3: return a SHALLOW COPY of `entity` with its catalog `visual` block
