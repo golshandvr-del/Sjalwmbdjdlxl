@@ -407,6 +407,12 @@ func _init() -> void:
 	test_mc7_gui_to_dict_deterministic_sorted()
 	test_mc7_gui_json_round_trip()
 	test_mc7_gui_from_json_rejects_malformed()
+	# Phase MC7.3 (request 8): widget catalog enforces fixed function per page.
+	test_mc7_catalog_pages_and_allowed_ids_sorted()
+	test_mc7_catalog_is_allowed()
+	test_mc7_catalog_validate_project_dict_ok()
+	test_mc7_catalog_validate_project_dict_rejects_bad_id()
+	test_mc7_catalog_validate_ignores_unknown_page()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -4731,6 +4737,76 @@ func test_mc7_gui_from_json_rejects_malformed() -> void:
 	_check(not g.from_json("{\"pages\":{}}"), "object without id rejected")
 	_check(g.from_json("{\"id\":\"ok\",\"pages\":{\"main\":{\"widgets\":[]}}}"),
 		"minimal valid object accepted")
+
+
+# --- Phase MC7.3: GuiWidgetCatalog -------------------------------------------
+
+func test_mc7_catalog_pages_and_allowed_ids_sorted() -> void:
+	print("test_mc7_catalog_pages_and_allowed_ids_sorted")
+	var pages: Array = GuiWidgetCatalog.page_names()
+	_check(pages.has(GuiWidgetCatalog.PAGE_MAIN), "catalog knows main page")
+	_check(pages.has(GuiWidgetCatalog.PAGE_IN_GAME), "catalog knows in_game page")
+	# page_names is sorted (deterministic).
+	var sorted_copy: Array = pages.duplicate()
+	sorted_copy.sort()
+	_check(pages == sorted_copy, "page_names is sorted")
+	# allowed_ids is sorted and non-empty for a known page.
+	var main_ids: Array = GuiWidgetCatalog.allowed_ids(GuiWidgetCatalog.PAGE_MAIN)
+	_check(main_ids.size() > 0, "main page has allowed ids")
+	var ids_sorted: Array = main_ids.duplicate()
+	ids_sorted.sort()
+	_check(main_ids == ids_sorted, "allowed_ids is sorted")
+	_check(GuiWidgetCatalog.allowed_ids("no_such_page") == [], "unknown page => empty ids")
+
+
+func test_mc7_catalog_is_allowed() -> void:
+	print("test_mc7_catalog_is_allowed")
+	_check(GuiWidgetCatalog.is_allowed(GuiWidgetCatalog.PAGE_MAIN, "single"), "single allowed on main")
+	_check(GuiWidgetCatalog.is_allowed(GuiWidgetCatalog.PAGE_MAIN, "gui_editor"), "gui_editor allowed on main")
+	_check(not GuiWidgetCatalog.is_allowed(GuiWidgetCatalog.PAGE_MAIN, "attack"),
+		"in-game action not allowed on main")
+	_check(GuiWidgetCatalog.is_allowed(GuiWidgetCatalog.PAGE_IN_GAME, "attack"),
+		"attack allowed in-game")
+	_check(not GuiWidgetCatalog.is_allowed("ghost", "single"), "unknown page => not allowed")
+
+
+func test_mc7_catalog_validate_project_dict_ok() -> void:
+	print("test_mc7_catalog_validate_project_dict_ok")
+	var g: GuiProject = GuiProject.new()
+	g.init_new("skin")
+	g.ensure_page(GuiWidgetCatalog.PAGE_MAIN)
+	g.add_widget(GuiWidgetCatalog.PAGE_MAIN, "single", [0, 0, 40, 40])
+	g.add_widget(GuiWidgetCatalog.PAGE_MAIN, "quit", [0, 50, 40, 40])
+	var res: Array = GuiWidgetCatalog.validate_project_dict(g.to_dict())
+	_check(bool(res[0]), "project with only valid ids passes catalog check")
+
+
+func test_mc7_catalog_validate_project_dict_rejects_bad_id() -> void:
+	print("test_mc7_catalog_validate_project_dict_rejects_bad_id")
+	# Hand-build a dict with a bogus function on a known page (bypass add_widget).
+	var data: Dictionary = {
+		"id": "bad",
+		"pages": {
+			"main": { "widgets": [ { "logical_id": "hack_the_planet", "rect": [0, 0, 40, 40] } ] },
+		},
+	}
+	var res: Array = GuiWidgetCatalog.validate_project_dict(data)
+	_check(not bool(res[0]), "unknown function on a known page is rejected")
+	_check(str(res[1]) == "ui.guieditor.catalog_bad_id", "reason key reported")
+	_check(str(res[2]) == "main/hack_the_planet", "offending page/id reported")
+
+
+func test_mc7_catalog_validate_ignores_unknown_page() -> void:
+	print("test_mc7_catalog_validate_ignores_unknown_page")
+	# A page the catalog does not police may carry anything; not our contract.
+	var data: Dictionary = {
+		"id": "custom",
+		"pages": {
+			"my_custom_screen": { "widgets": [ { "logical_id": "whatever", "rect": [0, 0, 40, 40] } ] },
+		},
+	}
+	var res: Array = GuiWidgetCatalog.validate_project_dict(data)
+	_check(bool(res[0]), "unknown page passes through (not policed)")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
