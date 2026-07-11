@@ -330,6 +330,13 @@ func _init() -> void:
 	test_mc1_move_mode_no_selection_is_noop()
 	test_mc1_move_keys_localized_in_all_locales()
 	test_mc1_desktop_hud_wires_move_mode()
+	# Phase MC5 (request 6): EditHistoryUtil undo/redo snapshot stack.
+	test_mc5_history_starts_empty()
+	test_mc5_history_push_and_current()
+	test_mc5_history_undo_redo_roundtrip()
+	test_mc5_history_push_discards_redo_tail()
+	test_mc5_history_respects_max_depth()
+	test_mc5_history_snapshots_are_isolated()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3828,6 +3835,99 @@ func test_mc1_desktop_hud_wires_move_mode() -> void:
 	_check(src.contains("\"waypoints\": plan.get(\"waypoints\""), "commit issues a waypoint move_unit")
 	_check(src.contains("KEY_M"), "M hotkey toggles move mode")
 	_check(src.contains("KEY_ENTER"), "Enter hotkey confirms the route")
+
+
+# MC5.1 (request 6): EditHistoryUtil is a pure, headless undo/redo snapshot
+# stack shared by the map editor and the mod editor. It stores opaque Dictionary
+# snapshots and must deep-copy on the way in and out so callers cannot mutate
+# committed history.
+func test_mc5_history_starts_empty() -> void:
+	print("test_mc5_history_starts_empty")
+	var hist: EditHistoryUtil = EditHistoryUtil.new()
+	_check(hist.size() == 0, "fresh history has no snapshots")
+	_check(hist.cursor() == -1, "fresh cursor sits before the first slot")
+	_check(not hist.can_undo(), "cannot undo an empty history")
+	_check(not hist.can_redo(), "cannot redo an empty history")
+	_check(hist.undo() == null, "undo on empty returns null")
+	_check(hist.redo() == null, "redo on empty returns null")
+	_check(hist.current() == null, "current on empty returns null")
+
+
+func test_mc5_history_push_and_current() -> void:
+	print("test_mc5_history_push_and_current")
+	var hist: EditHistoryUtil = EditHistoryUtil.new()
+	hist.push({"v": 1})
+	_check(hist.size() == 1, "one snapshot after first push")
+	_check(hist.cursor() == 0, "cursor points at the only snapshot")
+	_check(not hist.can_undo(), "single snapshot cannot undo")
+	_check(not hist.can_redo(), "single snapshot cannot redo")
+	var cur: Dictionary = hist.current() as Dictionary
+	_check(cur.get("v", -1) == 1, "current returns the pushed snapshot")
+	hist.push({"v": 2})
+	_check(hist.size() == 2, "two snapshots after second push")
+	_check(hist.can_undo(), "two snapshots enable undo")
+	_check((hist.current() as Dictionary).get("v", -1) == 2, "current is the latest push")
+
+
+func test_mc5_history_undo_redo_roundtrip() -> void:
+	print("test_mc5_history_undo_redo_roundtrip")
+	var hist: EditHistoryUtil = EditHistoryUtil.new()
+	hist.push({"v": 1})
+	hist.push({"v": 2})
+	hist.push({"v": 3})
+	_check((hist.undo() as Dictionary).get("v", -1) == 2, "undo steps back to v2")
+	_check((hist.undo() as Dictionary).get("v", -1) == 1, "undo steps back to v1")
+	_check(not hist.can_undo(), "at the oldest snapshot undo is exhausted")
+	_check((hist.redo() as Dictionary).get("v", -1) == 2, "redo steps forward to v2")
+	_check((hist.redo() as Dictionary).get("v", -1) == 3, "redo steps forward to v3")
+	_check(not hist.can_redo(), "at the newest snapshot redo is exhausted")
+
+
+func test_mc5_history_push_discards_redo_tail() -> void:
+	print("test_mc5_history_push_discards_redo_tail")
+	var hist: EditHistoryUtil = EditHistoryUtil.new()
+	hist.push({"v": 1})
+	hist.push({"v": 2})
+	hist.push({"v": 3})
+	hist.undo()
+	hist.undo()
+	_check((hist.current() as Dictionary).get("v", -1) == 1, "cursor sits at v1 before branch")
+	hist.push({"v": 99})
+	_check(hist.size() == 2, "pushing after undo trims the redo tail")
+	_check((hist.current() as Dictionary).get("v", -1) == 99, "current is the new branch")
+	_check(not hist.can_redo(), "no redo after branching")
+	_check(hist.can_undo(), "still able to undo to v1")
+
+
+func test_mc5_history_respects_max_depth() -> void:
+	print("test_mc5_history_respects_max_depth")
+	var hist: EditHistoryUtil = EditHistoryUtil.new(3)
+	hist.push({"v": 1})
+	hist.push({"v": 2})
+	hist.push({"v": 3})
+	hist.push({"v": 4})
+	_check(hist.size() == 3, "depth caps the stack at max_depth")
+	_check((hist.current() as Dictionary).get("v", -1) == 4, "newest snapshot survives the cap")
+	_check((hist.undo() as Dictionary).get("v", -1) == 3, "second-newest survives")
+	_check((hist.undo() as Dictionary).get("v", -1) == 2, "oldest surviving snapshot is v2")
+	_check(not hist.can_undo(), "v1 was evicted by the depth cap")
+
+
+func test_mc5_history_snapshots_are_isolated() -> void:
+	print("test_mc5_history_snapshots_are_isolated")
+	var hist: EditHistoryUtil = EditHistoryUtil.new()
+	var src: Dictionary = {"nested": {"count": 1}, "list": [1, 2]}
+	hist.push(src)
+	# Mutating the source after push must not corrupt stored history.
+	src["nested"]["count"] = 999
+	(src["list"] as Array).append(3)
+	var stored: Dictionary = hist.current() as Dictionary
+	_check((stored["nested"] as Dictionary).get("count", -1) == 1, "push deep-copies nested dicts")
+	_check((stored["list"] as Array).size() == 2, "push deep-copies nested arrays")
+	# Mutating a returned snapshot must not corrupt the internal stack either.
+	stored["nested"]["count"] = -5
+	var again: Dictionary = hist.current() as Dictionary
+	_check((again["nested"] as Dictionary).get("count", -1) == 1, "current deep-copies on the way out")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
