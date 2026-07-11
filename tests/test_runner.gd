@@ -346,6 +346,14 @@ func _init() -> void:
 	test_mc5_history_push_discards_redo_tail()
 	test_mc5_history_respects_max_depth()
 	test_mc5_history_snapshots_are_isolated()
+	# Phase MC5.4 (request 6): AutosaveUtil path/envelope/throttle/recovery logic.
+	test_mc5_autosave_path_for_valid_kinds()
+	test_mc5_autosave_path_rejects_bad_kind()
+	test_mc5_autosave_envelope_roundtrip()
+	test_mc5_autosave_envelope_isolated()
+	test_mc5_autosave_parse_rejects_malformed()
+	test_mc5_autosave_should_offer_recovery()
+	test_mc5_autosave_throttle_blocks_rapid_saves()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3937,6 +3945,94 @@ func test_mc5_history_snapshots_are_isolated() -> void:
 	stored["nested"]["count"] = -5
 	var again: Dictionary = hist.current() as Dictionary
 	_check((again["nested"] as Dictionary).get("count", -1) == 1, "current deep-copies on the way out")
+
+
+# --- Phase MC5.4 (request 6): editor autosave path/envelope/throttle logic ---
+# The user wants the editors to autosave so an unexpected exit never loses work,
+# and to OFFER recovery on the next entry. These checks pin the PURE half of
+# AutosaveUtil (no disk IO): filename/path building, envelope wrap/parse, the
+# recovery decision, and the throttle. The IO half is skipped headlessly.
+
+func test_mc5_autosave_path_for_valid_kinds() -> void:
+	print("test_mc5_autosave_path_for_valid_kinds")
+	_check(AutosaveUtil.path_for(AutosaveUtil.KIND_MAP) == "user://autosave/map.autosave.json",
+		"map kind -> rolling map draft path")
+	_check(AutosaveUtil.path_for(AutosaveUtil.KIND_MOD) == "user://autosave/mod.autosave.json",
+		"mod kind -> rolling mod draft path")
+	_check(AutosaveUtil.path_for(AutosaveUtil.KIND_GUI) == "user://autosave/gui.autosave.json",
+		"gui kind -> rolling gui draft path")
+
+
+func test_mc5_autosave_path_rejects_bad_kind() -> void:
+	print("test_mc5_autosave_path_rejects_bad_kind")
+	_check(AutosaveUtil.path_for("") == "", "empty kind addresses no file")
+	_check(AutosaveUtil.path_for("../../etc/passwd") == "", "path-traversal kind is rejected")
+	_check(AutosaveUtil.path_for("bogus") == "", "unknown kind is rejected")
+
+
+func test_mc5_autosave_envelope_roundtrip() -> void:
+	print("test_mc5_autosave_envelope_roundtrip")
+	var snap: Dictionary = { "scenario_id": "m1", "tiles": [0, 1, 0] }
+	var env: Dictionary = AutosaveUtil.build_envelope(AutosaveUtil.KIND_MAP, snap, 12345)
+	_check(int(env.get("version", -1)) == AutosaveUtil.ENVELOPE_VERSION, "envelope carries version")
+	_check(str(env.get("kind", "")) == "map", "envelope carries sanitised kind")
+	_check(int(env.get("saved_at", 0)) == 12345, "envelope carries the injected timestamp")
+	var parsed: Dictionary = AutosaveUtil.parse_envelope(env)
+	_check(bool(parsed.get("ok", false)), "well-formed envelope parses ok")
+	_check((parsed.get("snapshot") as Dictionary).get("scenario_id", "") == "m1",
+		"parsed snapshot survives the roundtrip")
+
+
+func test_mc5_autosave_envelope_isolated() -> void:
+	print("test_mc5_autosave_envelope_isolated")
+	var snap: Dictionary = { "list": [1, 2] }
+	var env: Dictionary = AutosaveUtil.build_envelope(AutosaveUtil.KIND_MOD, snap, 1)
+	# Mutating the source after wrapping must not corrupt the stored envelope.
+	(snap["list"] as Array).append(3)
+	_check(((env["snapshot"] as Dictionary)["list"] as Array).size() == 2,
+		"build_envelope deep-copies the snapshot")
+
+
+func test_mc5_autosave_parse_rejects_malformed() -> void:
+	print("test_mc5_autosave_parse_rejects_malformed")
+	_check(not bool(AutosaveUtil.parse_envelope("not a dict").get("ok", false)),
+		"non-dictionary is rejected")
+	_check(not bool(AutosaveUtil.parse_envelope({ "kind": "map", "snapshot": {} }).get("ok", true)),
+		"missing version is rejected")
+	_check(not bool(AutosaveUtil.parse_envelope(
+		{ "version": AutosaveUtil.ENVELOPE_VERSION, "kind": "bogus", "snapshot": {} }).get("ok", true)),
+		"unknown kind is rejected")
+	_check(not bool(AutosaveUtil.parse_envelope(
+		{ "version": AutosaveUtil.ENVELOPE_VERSION, "kind": "map" }).get("ok", true)),
+		"missing snapshot is rejected")
+
+
+func test_mc5_autosave_should_offer_recovery() -> void:
+	print("test_mc5_autosave_should_offer_recovery")
+	var good: Dictionary = AutosaveUtil.parse_envelope(
+		AutosaveUtil.build_envelope(AutosaveUtil.KIND_MAP, { "tiles": [1] }, 7))
+	_check(AutosaveUtil.should_offer_recovery(good, AutosaveUtil.KIND_MAP),
+		"offer recovery when a matching non-empty draft exists")
+	_check(not AutosaveUtil.should_offer_recovery(good, AutosaveUtil.KIND_MOD),
+		"do NOT offer a map draft when opening the mod editor")
+	var empty: Dictionary = AutosaveUtil.parse_envelope(
+		AutosaveUtil.build_envelope(AutosaveUtil.KIND_MAP, {}, 7))
+	_check(not AutosaveUtil.should_offer_recovery(empty, AutosaveUtil.KIND_MAP),
+		"do NOT offer recovery for an empty snapshot")
+	_check(not AutosaveUtil.should_offer_recovery({ "ok": false }, AutosaveUtil.KIND_MAP),
+		"do NOT offer recovery when parse failed")
+
+
+func test_mc5_autosave_throttle_blocks_rapid_saves() -> void:
+	print("test_mc5_autosave_throttle_blocks_rapid_saves")
+	var au: AutosaveUtil = AutosaveUtil.new(15.0)
+	_check(au.should_autosave_now(AutosaveUtil.KIND_MAP, 100.0), "first save always allowed")
+	_check(not au.should_autosave_now(AutosaveUtil.KIND_MAP, 105.0), "save 5s later is throttled")
+	_check(au.should_autosave_now(AutosaveUtil.KIND_MAP, 120.0), "save 20s later is allowed")
+	# Throttle is per-kind: a mod save is independent of the map clock.
+	_check(au.should_autosave_now(AutosaveUtil.KIND_MOD, 105.0), "different kind has its own clock")
+	au.reset_throttle(AutosaveUtil.KIND_MAP)
+	_check(au.should_autosave_now(AutosaveUtil.KIND_MAP, 121.0), "reset lets the next save through")
 
 
 # --- Phase MC2 (request 2): three-state fog "last image" memory -------------
