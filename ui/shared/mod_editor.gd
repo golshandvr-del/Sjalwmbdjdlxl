@@ -1039,6 +1039,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and is_inside_tree():
 		get_viewport().set_input_as_handled()
 		_on_back()
+		return
+	# MC5.3 (req6): Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo/redo the last edit.
+	if event.is_action_pressed("ui_undo") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_do_undo()
+		return
+	if event.is_action_pressed("ui_redo") and is_inside_tree():
+		get_viewport().set_input_as_handled()
+		_do_redo()
 
 
 # --- Rendering --------------------------------------------------------------
