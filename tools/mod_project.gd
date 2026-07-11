@@ -159,6 +159,49 @@ func open_pack(path: String) -> bool:
 	return true
 
 
+# --- Full-project snapshot (MC5.3, request 6) -------------------------------
+#
+# A deep, self-contained copy of the ENTIRE in-memory project (manifest + every
+# catalog + bundled textures). Used by the editor's undo/redo history so a single
+# stored entry captures the whole authoring state. Deep-duplicated so a stored
+# snapshot is fully isolated from later edits. Textures (PackedByteArray) survive
+# the duplicate(true) intact.
+func to_snapshot() -> Dictionary:
+	return {
+		"manifest": manifest.duplicate(true),
+		"units": units.duplicate(true),
+		"buildings": buildings.duplicate(true),
+		"scenarios": scenarios.duplicate(true),
+		"tech": tech.duplicate(true),
+		"objects": objects.duplicate(true),
+		"textures": textures.duplicate(true),
+	}
+
+
+# Replace the whole project from a snapshot produced by to_snapshot(). Missing
+# sections fall back to empty so a partial/legacy snapshot cannot corrupt the
+# model. Returns true when the snapshot looked usable (had a manifest).
+func from_snapshot(snapshot: Dictionary) -> bool:
+	if not (snapshot.get("manifest") is Dictionary):
+		return false
+	manifest = (snapshot.get("manifest") as Dictionary).duplicate(true)
+	units = _snapshot_section(snapshot, "units")
+	buildings = _snapshot_section(snapshot, "buildings")
+	scenarios = _snapshot_section(snapshot, "scenarios")
+	tech = _snapshot_section(snapshot, "tech")
+	objects = _snapshot_section(snapshot, "objects")
+	textures = _snapshot_section(snapshot, "textures")
+	return true
+
+
+# Deep-copy one section of a snapshot, defaulting to an empty Dictionary.
+func _snapshot_section(snapshot: Dictionary, key: String) -> Dictionary:
+	var value: Variant = snapshot.get(key, {})
+	if value is Dictionary:
+		return (value as Dictionary).duplicate(true)
+	return {}
+
+
 # --- Unit editing (D.3) -----------------------------------------------------
 
 # Add or replace a unit definition. `definition` may omit "id"; the passed `id`
