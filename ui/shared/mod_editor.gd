@@ -486,6 +486,68 @@ func _commit(entity: Dictionary) -> void:
 	_maybe_autosave()
 
 
+# --- MC5.3/5.4 (req6): undo/redo + autosave (mirrors ui/shared/map_editor.gd) --
+# The model layer is ModProject; a "snapshot" is its full to_snapshot() dict, so
+# undo/redo restores the entire project deterministically. All simulation-facing
+# behaviour is unchanged: this only rewinds the authoring document.
+
+func _record_history() -> void:
+	if _restoring:
+		return
+	_history.push(_project.to_snapshot())
+
+
+func _do_undo() -> void:
+	if not _history.can_undo():
+		_set_status(_loc.t("ui.modeditor.status.undo_none"))
+		return
+	var snap: Variant = _history.undo()
+	_restore_snapshot(snap)
+	_set_status(_loc.t("ui.modeditor.status.undo"))
+
+
+func _do_redo() -> void:
+	if not _history.can_redo():
+		_set_status(_loc.t("ui.modeditor.status.redo_none"))
+		return
+	var snap: Variant = _history.redo()
+	_restore_snapshot(snap)
+	_set_status(_loc.t("ui.modeditor.status.redo"))
+
+
+func _restore_snapshot(snapshot: Variant) -> void:
+	if not (snapshot is Dictionary):
+		return
+	_restoring = true
+	_project.from_snapshot(snapshot as Dictionary)
+	_restoring = false
+	# A restored project may no longer contain the previously selected id.
+	if _selected_id != "" and _get_entity(_selected_id).is_empty():
+		_selected_id = ""
+	_refresh_all()
+
+
+func _maybe_autosave() -> void:
+	if _restoring or _project == null:
+		return
+	_autosave.maybe_autosave(AutosaveUtil.KIND_MOD, _project.to_snapshot())
+
+
+func peek_autosave_recovery() -> Dictionary:
+	var parsed: Dictionary = _autosave.read_snapshot(AutosaveUtil.KIND_MOD)
+	if not AutosaveUtil.should_offer_recovery(parsed, AutosaveUtil.KIND_MOD):
+		return {}
+	return parsed.get("snapshot", {}) as Dictionary
+
+
+func apply_autosave_recovery(snapshot: Dictionary) -> void:
+	if snapshot.is_empty() or _project == null:
+		return
+	_restore_snapshot(snapshot)
+	_history.clear()
+	_record_history()
+
+
 func _is_multi(entity: Dictionary) -> bool:
 	var g: Variant = entity.get("graphic", {})
 	return g is Dictionary and str((g as Dictionary).get("mode", "")) == GraphicModel.MODE_MULTI
