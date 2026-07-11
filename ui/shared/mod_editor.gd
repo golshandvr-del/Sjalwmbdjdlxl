@@ -212,6 +212,13 @@ func _build_footer(root: VBoxContainer) -> void:
 	save_btn.text = _loc.t("ui.modeditor.save")
 	save_btn.pressed.connect(_on_save)
 	footer.add_child(save_btn)
+	# MC5.3 (req6): undo/redo toolbar buttons; enabled state follows the history.
+	_undo_btn = Button.new()
+	_undo_btn.pressed.connect(_do_undo)
+	footer.add_child(_undo_btn)
+	_redo_btn = Button.new()
+	_redo_btn.pressed.connect(_do_redo)
+	footer.add_child(_redo_btn)
 	var spacer: Control = Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	footer.add_child(spacer)
@@ -1070,6 +1077,14 @@ func _refresh_labels() -> void:
 	# Highlight the active catalog tab by disabling its button.
 	for catalog in _tab_buttons.keys():
 		(_tab_buttons[catalog] as Button).disabled = (catalog == _active_catalog)
+	# MC5.3 (req6): keep undo/redo button labels localized and enabled only when
+	# there is something to undo/redo.
+	if _undo_btn != null:
+		_undo_btn.text = _loc.t("ui.modeditor.tool.undo")
+		_undo_btn.disabled = not _history.can_undo()
+	if _redo_btn != null:
+		_redo_btn.text = _loc.t("ui.modeditor.tool.redo")
+		_redo_btn.disabled = not _history.can_redo()
 
 
 func _set_status(text: String) -> void:
