@@ -470,6 +470,10 @@ func _selected_entity() -> Dictionary:
 
 func _commit(entity: Dictionary) -> void:
 	_set_entity(_selected_id, entity)
+	# MC5.3/5.4 (req6): every mutation funnels here, so snapshot for undo and
+	# offer the draft to autosave right after the model changes.
+	_record_history()
+	_maybe_autosave()
 
 
 func _is_multi(entity: Dictionary) -> bool:
