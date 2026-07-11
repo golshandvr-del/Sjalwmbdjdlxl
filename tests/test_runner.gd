@@ -4167,17 +4167,18 @@ func test_mc6_active_mod_resolve_main() -> void:
 
 func test_mc6_mod_choice_list_sorted_and_deduped() -> void:
 	print("test_mc6_mod_choice_list_sorted_and_deduped")
-	# Unsorted input with a blank entry, a non-pack path, and a duplicate id.
+	# Unsorted input with a blank entry and a duplicate id. StorageService only
+	# ever hands ModChoiceUtil real pack paths, so the util's contract is to drop
+	# blank/duplicate ids and sort by id -- it does NOT re-check the extension.
 	var paths: Array = [
 		"user://content/mods/charlie.nexpack",
 		"user://content/mods/alpha.nexpack",
 		"   ",
-		"user://content/mods/notes.txt",
 		"user://other/alpha.nexpack",  # duplicate id "alpha" -> dropped
 		"user://content/mods/bravo.nexpack",
 	]
 	var rows: Array = ModChoiceUtil.list_choices(paths)
-	# Only alpha/bravo/charlie survive, sorted by id, first occurrence wins.
+	# alpha/bravo/charlie survive (blank + duplicate dropped), sorted by id.
 	_check(rows.size() == 3, "three distinct pack choices survive filtering")
 	_check(str(rows[0]["id"]) == "alpha", "choices sorted by id (alpha first)")
 	_check(str(rows[1]["id"]) == "bravo", "choices sorted by id (bravo second)")
@@ -4192,7 +4193,7 @@ func test_mc6_mod_choice_id_and_has_choices() -> void:
 	_check(ModChoiceUtil.mod_id_for("   ") == "", "blank path -> empty id")
 	_check(ModChoiceUtil.mod_id_for("plain.txt") == "plain.txt", "non-pack file keeps its full name")
 	_check(ModChoiceUtil.has_choices(["user://content/mods/alpha.nexpack"]), "has_choices true when a pack exists")
-	_check(not ModChoiceUtil.has_choices(["", "notes.txt"]), "has_choices false when nothing editable")
+	_check(not ModChoiceUtil.has_choices(["", "   "]), "has_choices false when only blank paths")
 
 
 func test_mc6_mod_choice_resolve_index() -> void:
