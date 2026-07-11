@@ -132,10 +132,23 @@ func _draw() -> void:
 	var world: Object = _world_state()
 	if world == null:
 		return
+	# MC2 (request 2): refresh the last-image memory from what is currently
+	# VISIBLE before drawing, so EXPLORED tiles can show a frozen snapshot.
+	_observe_fog_snapshot(world)
 	_draw_map(world)
 	_draw_buildings(world)
 	_draw_units(world)
 	_draw_fog(world)
+
+
+# MC2 (request 2): feed the current frame to the cosmetic snapshot memory.
+func _observe_fog_snapshot(world: Object) -> void:
+	if fog_viewer < 0:
+		return
+	var fog: Dictionary = world.get_section("fog")
+	var buildings: Dictionary = world.get_section("buildings").get("list", {})
+	var units: Dictionary = world.get_section("units").get("list", {})
+	_fog_snapshot.observe(fog_viewer, fog, buildings, units)
 
 
 # --- Drawing (delegated to the pluggable style) -----------------------------
