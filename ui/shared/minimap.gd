@@ -97,6 +97,11 @@ func _draw() -> void:
 	# everything (spectator / fog disabled).
 	var fog: Dictionary = ws.get_section("fog")
 
+	# MC2.3 (request 2): three-state minimap. On EXPLORED tiles draw the dimmed
+	# frozen "last image" from the shared snapshot memory (same source the main
+	# view uses) BEFORE live entities, so the memory shows under the fog dim.
+	_draw_remembered_layer(fog, cell, w, h)
+
 	# Buildings as owner-coloured squares.
 	var buildings: Dictionary = ws.get_section("buildings").get("list", {})
 	for key in buildings.keys():
@@ -119,8 +124,64 @@ func _draw() -> void:
 		var c: Vector2 = (Vector2(ux, uy) + Vector2(0.5, 0.5)) * cell
 		draw_circle(c, maxf(1.5, cell.x * 0.4), _owner_color(int(u.get("owner", -1))))
 
+	# MC2.3 (request 2): fog cover layer -- solid black over HIDDEN tiles and a
+	# semi-transparent dim over EXPLORED tiles, mirroring the main view's three
+	# states (HIDDEN = black, VISIBLE = live, EXPLORED = dimmed last image).
+	_draw_fog_cover(fog, cell, w, h)
+
 	# Camera box: map the main view's visible world rect onto the minimap.
 	_draw_camera_box(w, h, cell)
+
+
+# MC2.3 (request 2): the frozen "last image" markers for EXPLORED tiles, read
+# from the RenderAdapter's shared FogSnapshotUtil (cosmetic; never simulation).
+func _draw_remembered_layer(fog: Dictionary, cell: Vector2, w: int, h: int) -> void:
+	if fog_viewer < 0:
+		return
+	var snapshot: Object = _fog_snapshot()
+	if snapshot == null:
+		return
+	for y in range(h):
+		for x in range(w):
+			if FogUtil.fog_state(fog, fog_viewer, x, y) != FogUtil.FOG_EXPLORED:
+				continue
+			var mem: Dictionary = snapshot.remembered(x, y)
+			if mem.is_empty():
+				continue
+			var col: Color = _owner_color(int(mem.get("owner", -1)))
+			if str(mem.get("kind", "")) == "building":
+				draw_rect(Rect2(Vector2(x, y) * cell, cell * 1.5), col, true)
+			else:
+				var c: Vector2 = (Vector2(x, y) + Vector2(0.5, 0.5)) * cell
+				draw_circle(c, maxf(1.5, cell.x * 0.4), col)
+
+
+# MC2.3 (request 2): three-state fog cover for the minimap. HIDDEN -> near-solid
+# black; EXPLORED -> semi-transparent dim (the remembered markers drawn earlier
+# show through, dimmed); VISIBLE -> untouched (live).
+func _draw_fog_cover(fog: Dictionary, cell: Vector2, w: int, h: int) -> void:
+	if fog_viewer < 0:
+		return
+	for y in range(h):
+		for x in range(w):
+			var state: int = FogUtil.fog_state(fog, fog_viewer, x, y)
+			if state == FogUtil.FOG_VISIBLE:
+				continue
+			var rect: Rect2 = Rect2(Vector2(x, y) * cell, cell)
+			if state == FogUtil.FOG_HIDDEN:
+				draw_rect(rect, Color(0, 0, 0, 0.85), true)
+			else:
+				draw_rect(rect, Color(0, 0, 0, 0.45), true)
+
+
+# Resolve the shared last-image snapshot from the render adapter (single source
+# of truth; the minimap never keeps its own diverging memory).
+func _fog_snapshot() -> Object:
+	if render_adapter == null:
+		return null
+	if render_adapter.has_method("fog_snapshot"):
+		return render_adapter.fog_snapshot()
+	return null
 
 
 func _draw_camera_box(map_w: int, map_h: int, cell: Vector2) -> void:
