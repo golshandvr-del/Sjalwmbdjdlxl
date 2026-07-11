@@ -184,9 +184,20 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_style_pressed()
 			KEY_L:
 				_on_lang_pressed()
+			KEY_M:
+				# MC1.5 (request 1): toggle DIRECT <-> MANUAL move mode.
+				_on_move_mode_pressed()
+			KEY_ENTER, KEY_KP_ENTER:
+				# MC1.5: commit the plotted MANUAL waypoint route.
+				_on_move_confirm()
 			KEY_ESCAPE:
-				_selected_unit_ids.clear()
-				_push_selection()
+				# MC1.5: a pending route is cancelled first; otherwise clear the
+				# selection (the long-standing Escape behaviour).
+				if _move_mode.has_pending():
+					_on_move_cancel()
+				else:
+					_selected_unit_ids.clear()
+					_push_selection()
 
 
 func _handle_camera_pan(delta: float) -> void:
