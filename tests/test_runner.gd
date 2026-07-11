@@ -3569,6 +3569,247 @@ func test_mb9_describe_tls_error_only_for_benign() -> void:
 		"non-benign code has no TLS description")
 
 
+# --- Phase MC1 (request 1): fog-aware belief pathing + manual-waypoint move ---
+# The user reported a contradiction: units that pathfind using the REAL grid can
+# route around walls they have never discovered (effective cheating). BeliefGrid
+# fixes this by treating HIDDEN tiles as walkable, and units_module replans on
+# contact. These pure checks pin the belief/waypoint/move-mode logic headlessly.
+
+func _mc1_fog_grid(width: int, height: int, viewer: int, visible_tiles: Array) -> Dictionary:
+	# Build a minimal fog section where `visible_tiles` (Array of [x,y]) are
+	# VISIBLE for `viewer` and everything else is HIDDEN.
+	var grid: Array = []
+	grid.resize(width * height)
+	for i in range(grid.size()):
+		grid[i] = BeliefGridUtil.FOG_HIDDEN
+	for t in visible_tiles:
+		var idx: int = int(t[1]) * width + int(t[0])
+		if idx >= 0 and idx < grid.size():
+			grid[idx] = BeliefGridUtil.FOG_VISIBLE
+	return { "visible": { str(viewer): grid } }
+
+
+func test_mc1_belief_grid_hidden_is_walkable() -> void:
+	print("test_mc1_belief_grid_hidden_is_walkable")
+	# Real grid has a wall (1) at index 4, but the viewer has seen nothing.
+	var w: int = 3
+	var h: int = 3
+	var tiles: Array = [0, 0, 0, 0, 1, 0, 0, 0, 0]
+	var fog: Dictionary = _mc1_fog_grid(w, h, 0, [])
+	var belief: Array = BeliefGridUtil.build_belief_grid(w, h, tiles, fog, 0)
+	_check(belief.size() == 9, "belief grid has one cell per tile")
+	_check(int(belief[4]) == BeliefGridUtil.GROUND, "hidden wall is ASSUMED walkable")
+
+
+func test_mc1_belief_grid_visible_uses_real_value() -> void:
+	print("test_mc1_belief_grid_visible_uses_real_value")
+	var w: int = 3
+	var h: int = 3
+	var tiles: Array = [0, 0, 0, 0, 1, 0, 0, 0, 0]
+	# The viewer has now SEEN the centre tile.
+	var fog: Dictionary = _mc1_fog_grid(w, h, 0, [[1, 1]])
+	var belief: Array = BeliefGridUtil.build_belief_grid(w, h, tiles, fog, 0)
+	_check(int(belief[4]) != BeliefGridUtil.GROUND, "seen wall keeps its real (blocked) value")
+
+
+func test_mc1_belief_grid_no_fog_mirrors_real_grid() -> void:
+	print("test_mc1_belief_grid_no_fog_mirrors_real_grid")
+	var w: int = 2
+	var h: int = 2
+	var tiles: Array = [0, 1, 1, 0]
+	# viewer < 0 -> no fog: belief must equal the real grid verbatim.
+	var belief: Array = BeliefGridUtil.build_belief_grid(w, h, tiles, {}, -1)
+	_check(belief == tiles, "no-fog belief mirrors the real grid exactly")
+
+
+func test_mc1_belief_grid_is_deterministic() -> void:
+	print("test_mc1_belief_grid_is_deterministic")
+	var w: int = 4
+	var h: int = 4
+	var tiles: Array = []
+	tiles.resize(16)
+	for i in range(16):
+		tiles[i] = 1 if (i % 3 == 0) else 0
+	var fog: Dictionary = _mc1_fog_grid(w, h, 2, [[0, 0], [1, 1], [3, 3]])
+	var a: Array = BeliefGridUtil.build_belief_grid(w, h, tiles, fog, 2)
+	var b: Array = BeliefGridUtil.build_belief_grid(w, h, tiles, fog, 2)
+	_check(a == b, "same inputs produce identical belief grids (lockstep-safe)")
+
+
+func test_mc1_is_known_blocked_only_when_seen() -> void:
+	print("test_mc1_is_known_blocked_only_when_seen")
+	var w: int = 3
+	var h: int = 3
+	var tiles: Array = [0, 0, 0, 0, 1, 0, 0, 0, 0]
+	var hidden_fog: Dictionary = _mc1_fog_grid(w, h, 0, [])
+	_check(not BeliefGridUtil.is_known_blocked(w, h, tiles, hidden_fog, 0, 1, 1),
+		"hidden wall is NOT known-blocked")
+	var seen_fog: Dictionary = _mc1_fog_grid(w, h, 0, [[1, 1]])
+	_check(BeliefGridUtil.is_known_blocked(w, h, tiles, seen_fog, 0, 1, 1),
+		"seen wall IS known-blocked")
+
+
+func test_mc1_belief_path_routes_through_hidden_wall() -> void:
+	print("test_mc1_belief_path_routes_through_hidden_wall")
+	# A vertical wall the viewer has never seen must be ignored, so the path can
+	# go straight through where the (hidden) wall really is.
+	var w: int = 3
+	var h: int = 1
+	var tiles: Array = [0, 1, 0]   # wall at x=1
+	var fog: Dictionary = _mc1_fog_grid(w, h, 0, [])
+	var path: Array = PathService.find_path_on_belief(w, h, tiles, fog, 0, Vector2i(0, 0), Vector2i(2, 0))
+	_check(path.size() == 3, "belief path passes straight through the undiscovered wall")
+
+
+func test_mc1_belief_path_avoids_known_wall() -> void:
+	print("test_mc1_belief_path_avoids_known_wall")
+	# Same map but the wall tile has been seen; with no vertical room to go around
+	# on a 1-row map the path must be empty (correctly blocked).
+	var w: int = 3
+	var h: int = 1
+	var tiles: Array = [0, 1, 0]
+	var fog: Dictionary = _mc1_fog_grid(w, h, 0, [[1, 0]])
+	var path: Array = PathService.find_path_on_belief(w, h, tiles, fog, 0, Vector2i(0, 0), Vector2i(2, 0))
+	_check(path.is_empty(), "a seen wall blocks the belief path when no detour exists")
+
+
+func test_mc1_waypoint_normalize_pairs_and_dedup() -> void:
+	print("test_mc1_waypoint_normalize_pairs_and_dedup")
+	var raw: Array = [[1, 2], [1, 2], Vector2i(3, 4), [3, 4], [5, 6]]
+	var out: Array = WaypointUtil.normalize(raw)
+	_check(out.size() == 3, "consecutive duplicate waypoints collapse")
+	_check(out[0] == Vector2i(1, 2) and out[1] == Vector2i(3, 4) and out[2] == Vector2i(5, 6),
+		"normalized waypoints keep order and accept pairs + Vector2i")
+	_check(WaypointUtil.normalize(null).is_empty(), "non-array input normalizes to empty")
+
+
+func test_mc1_waypoint_stitch_joins_segments_without_repeat() -> void:
+	print("test_mc1_waypoint_stitch_joins_segments_without_repeat")
+	# A solver that returns an inclusive straight horizontal/vertical segment.
+	var solver: Callable = func(a: Vector2i, b: Vector2i) -> Array:
+		var seg: Array = [a]
+		var cur: Vector2i = a
+		while cur != b:
+			cur.x += signi(b.x - cur.x)
+			cur.y += signi(b.y - cur.y)
+			seg.append(cur)
+		return seg
+	var wps: Array = [Vector2i(2, 0), Vector2i(2, 2)]
+	var full: Array = WaypointUtil.stitch_path(Vector2i(0, 0), wps, solver)
+	# (0,0)->(2,0) = 3 tiles, then ->(2,2) adds 2 (shared (2,0) skipped) = 5 total.
+	_check(full.size() == 5, "stitched path length has no repeated join tile")
+	_check(full[0] == Vector2i(0, 0), "stitched path starts at the origin")
+	_check(full[full.size() - 1] == Vector2i(2, 2), "stitched path ends at the last waypoint")
+
+
+func test_mc1_waypoint_stitch_stops_at_unreachable_segment() -> void:
+	print("test_mc1_waypoint_stitch_stops_at_unreachable_segment")
+	# Solver that reports the SECOND segment unreachable (returns []).
+	var solver: Callable = func(a: Vector2i, b: Vector2i) -> Array:
+		if b == Vector2i(9, 9):
+			return []
+		return [a, b]
+	var wps: Array = [Vector2i(1, 0), Vector2i(9, 9)]
+	var full: Array = WaypointUtil.stitch_path(Vector2i(0, 0), wps, solver)
+	_check(full[full.size() - 1] == Vector2i(1, 0), "stitch stops at last reachable waypoint")
+
+
+func test_mc1_move_mode_defaults_to_direct() -> void:
+	print("test_mc1_move_mode_defaults_to_direct")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	_check(m.mode() == MoveModeUtil.MODE_DIRECT, "default move mode is direct")
+	_check(not m.is_manual(), "is_manual is false by default")
+
+
+func test_mc1_move_mode_toggle_flips_and_clears() -> void:
+	print("test_mc1_move_mode_toggle_flips_and_clears")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	_check(m.toggle_mode() == MoveModeUtil.MODE_MANUAL, "toggle enters manual mode")
+	m.resolve_ground_tap(Vector2i(1, 1), true)
+	_check(m.has_pending(), "a waypoint is pending in manual mode")
+	_check(m.toggle_mode() == MoveModeUtil.MODE_DIRECT, "toggle returns to direct mode")
+	_check(not m.has_pending(), "leaving manual mode clears the pending route")
+
+
+func test_mc1_move_mode_direct_tap_issues_move() -> void:
+	print("test_mc1_move_mode_direct_tap_issues_move")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	var plan: Dictionary = m.resolve_ground_tap(Vector2i(4, 5), true)
+	_check(str(plan.get("action")) == MoveModeUtil.ACTION_MOVE_DIRECT, "direct tap issues an immediate move")
+	_check(plan.get("tile") == Vector2i(4, 5), "direct move targets the tapped tile")
+
+
+func test_mc1_move_mode_manual_tap_accumulates_waypoints() -> void:
+	print("test_mc1_move_mode_manual_tap_accumulates_waypoints")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	m.set_mode(MoveModeUtil.MODE_MANUAL)
+	var p1: Dictionary = m.resolve_ground_tap(Vector2i(1, 0), true)
+	_check(str(p1.get("action")) == MoveModeUtil.ACTION_ADD_WAYPOINT, "manual tap buffers a waypoint")
+	m.resolve_ground_tap(Vector2i(1, 3), true)
+	m.resolve_ground_tap(Vector2i(5, 3), true)
+	var wps: Array = m.waypoints()
+	_check(wps.size() == 3, "three taps buffer three waypoints")
+	_check(wps[0] == Vector2i(1, 0) and wps[2] == Vector2i(5, 3), "waypoints stay in tap order")
+
+
+func test_mc1_move_mode_manual_collapses_duplicate_taps() -> void:
+	print("test_mc1_move_mode_manual_collapses_duplicate_taps")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	m.set_mode(MoveModeUtil.MODE_MANUAL)
+	m.resolve_ground_tap(Vector2i(2, 2), true)
+	m.resolve_ground_tap(Vector2i(2, 2), true)
+	_check(m.waypoints().size() == 1, "tapping the same tile twice adds only one waypoint")
+
+
+func test_mc1_move_mode_commit_returns_pairs_and_clears() -> void:
+	print("test_mc1_move_mode_commit_returns_pairs_and_clears")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	m.set_mode(MoveModeUtil.MODE_MANUAL)
+	m.resolve_ground_tap(Vector2i(1, 0), true)
+	m.resolve_ground_tap(Vector2i(1, 4), true)
+	var plan: Dictionary = m.commit()
+	_check(str(plan.get("action")) == MoveModeUtil.ACTION_MOVE_PATH, "commit issues a waypoint move")
+	var pairs: Array = plan.get("waypoints", [])
+	_check(pairs.size() == 2 and pairs[0] == [1, 0] and pairs[1] == [1, 4],
+		"committed waypoints are [x,y] pairs ready for the command payload")
+	_check(not m.has_pending(), "commit clears the pending buffer")
+	_check(str(m.commit().get("action")) == MoveModeUtil.ACTION_NONE, "second commit with nothing pending is a no-op")
+
+
+func test_mc1_move_mode_cancel_clears_pending() -> void:
+	print("test_mc1_move_mode_cancel_clears_pending")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	m.set_mode(MoveModeUtil.MODE_MANUAL)
+	m.resolve_ground_tap(Vector2i(3, 3), true)
+	_check(str(m.cancel().get("action")) == MoveModeUtil.ACTION_CLEAR, "cancel clears a pending route")
+	_check(not m.has_pending(), "buffer is empty after cancel")
+	_check(str(m.cancel().get("action")) == MoveModeUtil.ACTION_NONE, "cancel with nothing pending is a no-op")
+
+
+func test_mc1_move_mode_no_selection_is_noop() -> void:
+	print("test_mc1_move_mode_no_selection_is_noop")
+	var m: MoveModeUtil = MoveModeUtil.new()
+	var direct: Dictionary = m.resolve_ground_tap(Vector2i(1, 1), false)
+	_check(str(direct.get("action")) == MoveModeUtil.ACTION_NONE, "direct tap with no selection is a no-op")
+	m.set_mode(MoveModeUtil.MODE_MANUAL)
+	var manual: Dictionary = m.resolve_ground_tap(Vector2i(1, 1), false)
+	_check(str(manual.get("action")) == MoveModeUtil.ACTION_NONE, "manual tap with no selection buffers nothing")
+	_check(not m.has_pending(), "no waypoint buffered without a selection")
+
+
+func test_mc1_move_keys_localized_in_all_locales() -> void:
+	print("test_mc1_move_keys_localized_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	var required: Array = [
+		"ui.move.mode_direct", "ui.move.mode_manual", "ui.move.confirm_path",
+		"ui.move.cancel_path", "ui.move.toggle_hint",
+	]
+	for key in required:
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
+
+
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
 	print("test_phase_e_editor_keys_localized_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
