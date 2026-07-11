@@ -110,7 +110,26 @@ func _ready() -> void:
 	Nexus.subscribe(VictoryModule.EVENT_MATCH_OVER, self, "_on_match_over")
 	_overlay.visible = false
 	_selection_box.visible = false
+	_build_move_mode_widget()
 	_apply_static_labels()
+
+
+# MC1.5 (request 1): a toggle button in the bottom Row to flip DIRECT/MANUAL move
+# mode. Confirm (Enter) and cancel (Escape) are keyboard-driven on desktop, so a
+# single toggle button suffices; its label shows the pending-waypoint count in
+# MANUAL mode. Built programmatically so the scene file needs no change.
+func _build_move_mode_widget() -> void:
+	_move_mode_button = Button.new()
+	_move_mode_button.name = "MoveModeButton"
+	_move_mode_button.toggle_mode = true
+	_move_mode_button.tooltip_text = _loc.t("ui.move.toggle_hint")
+	_move_mode_button.pressed.connect(_on_move_mode_pressed)
+	var row: Node = get_node_or_null("BottomBar/Margin/Row")
+	if row != null:
+		row.add_child(_move_mode_button)
+	else:
+		add_child(_move_mode_button)
+	_update_move_mode_button()
 
 
 func _process(delta: float) -> void:
