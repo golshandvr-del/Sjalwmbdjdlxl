@@ -62,6 +62,15 @@ var _local_hq_id: int = -1
 var _dragging: bool = false
 var _drag_start: Vector2 = Vector2.ZERO
 
+# MC1.5 (request 1): two-mode movement shared with the mobile HUD via the pure
+# MoveModeUtil. DIRECT = right-click issues an immediate belief-aware move;
+# MANUAL = right-clicks accumulate an ordered waypoint route that a "confirm"
+# (Enter) commits as one move_unit, and "cancel" (Escape) discards. The toggle
+# lives on a programmatically-built button (M hotkey) so the desktop and mobile
+# HUDs never diverge and the exact logic is unit-tested headlessly.
+var _move_mode: MoveModeUtil = MoveModeUtil.new()
+var _move_mode_button: Button = null
+
 
 func _ready() -> void:
 	# Phase G: apply the persisted GUI scale so the desktop HUD matches Options.
