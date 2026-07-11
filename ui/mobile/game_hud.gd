@@ -588,13 +588,25 @@ func _handle_tap(screen_pos: Vector2) -> void:
 				"unit_ids": _selected_unit_ids.duplicate(),
 			}, 1)
 		TapSelectUtil.ACTION_MOVE:
-			# Simulation command -> route through player_command so it is lockstep
-			# scheduled when a networked session is active (MA7.1), else immediate.
-			Nexus.player_command("move_unit", {
-				"unit_ids": _selected_unit_ids.duplicate(),
-				"x": tile.x,
-				"y": tile.y,
-			}, 1)
+			# MC1.5 (request 1): a ground tap now runs through MoveModeUtil so the
+			# same tap either moves immediately (DIRECT) or plots a waypoint route
+			# (MANUAL). The util is pure; we still issue the authoritative commands.
+			var move_plan: Dictionary = _move_mode.resolve_ground_tap(tile, not _selected_unit_ids.is_empty())
+			match str(move_plan.get("action", MoveModeUtil.ACTION_NONE)):
+				MoveModeUtil.ACTION_MOVE_DIRECT:
+					# Simulation command -> route through player_command so it is
+					# lockstep scheduled when a networked session is active (MA7.1).
+					Nexus.player_command("move_unit", {
+						"unit_ids": _selected_unit_ids.duplicate(),
+						"x": tile.x,
+						"y": tile.y,
+					}, 1)
+				MoveModeUtil.ACTION_ADD_WAYPOINT:
+					# Route plotting: no command yet, just refresh the mode buttons
+					# so Confirm/Cancel reflect the pending route.
+					_update_move_mode_buttons()
+				_:
+					pass
 		_:
 			pass
 
