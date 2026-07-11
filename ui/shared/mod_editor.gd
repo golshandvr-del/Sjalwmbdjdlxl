@@ -61,6 +61,17 @@ var _storage: StorageService = null
 # MB10.2 (bug 29): the loading overlay, created lazily on first save.
 var _overlay: ProgressOverlay = null
 
+# MC5.3 (req6): undo/redo history over full-project snapshots (mirrors the map
+# editor). _restoring guards the funnel so a restore does not re-record itself.
+var _history: EditHistoryUtil = EditHistoryUtil.new()
+var _restoring: bool = false
+# MC5.4 (req6): throttled autosave of the current project to a user:// draft so
+# an interrupted session can be recovered next time the mod editor opens.
+var _autosave: AutosaveUtil = AutosaveUtil.new()
+# Undo/redo toolbar buttons (built in the footer, refreshed with labels).
+var _undo_btn: Button
+var _redo_btn: Button
+
 # Which catalog the tree currently shows ("units" / "buildings" / "objects").
 var _active_catalog: String = ModProject.UNITS_CATALOG
 # The node id selected in the tree (for context actions + editing).
