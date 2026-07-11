@@ -228,9 +228,43 @@ func _draw_fog(world: Object) -> void:
 				continue
 			var rect: Rect2 = _tile_rect(x, y)
 			if state == FOG_HIDDEN:
+				# Never seen -> solid black cover.
 				draw_rect(rect, Color(0, 0, 0, 0.85), true)
 			else:  # EXPLORED
+				# MC2 (request 2): draw the frozen "last image" of whatever the
+				# viewer last saw on this tile (a dimmed owner-coloured marker),
+				# THEN a semi-transparent dim over it so the memory reads as
+				# "explored, not currently seen".
+				_draw_remembered_tile(rect, x, y)
 				draw_rect(rect, Color(0, 0, 0, 0.45), true)
+
+
+# MC2 (request 2): render the remembered entity image (if any) on an EXPLORED
+# tile. Cosmetic only; owner colours mirror the simple style's convention.
+func _draw_remembered_tile(rect: Rect2, x: int, y: int) -> void:
+	var mem: Dictionary = _fog_snapshot.remembered(x, y)
+	if mem.is_empty():
+		return
+	var owner: int = int(mem.get("owner", -1))
+	var col: Color = _remembered_owner_color(owner)
+	if str(mem.get("kind", "")) == FogSnapshotUtil.KIND_BUILDING:
+		# Buildings fill most of the tile.
+		draw_rect(rect.grow(-rect.size.x * 0.15), col, true)
+	else:
+		# Units are a smaller centred blob.
+		draw_circle(rect.get_center(), rect.size.x * 0.28, col)
+
+
+func _remembered_owner_color(owner: int) -> Color:
+	var palette: Array = [
+		Color(0.30, 0.69, 0.95),  # 0 - blue
+		Color(0.89, 0.33, 0.24),  # 1 - red
+		Color(0.36, 0.75, 0.42),  # 2 - green
+		Color(0.89, 0.71, 0.25),  # 3 - amber
+	]
+	if owner >= 0 and owner < palette.size():
+		return palette[owner]
+	return Color(0.7, 0.7, 0.7)
 
 
 func _fog_state(world: Object, x: int, y: int) -> int:
