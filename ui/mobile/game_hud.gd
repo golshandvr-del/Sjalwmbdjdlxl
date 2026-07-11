@@ -909,6 +909,7 @@ func _build_p3_widgets() -> void:
 	_build_control_group_panel()
 	_build_selection_panel()
 	_build_select_mode_widgets()
+	_build_move_mode_widgets()
 	# Apply the initial responsive placement for the current orientation.
 	_apply_responsive_layout()
 
@@ -936,6 +937,43 @@ func _build_select_mode_widgets() -> void:
 	_select_button.position = Vector2(12, -260)
 	_select_button.pressed.connect(_on_select_mode_pressed)
 	add_child(_select_button)
+
+
+# MC1.5 (request 1): build the move-mode toggle plus the Confirm/Cancel buttons
+# used while plotting a manual route. Placed just above the Select button
+# (bottom-left, thumb-reachable). Confirm/Cancel start hidden and only appear in
+# MANUAL mode with a pending route (see _update_move_mode_buttons).
+func _build_move_mode_widgets() -> void:
+	_move_mode_button = Button.new()
+	_move_mode_button.name = "MoveModeButton"
+	_move_mode_button.text = _local_text("ui.move.mode_direct")
+	_move_mode_button.tooltip_text = _local_text("ui.move.toggle_hint")
+	_move_mode_button.toggle_mode = true
+	_move_mode_button.custom_minimum_size = Vector2(0, 34)
+	_move_mode_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_move_mode_button.position = Vector2(12, -300)
+	_move_mode_button.pressed.connect(_on_move_mode_pressed)
+	add_child(_move_mode_button)
+
+	_move_confirm_button = Button.new()
+	_move_confirm_button.name = "MoveConfirmButton"
+	_move_confirm_button.text = _local_text("ui.move.confirm_path")
+	_move_confirm_button.custom_minimum_size = Vector2(0, 34)
+	_move_confirm_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_move_confirm_button.position = Vector2(130, -300)
+	_move_confirm_button.pressed.connect(_on_move_confirm_pressed)
+	add_child(_move_confirm_button)
+
+	_move_cancel_button = Button.new()
+	_move_cancel_button.name = "MoveCancelButton"
+	_move_cancel_button.text = _local_text("ui.move.cancel_path")
+	_move_cancel_button.custom_minimum_size = Vector2(0, 34)
+	_move_cancel_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_move_cancel_button.position = Vector2(248, -300)
+	_move_cancel_button.pressed.connect(_on_move_cancel_pressed)
+	add_child(_move_cancel_button)
+
+	_update_move_mode_buttons()
 
 
 # P3.3 (R12.3): a corner minimap. Anchored bottom-right, above the bottom bar.
