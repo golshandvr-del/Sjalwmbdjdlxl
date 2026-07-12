@@ -186,6 +186,15 @@ func get_main_mod() -> String:
 	return str(_get_pref("main_mod"))
 
 
+# MC8.3 (request 9): the persisted DEFAULT scenario/GUI ids ("" = none chosen).
+func get_default_map() -> String:
+	return str(_get_pref("default_map"))
+
+
+func get_default_gui() -> String:
+	return str(_get_pref("default_gui"))
+
+
 # --- Validated setters (return true when the value was accepted) ------------
 
 func set_locale(value: String) -> bool:
