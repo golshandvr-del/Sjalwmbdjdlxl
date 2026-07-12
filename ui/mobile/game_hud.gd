@@ -122,6 +122,28 @@ var _control_group_panel: PanelContainer = null
 var _selection_panel: PanelContainer = null
 var _selection_label: RichTextLabel = null
 
+# MC11.2/11.3/11.4 (request 11): the in-game Messages panel. A toggle button
+# opens a panel with three tabs: (1) plain Chat, (2) Strategic (propose a
+# structured treaty), and (3) Mission (attack/defend a point + commitment). All
+# logic lives in the pure MessageLogUtil / TreatyUtil / MissionRequestUtil; the
+# HUD only builds widgets and issues authoritative diplomatic Commands, so the
+# simulation stays deterministic. The message log itself is a cosmetic local
+# transcript (it never touches the state hash).
+var _msg_button: Button = null
+var _msg_panel: PanelContainer = null
+var _msg_log: Array = []                 # local transcript (cosmetic)
+var _msg_recipient: OptionButton = null  # chat + strategic recipient picker
+var _msg_history: RichTextLabel = null   # chat transcript view
+var _msg_text_edit: LineEdit = null      # chat text entry
+var _treaty_type_opt: OptionButton = null
+var _treaty_target_opt: OptionButton = null
+var _treaty_duration: SpinBox = null
+var _mission_type_opt: OptionButton = null
+var _mission_target_opt: OptionButton = null
+var _mission_cell_x: SpinBox = null
+var _mission_cell_y: SpinBox = null
+var _mission_commit: HSlider = null
+
 
 func _ready() -> void:
 	# BUG-FIX (mobile zoom + move): the root HUD Control defaults to
