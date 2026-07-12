@@ -87,3 +87,40 @@ static func restrict_choices(scenario: Dictionary, requested: Array) -> Array:
 		if requested.has(owner) and not out.has(owner):
 			out.append(owner)
 	return out
+
+
+# --- MC9.3 (request 10): rebel / faction detection --------------------------
+# The type name that marks a "headquarters" building. A colour with at least one
+# HQ is a "main" faction (can build/expand); a colour that has units but NO HQ
+# is a "rebel" faction (units only, no base). This lets a team exist purely as
+# loose units, independent of HQ placement.
+const HQ_TYPE: String = "hq"
+
+
+# The set of owner colours that own at least one HQ building. Sorted, in range.
+static func owners_with_hq(scenario: Dictionary) -> Array:
+	var seen: Dictionary = {}
+	var buildings: Variant = scenario.get("buildings", [])
+	if buildings is Array:
+		for b in buildings:
+			if b is Dictionary and str((b as Dictionary).get("type", HQ_TYPE)) == HQ_TYPE:
+				seen[MapPaletteUtil.clamp_slot(int((b as Dictionary).get("owner", 0)))] = true
+	var owners: Array = seen.keys()
+	owners.sort()
+	return owners
+
+
+# The set of owner colours that are used on the map but own NO HQ = rebel
+# factions (units only). Sorted, in range.
+static func rebel_owners(scenario: Dictionary) -> Array:
+	var with_hq: Array = owners_with_hq(scenario)
+	var out: Array = []
+	for owner in used_owners(scenario):
+		if not with_hq.has(owner):
+			out.append(owner)
+	return out
+
+
+# True when owner `owner` is a rebel faction on this map (used, but no HQ).
+static func is_rebel(scenario: Dictionary, owner: int) -> bool:
+	return rebel_owners(scenario).has(MapPaletteUtil.clamp_slot(owner))
