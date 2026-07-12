@@ -1,0 +1,51 @@
+{
+  "id": "alexander",
+  "display_name_key": "ai.profile.alexander.name",
+  "role_key": "ai.profile.alexander.role",
+  "archetype": "conqueror",
+  "personality": {
+    "aggression": 0.9,
+    "caution": 0.2,
+    "ambition": 0.98,
+    "patience": 0.3,
+    "boldness": 0.95,
+    "loyalty": 0.6,
+    "pride": 0.85,
+    "greed": 0.55,
+    "adaptability": 0.75,
+    "discipline": 0.8
+  },
+  "strategy_bias": {
+    "economy": 0.45,
+    "military": 0.85,
+    "technology": 0.5,
+    "expansion": 0.9,
+    "defense": 0.3,
+    "offense": 0.95,
+    "tempo": 0.85,
+    "scouting": 0.6,
+    "harassment": 0.5,
+    "focus_fire": 0.8
+  },
+  "diplomacy_bias": {
+    "trust": 0.45,
+    "vengeance": 0.55,
+    "generosity": 0.5,
+    "deceit": 0.4,
+    "sociability": 0.5,
+    "forgiveness": 0.5,
+    "opportunism": 0.6
+  },
+  "learning_bias": {
+    "in_match_rate": 0.65,
+    "memory_weight": 0.5,
+    "exploration": 0.6,
+    "grudge_decay": 0.5,
+    "imitation": 0.45
+  },
+  "difficulty": {
+    "analysis_quality": 0.85,
+    "reaction_speed": 0.85,
+    "execution": 0.85
+  }
+}
