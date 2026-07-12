@@ -40,6 +40,8 @@ const MOD_EDITOR: String = "res://scenes/mod_editor.tscn"
 const MAP_EDITOR: String = "res://scenes/map_editor.tscn"
 const GUI_EDITOR: String = "res://scenes/gui_editor.tscn"
 const EDITOR_DEFAULTS: String = "res://scenes/editor_defaults.tscn"
+# MC14: the AI Builder screen (create/import/export custom AI generals).
+const AI_BUILDER: String = "res://scenes/ai_builder.tscn"
 const CUSTOM_GAMES: String = "res://scenes/custom_games.tscn"
 const SAVE_LOAD: String = "res://scenes/save_load_menu.tscn"
 const GAME_MOBILE: String = "res://scenes/game_main.tscn"
@@ -62,6 +64,8 @@ const PARENTS: Dictionary = {
 	MAP_EDITOR: EDITOR_HUB,
 	GUI_EDITOR: EDITOR_HUB,
 	EDITOR_DEFAULTS: EDITOR_HUB,
+	# MC14: the AI Builder is an editor tool, so BACK returns to the hub.
+	AI_BUILDER: EDITOR_HUB,
 	CUSTOM_GAMES: MAIN_MENU,
 	SAVE_LOAD: MAIN_MENU,
 	# In-game scenes route to the menu but only AFTER a confirm (see is_in_game).
