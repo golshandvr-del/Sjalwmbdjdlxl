@@ -455,6 +455,7 @@ func _init() -> void:
 	test_mc10_treaty_expiry_and_serialize()
 	test_mc10_political_cost_alliance_and_betrayal()
 	test_mc10_deployment_command_authority_returns()
+	test_mc10_diplomacy_i18n_keys_present_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
