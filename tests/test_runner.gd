@@ -522,6 +522,10 @@ func _init() -> void:
 	test_mc14_graphic_facing_normalise_and_roundtrip()
 	test_mc14_graphic_set_firing_part_enforces_single()
 	test_mc14_graphic_validate_rejects_bad_facing_and_multi_firing()
+	# Phase MC14.4 (request 18): combine units -> up to 2 firing parts (pure).
+	test_mc14_combine_firing_slots_caps_at_two()
+	test_mc14_combine_firing_skips_sources_without_firing_part()
+	test_mc14_combine_firing_exceeds_cap_and_turret_flag()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
