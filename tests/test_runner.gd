@@ -6478,6 +6478,81 @@ func test_mc14_roster_resolve_profiles_and_custom_override() -> void:
 	_check(dupes.size() == 1, "duplicate/blank selection ids collapse to one profile")
 
 
+# --- MC14.3 (req16/18): graphic facing + firing-part model ------------------
+
+func test_mc14_graphic_facing_normalise_and_roundtrip() -> void:
+	print("test_mc14_graphic_facing_normalise_and_roundtrip")
+	# Unknown / blank values fall back to the default facing.
+	_check(GraphicModel.normalise_facing("LEFT") == GraphicModel.FACING_LEFT, "case-insensitive facing normalise")
+	_check(GraphicModel.normalise_facing("sideways") == GraphicModel.DEFAULT_FACING, "unknown facing falls back to default")
+	_check(GraphicModel.normalise_facing(null) == GraphicModel.DEFAULT_FACING, "null facing falls back to default")
+	# A default graphic has no facing key yet, so get_facing returns the default.
+	var g: Dictionary = GraphicModel.default_graphic()
+	_check(GraphicModel.get_facing(g) == GraphicModel.DEFAULT_FACING, "absent facing reads as default")
+	# set_facing does not mutate the input and stores a normalised value.
+	var g2: Dictionary = GraphicModel.set_facing(g, "Right")
+	_check(GraphicModel.get_facing(g2) == GraphicModel.FACING_RIGHT, "set_facing stores normalised facing")
+	_check(not g.has("facing"), "set_facing did not mutate the original graphic")
+	# Mount normalise mirrors facing.
+	_check(GraphicModel.normalise_mount("TURRET") == GraphicModel.MOUNT_TURRET, "mount normalise turret")
+	_check(GraphicModel.normalise_mount("bogus") == GraphicModel.DEFAULT_MOUNT, "unknown mount falls back to fixed")
+
+
+func test_mc14_graphic_set_firing_part_enforces_single() -> void:
+	print("test_mc14_graphic_set_firing_part_enforces_single")
+	# A three-part multi graphic; mark part 1 as a turret firing part.
+	var g: Dictionary = {
+		"mode": GraphicModel.MODE_MULTI,
+		"logical_size": {"w": 1, "h": 1},
+		"parts": [
+			GraphicModel.default_part(1, 64, 64),
+			GraphicModel.default_part(2, 48, 48),
+			GraphicModel.default_part(3, 32, 32),
+		],
+	}
+	var g1: Dictionary = GraphicModel.set_firing_part(g, 1, GraphicModel.MOUNT_TURRET)
+	_check(GraphicModel.count_firing_parts(g1) == 1, "exactly one firing part after set")
+	_check(GraphicModel.first_firing_index(g1) == 1, "firing part is at index 1")
+	_check(GraphicModel.part_mount((g1["parts"] as Array)[1]) == GraphicModel.MOUNT_TURRET, "mount stored as turret")
+	# Re-assigning to another part moves the flag (never accumulates two).
+	var g2: Dictionary = GraphicModel.set_firing_part(g1, 0, GraphicModel.MOUNT_FIXED)
+	_check(GraphicModel.count_firing_parts(g2) == 1, "still exactly one firing part after reassign")
+	_check(GraphicModel.first_firing_index(g2) == 0, "firing part moved to index 0")
+	_check(not GraphicModel.part_is_firing((g2["parts"] as Array)[1]), "previous firing part cleared")
+	# A negative index clears all firing flags.
+	var g3: Dictionary = GraphicModel.set_firing_part(g2, -1)
+	_check(GraphicModel.count_firing_parts(g3) == 0, "negative index clears all firing parts")
+
+
+func test_mc14_graphic_validate_rejects_bad_facing_and_multi_firing() -> void:
+	print("test_mc14_graphic_validate_rejects_bad_facing_and_multi_firing")
+	# A valid single-part graphic with a facing + one firing part passes.
+	var ok: Dictionary = GraphicModel.default_graphic()
+	ok["facing"] = GraphicModel.FACING_DOWN
+	(ok["parts"] as Array)[0]["is_firing_part"] = true
+	(ok["parts"] as Array)[0]["firing_mount"] = GraphicModel.MOUNT_FIXED
+	_check(GraphicModel.validate(ok).is_empty(), "valid facing + single firing part passes validation")
+	# A bad facing is reported.
+	var bad_face: Dictionary = GraphicModel.default_graphic()
+	bad_face["facing"] = "diagonal"
+	_check(GraphicModel.validate(bad_face).size() > 0, "invalid facing is rejected")
+	# Two firing parts exceed the authored cap.
+	var two_fire: Dictionary = {
+		"mode": GraphicModel.MODE_MULTI,
+		"logical_size": {"w": 1, "h": 1},
+		"parts": [
+			{"layer": 1, "px": {"w": 64, "h": 64}, "texture": "", "is_firing_part": true, "firing_mount": "fixed"},
+			{"layer": 2, "px": {"w": 48, "h": 48}, "texture": "", "is_firing_part": true, "firing_mount": "turret"},
+		],
+	}
+	var probs: Array = GraphicModel.validate(two_fire)
+	var found_cap: bool = false
+	for p in probs:
+		if str(p).contains("firing parts"):
+			found_cap = true
+	_check(found_cap, "two firing parts exceed the max-1 cap")
+
+
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
 	print("test_mc10_diplomacy_i18n_keys_present_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
