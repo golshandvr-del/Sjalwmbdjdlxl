@@ -456,6 +456,15 @@ func _init() -> void:
 	test_mc10_political_cost_alliance_and_betrayal()
 	test_mc10_deployment_command_authority_returns()
 	test_mc10_diplomacy_i18n_keys_present_in_all_locales()
+	# Phase MC11 (request 11): in-game message UI models.
+	test_mc11_message_log_append_and_filter()
+	test_mc11_message_log_conversation_and_channels()
+	test_mc11_message_log_recipient_choices_and_recent()
+	test_mc11_message_log_roundtrip()
+	test_mc11_mission_request_make_validate()
+	test_mc11_mission_request_roundtrip()
+	test_mc11_ai_message_text_descriptor()
+	test_mc11_ai_message_keys_present_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5336,6 +5345,152 @@ func test_mc10_deployment_command_authority_returns() -> void:
 	# Duration is clamped to >= 1 tick (never a permanent transfer).
 	var clamped: Dictionary = DeploymentUtil.make_deployment(0, 1, [5], 0, 0)
 	_check(int(clamped["duration_ticks"]) >= 1, "duration clamped to at least 1")
+
+
+# --- Phase MC11 (request 11): in-game message UI models ---------------------
+func test_mc11_message_log_append_and_filter() -> void:
+	print("test_mc11_message_log_append_and_filter")
+	var log: Array = []
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(0, 1, "hi", 10))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(1, 0, "hello", 12))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(2, MessageLogUtil.BROADCAST, "all", 15))
+	_check(log.size() == 3, "log has 3 entries")
+	# Insertion order preserved.
+	_check(int(log[0]["tick"]) == 10 and int(log[2]["tick"]) == 15, "insertion order kept")
+	# involves: broadcast reaches everyone.
+	_check(MessageLogUtil.involves(log[2], 5), "broadcast involves any owner")
+	_check(MessageLogUtil.involves(log[0], 1), "recipient is involved")
+	_check(not MessageLogUtil.involves(log[0], 3), "uninvolved owner excluded")
+	# filter_for_owner includes broadcasts + own messages.
+	var for0: Array = MessageLogUtil.filter_for_owner(log, 0)
+	_check(for0.size() == 3, "owner 0 sees both privates and the broadcast")
+	var for3: Array = MessageLogUtil.filter_for_owner(log, 3)
+	_check(for3.size() == 1, "uninvolved owner 3 sees only broadcast")
+	# tick clamped to >= 0.
+	var m: Dictionary = MessageLogUtil.make_message(0, 1, "x", -4)
+	_check(int(m["tick"]) == 0, "negative tick clamped to 0")
+	# unknown channel coerced to chat.
+	var m2: Dictionary = MessageLogUtil.make_message(0, 1, "x", 1, "bogus")
+	_check(str(m2["channel"]) == MessageLogUtil.CHANNEL_CHAT, "unknown channel -> chat")
+
+
+func test_mc11_message_log_conversation_and_channels() -> void:
+	print("test_mc11_message_log_conversation_and_channels")
+	var log: Array = []
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(0, 1, "a", 1))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(1, 0, "b", 2))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(0, 2, "c", 3))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(3, MessageLogUtil.BROADCAST, "d", 4,
+		MessageLogUtil.CHANNEL_STRATEGIC))
+	# conversation between 0 and 1: two privates + the broadcast.
+	var conv: Array = MessageLogUtil.conversation(log, 0, 1)
+	_check(conv.size() == 3, "0<->1 conversation includes broadcast")
+	# conversation between 0 and 2: one private + broadcast.
+	var conv2: Array = MessageLogUtil.conversation(log, 0, 2)
+	_check(conv2.size() == 2, "0<->2 conversation includes broadcast")
+	# filter_by_channel.
+	var strat: Array = MessageLogUtil.filter_by_channel(log, MessageLogUtil.CHANNEL_STRATEGIC)
+	_check(strat.size() == 1, "one strategic message")
+	var chat: Array = MessageLogUtil.filter_by_channel(log, MessageLogUtil.CHANNEL_CHAT)
+	_check(chat.size() == 3, "three chat messages")
+
+
+func test_mc11_message_log_recipient_choices_and_recent() -> void:
+	print("test_mc11_message_log_recipient_choices_and_recent")
+	# recipient_choices: BROADCAST first, then every OTHER owner.
+	var choices: Array = MessageLogUtil.recipient_choices(4, 1)
+	_check(choices.size() == 4, "4 owners minus self plus broadcast = 4")
+	_check(int(choices[0]) == MessageLogUtil.BROADCAST, "broadcast listed first")
+	_check(not choices.has(1), "viewer excluded from own recipient list")
+	_check(choices.has(0) and choices.has(2) and choices.has(3), "all other owners present")
+	# recent_for_owner: oldest-first slice of the last N.
+	var log: Array = []
+	for i in range(6):
+		MessageLogUtil.append_message(log, MessageLogUtil.make_message(0, 1, "m%d" % i, i))
+	var recent: Array = MessageLogUtil.recent_for_owner(log, 0, 2)
+	_check(recent.size() == 2, "recent capped to count")
+	_check(str(recent[0]["text"]) == "m4" and str(recent[1]["text"]) == "m5", "recent oldest-first")
+	# count <= 0 returns everything involving the owner.
+	var all_recent: Array = MessageLogUtil.recent_for_owner(log, 0, 0)
+	_check(all_recent.size() == 6, "count 0 returns full filtered list")
+
+
+func test_mc11_message_log_roundtrip() -> void:
+	print("test_mc11_message_log_roundtrip")
+	var log: Array = []
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(0, 1, "keep", 7,
+		MessageLogUtil.CHANNEL_STRATEGIC, {"treaty": "alliance"}))
+	var data: Array = MessageLogUtil.to_array(log)
+	var back: Array = MessageLogUtil.from_array(data)
+	_check(back.size() == 1, "roundtrip preserves count")
+	_check(str(back[0]["text"]) == "keep", "roundtrip preserves text")
+	_check(str(back[0]["channel"]) == MessageLogUtil.CHANNEL_STRATEGIC, "roundtrip preserves channel")
+	_check(str((back[0]["meta"] as Dictionary).get("treaty", "")) == "alliance", "roundtrip preserves meta")
+	# Deep copy: mutating the serialised form must not touch the log.
+	(data[0] as Dictionary)["text"] = "mutated"
+	_check(str(log[0]["text"]) == "keep", "to_array is a deep copy")
+
+
+func test_mc11_mission_request_make_validate() -> void:
+	print("test_mc11_mission_request_make_validate")
+	var mission: Dictionary = MissionRequestUtil.make_mission(0, 1, MissionRequestUtil.ATTACK, 4, 5, 60)
+	_check(MissionRequestUtil.is_valid(mission), "well-formed mission is valid")
+	_check(str(mission["type"]) == MissionRequestUtil.ATTACK, "type kept")
+	_check(int(mission["commitment"]) == 60, "commitment kept")
+	# Unknown type falls back to ATTACK.
+	var bad_type: Dictionary = MissionRequestUtil.make_mission(0, 1, "bogus", 1, 1, 50)
+	_check(str(bad_type["type"]) == MissionRequestUtil.ATTACK, "unknown type -> attack")
+	# Commitment clamped.
+	var clamped: Dictionary = MissionRequestUtil.make_mission(0, 1, MissionRequestUtil.RAID, 1, 1, 250)
+	_check(int(clamped["commitment"]) == MissionRequestUtil.COMMIT_MAX, "commitment clamped to max")
+	# validate tokens.
+	var neg: Dictionary = {"type": MissionRequestUtil.DEFEND, "cell_x": -1, "cell_y": 2, "commitment": 50}
+	_check(MissionRequestUtil.validate(neg) == "bad_cell", "negative cell -> bad_cell")
+	var no_cell: Dictionary = {"type": MissionRequestUtil.DEFEND, "commitment": 50}
+	_check(MissionRequestUtil.validate(no_cell) == "missing_cell", "missing cell -> missing_cell")
+	var wrong_type: Dictionary = {"type": "nope", "cell_x": 0, "cell_y": 0, "commitment": 50}
+	_check(MissionRequestUtil.validate(wrong_type) == "bad_type", "unknown type -> bad_type")
+	# cell_of convenience.
+	_check(MissionRequestUtil.cell_of(mission) == Vector2i(4, 5), "cell_of returns Vector2i")
+
+
+func test_mc11_mission_request_roundtrip() -> void:
+	print("test_mc11_mission_request_roundtrip")
+	var mission: Dictionary = MissionRequestUtil.make_mission(2, 3, MissionRequestUtil.SCOUT, 7, 8, 33)
+	var data: Dictionary = MissionRequestUtil.to_dict(mission)
+	var back: Dictionary = MissionRequestUtil.from_dict(data)
+	_check(int(back["requester"]) == 2, "roundtrip requester")
+	_check(int(back["target_owner"]) == 3, "roundtrip target_owner")
+	_check(str(back["type"]) == MissionRequestUtil.SCOUT, "roundtrip type")
+	_check(int(back["cell_x"]) == 7 and int(back["cell_y"]) == 8, "roundtrip cell")
+	_check(int(back["commitment"]) == 33, "roundtrip commitment")
+
+
+func test_mc11_ai_message_text_descriptor() -> void:
+	print("test_mc11_ai_message_text_descriptor")
+	# Known act maps to its own key.
+	_check(AiMessageTextUtil.message_key(AiMessageTextUtil.ACT_PROPOSE) == "ai.msg.propose", "propose key")
+	_check(AiMessageTextUtil.message_key(AiMessageTextUtil.ACT_DECLARE_WAR) == "ai.msg.declare_war", "war key")
+	# Unknown act falls back to generic.
+	_check(AiMessageTextUtil.message_key("bogus") == "ai.msg.generic", "unknown act -> generic key")
+	_check(not AiMessageTextUtil.is_valid_act("bogus"), "unknown act invalid")
+	# describe returns key + args.
+	var desc: Dictionary = AiMessageTextUtil.describe(AiMessageTextUtil.ACT_ACCEPT, 0, 1, "alliance")
+	_check(str(desc["key"]) == "ai.msg.accept", "descriptor key")
+	var args: Dictionary = desc["args"]
+	_check(int(args["sender"]) == 0 and int(args["recipient"]) == 1, "descriptor args carry owners")
+	_check(str(args["treaty"]) == "alliance", "descriptor carries treaty type")
+	# all_keys covers every act + generic.
+	_check(AiMessageTextUtil.all_keys().size() == AiMessageTextUtil.ACTS.size() + 1, "all_keys = acts + generic")
+
+
+func test_mc11_ai_message_keys_present_in_all_locales() -> void:
+	print("test_mc11_ai_message_keys_present_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	for key in AiMessageTextUtil.all_keys():
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
