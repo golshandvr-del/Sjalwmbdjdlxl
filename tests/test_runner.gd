@@ -443,6 +443,10 @@ func _init() -> void:
 	test_mc9_owners_with_hq()
 	test_mc9_rebel_owners()
 	test_mc9_rebel_owners_all_rebel_when_no_hq()
+	test_mc9_general_mode_normalise()
+	test_mc9_general_mode_planner_gates()
+	test_mc9_general_mode_flags_and_from_map()
+	test_mc9_strategic_ai_gates_planners_by_mode()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5167,6 +5171,51 @@ func test_mc9_rebel_owners_all_rebel_when_no_hq() -> void:
 	var scenario: Dictionary = { "units": [{ "owner": 2 }, { "owner": 5 }] }
 	_check(MapColorUtil.owners_with_hq(scenario) == [], "no HQ anywhere")
 	_check(MapColorUtil.rebel_owners(scenario) == [2, 5], "all used colours are rebels when no HQ exists")
+
+
+# --- Phase MC9.4 (request 10): AI general mode (main vs rebel) --------------
+func test_mc9_general_mode_normalise() -> void:
+	print("test_mc9_general_mode_normalise")
+	_check(AiGeneralModeUtil.normalise("rebel") == AiGeneralModeUtil.MODE_REBEL, "rebel stays rebel")
+	_check(AiGeneralModeUtil.normalise("main") == AiGeneralModeUtil.MODE_MAIN, "main stays main")
+	_check(AiGeneralModeUtil.normalise("garbage") == AiGeneralModeUtil.MODE_MAIN, "unknown defaults to main")
+
+
+func test_mc9_general_mode_planner_gates() -> void:
+	print("test_mc9_general_mode_planner_gates")
+	# Main: everything on.
+	_check(AiGeneralModeUtil.plans_economy("main"), "main plans economy")
+	_check(AiGeneralModeUtil.plans_research("main"), "main plans research")
+	_check(AiGeneralModeUtil.plans_hq_upgrade("main"), "main plans hq upgrade")
+	_check(AiGeneralModeUtil.plans_army("main"), "main plans army")
+	# Rebel: only army.
+	_check(not AiGeneralModeUtil.plans_economy("rebel"), "rebel has no economy")
+	_check(not AiGeneralModeUtil.plans_research("rebel"), "rebel has no research")
+	_check(not AiGeneralModeUtil.plans_hq_upgrade("rebel"), "rebel has no hq upgrade")
+	_check(AiGeneralModeUtil.plans_army("rebel"), "rebel still fights")
+
+
+func test_mc9_general_mode_flags_and_from_map() -> void:
+	print("test_mc9_general_mode_flags_and_from_map")
+	var flags: Dictionary = AiGeneralModeUtil.planner_flags("rebel")
+	_check(flags == { "economy": false, "research": false, "hq_upgrade": false, "army": true },
+		"rebel planner flags: army only")
+	var scenario: Dictionary = {
+		"buildings": [{ "type": "hq", "owner": 0 }],
+		"units": [{ "owner": 0 }, { "owner": 1 }],
+	}
+	_check(AiGeneralModeUtil.mode_for_owner(scenario, 0) == "main", "HQ owner -> main mode")
+	_check(AiGeneralModeUtil.mode_for_owner(scenario, 1) == "rebel", "unit-only owner -> rebel mode")
+
+
+func test_mc9_strategic_ai_gates_planners_by_mode() -> void:
+	print("test_mc9_strategic_ai_gates_planners_by_mode")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/strategic_ai_module.gd")
+	var body: String = _mb5_func_body(src, "func _plan_for_player")
+	_check(body.contains("AiGeneralModeUtil.planner_flags"), "planner flags derived from general mode")
+	_check(body.contains("flags.get(\"economy\""), "economy planner gated by mode")
+	_check(body.contains("flags.get(\"hq_upgrade\""), "hq upgrade planner gated by mode")
+	_check(src.contains("func set_general_mode"), "module exposes set_general_mode")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
