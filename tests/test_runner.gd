@@ -6557,6 +6557,67 @@ func test_mc14_graphic_validate_rejects_bad_facing_and_multi_firing() -> void:
 	_check(found_cap, "two firing parts exceed the max-1 cap")
 
 
+# --- MC14.4 (req18): combine units -> up to 2 firing parts ------------------
+
+# Build a one-part graphic that is (optionally) a firing part with a mount.
+func _mc14_firing_graphic(is_firing: bool, mount: String = "fixed") -> Dictionary:
+	var g: Dictionary = GraphicModel.default_graphic()
+	if is_firing:
+		(g["parts"] as Array)[0]["is_firing_part"] = true
+		(g["parts"] as Array)[0]["firing_mount"] = mount
+	return g
+
+
+func test_mc14_combine_firing_slots_caps_at_two() -> void:
+	print("test_mc14_combine_firing_slots_caps_at_two")
+	# Three sources each carrying a firing part; only the first two survive.
+	var sources: Array = [
+		_mc14_firing_graphic(true, "fixed"),
+		_mc14_firing_graphic(true, "turret"),
+		_mc14_firing_graphic(true, "fixed"),
+	]
+	var slots: Array = FiringCombinationUtil.combine_firing_slots(sources)
+	_check(slots.size() == GraphicModel.MAX_COMBINED_FIRING_PARTS, "combined firing parts capped at 2")
+	_check(int((slots[0] as Dictionary)["source"]) == 0, "first slot from source 0")
+	_check(int((slots[1] as Dictionary)["source"]) == 1, "second slot from source 1 (source order)")
+	_check(str((slots[1] as Dictionary)["mount"]) == "turret", "second slot keeps its turret mount")
+	_check(FiringCombinationUtil.combined_firing_count(sources) == 2, "combined_firing_count matches cap")
+
+
+func test_mc14_combine_firing_skips_sources_without_firing_part() -> void:
+	print("test_mc14_combine_firing_skips_sources_without_firing_part")
+	# Only the middle source has a firing part -> exactly one slot, pointing at it.
+	var sources: Array = [
+		_mc14_firing_graphic(false),
+		_mc14_firing_graphic(true, "turret"),
+		_mc14_firing_graphic(false),
+	]
+	var slots: Array = FiringCombinationUtil.combine_firing_slots(sources)
+	_check(slots.size() == 1, "one firing slot when a single source fires")
+	_check(int((slots[0] as Dictionary)["source"]) == 1, "slot points at the firing source")
+	_check(int((slots[0] as Dictionary)["part"]) == 0, "slot part index is 0")
+	# No firing sources at all -> empty result.
+	var none: Array = FiringCombinationUtil.combine_firing_slots([_mc14_firing_graphic(false)])
+	_check(none.is_empty(), "no firing sources yields no slots")
+
+
+func test_mc14_combine_firing_exceeds_cap_and_turret_flag() -> void:
+	print("test_mc14_combine_firing_exceeds_cap_and_turret_flag")
+	var three_fire: Array = [
+		_mc14_firing_graphic(true),
+		_mc14_firing_graphic(true),
+		_mc14_firing_graphic(true),
+	]
+	_check(FiringCombinationUtil.exceeds_cap(three_fire), "three firing sources exceed the cap")
+	var two_fire: Array = [_mc14_firing_graphic(true), _mc14_firing_graphic(true)]
+	_check(not FiringCombinationUtil.exceeds_cap(two_fire), "two firing sources do not exceed the cap")
+	# Turret detection over a combined slot set.
+	var turret_slots: Array = FiringCombinationUtil.combine_firing_slots([_mc14_firing_graphic(true, "turret")])
+	_check(FiringCombinationUtil.has_turret(turret_slots), "has_turret true when a slot is a turret")
+	var fixed_slots: Array = FiringCombinationUtil.combine_firing_slots([_mc14_firing_graphic(true, "fixed")])
+	_check(not FiringCombinationUtil.has_turret(fixed_slots), "has_turret false for fixed-only slots")
+
+
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
 	print("test_mc10_diplomacy_i18n_keys_present_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
