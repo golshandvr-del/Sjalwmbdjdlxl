@@ -65,6 +65,10 @@ enum MenuPanel { MAIN, MULTIPLAYER, ONLINE }
 @onready var _main_panel: VBoxContainer = $Center/Box/MainPanel
 @onready var _single_button: Button = $Center/Box/MainPanel/SingleButton
 @onready var _multiplayer_button: Button = $Center/Box/MainPanel/MultiplayerButton
+# MC8.2 (req 9): unified "Editor" entry that opens the editor hub (which in turn
+# launches the map / mod / GUI editors + defaults). The old separate mod/map
+# editor buttons stay wired for compatibility.
+@onready var _editor_button: Button = $Center/Box/MainPanel/EditorButton
 @onready var _mod_editor_button: Button = $Center/Box/MainPanel/ModEditorButton
 @onready var _map_editor_button: Button = $Center/Box/MainPanel/MapEditorButton
 @onready var _custom_games_button: Button = $Center/Box/MainPanel/CustomGamesButton
