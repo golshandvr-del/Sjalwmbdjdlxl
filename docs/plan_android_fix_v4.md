@@ -287,3 +287,171 @@
 > ظاهر می‌شود (فاز MD8).
 
 ---
+
+# فازبندیِ کار (MD)
+
+> هر فاز = یک ناحیه‌ی همگنِ کد. هر فاز به چند **مرحله (Step)** شکسته شده تا طبقِ
+> «Edit → Commit → Push» بعد از هر مرحله یک چک‌پوینت ثبت شود. هیچ فازی «تمام» نیست
+> تا (۱) کد + (۲) تستِ headless سبز + (۳) commit/push انجام نشده باشد. تیکِ ✅ بعد از
+> انجام پُر می‌شود.
+>
+> **الگوی نام‌گذاریِ تست:** هر فاز تست‌های `test_md<n>_*` خودش را به
+> `tests/test_runner.gd` اضافه می‌کند و آن‌ها را در تابعِ ثبتِ تست‌ها register می‌کند.
+
+---
+
+## فاز MD1 — بازتعریفِ Stat به‌عنوان Data Asset (متخصص: بخشِ دوم، بندهای ۱ و متادیتا) 🔴
+
+**هدف:** خروج از `const STATS`ِ ثابت؛ هر stat یک رکوردِ داده با متادیتای کامل
+(`type`, `category`, `min`, `max`, `default`, `higher_is_better`, `ai_importance`,
+`affects`) شود، **بدونِ شکستنِ Core Statهای موجود**.
+
+- **MD1.1:** یک catalogِ داده‌ی جدید `data/stats/*.json`: برای هر **Core Stat** فعلی
+  (`health`, `armor`, `shield`, `attack_damage`, `fire_rate`, `attack_range`,
+  `splash_radius`, `move_speed`, `turn_rate`, `vision_range`, `extraction_rate`,
+  `storage_cap`, `stealth`) یک فایلِ تعریف با فیلدهای کامل بنویس. مقادیرِ عددیِ float
+  در JSON مجازند (روی دیسک). + هیچ تستی این‌جا لازم نیست جز round-tripِ بارگذاری.
+- **MD1.2:** بازنویسیِ `tools/stat_registry.gd` طوری که (الف) هنوز یک `STATS` پیش‌فرضِ
+  توکار برای Core Stats داشته باشد (سازگاریِ عقب‌رو و تستِ موجود نشکند)، (ب) یک تابعِ
+  `load_definitions(catalog: Dictionary)` بگیرد که تعریف‌های `data/stats/*.json` و
+  modها را روی پیش‌فرض merge کند، (ج) getterهای جدید بدهد:
+  `higher_is_better(id)`, `ai_importance(id)`, `affects(id)`, `value_type(id)`,
+  `category(id)`, `min_of(id)`, `max_of(id)`. + تستِ headless برای هر getter.
+- **MD1.3:** پرچمِ `is_core(id)` و `is_free(id)` در registry (بخشِ ۲.۴): Core =
+  آن‌هایی که در `STATS`ِ توکار هستند؛ Free = هر تعریفِ merge‌شده‌ی جدید. + تست.
+- **MD1.4:** اعتبارسنجیِ تعریفِ stat: `validate_definition(def)` که کلیدهای ناشناخته،
+  min>max، type نامعتبر، و `affects`ِ بدشکل را گزارش کند (خطای انسانی‌خوان برای mod
+  editor). + تستِ حالت‌های نامعتبر.
+- **MD1.5:** به‌روزرسانیِ `data_loader`/`game_bootstrap` برای بارگذاریِ catalogِ
+  `stats` هنگامِ راه‌اندازی (کنارِ units/buildings/tech). + تستِ بارگذاری.
+- **MD1.6:** به‌روزرسانیِ `docs/CODE_MAP.md` + `docs/MODDING.md` (نحوه‌ی تعریفِ stat در
+  مود) + commit/push.
+
+**نکته‌ی قطعیت:** ترتیبِ merge باید پایدار باشد (`all_ids()` همچنان sorted). floatِ
+تعریف فقط داده‌ی نمایشی/ادیتوری است؛ مسیرِ تصمیم در MD3 به fixed-point می‌رود.
+
+---
+
+## فاز MD2 — لایه‌ی Capability + نگاشتِ affects (متخصص: «لایه‌ی واسطِ استاندارد») 🔴
+
+**هدف:** ساختِ contractِ ثابتِ Capability و مکانیزمِ `affects` که statِ خام (Core یا
+Free) را به Capability نگاشت می‌کند — «قلبِ» پایداریِ AI در برابرِ مودها.
+
+- **MD2.1:** `core/capability_registry.gd` (RefCounted، ثابت و نسخه‌دار): فهرستِ بسته‌ی
+  Capabilityهای واحد و ساختمان (بخشِ ۲.۳)، هر کدام با `id`, `applies_to`
+  (unit/building/both), `default_q` (مقدارِ پیش‌فرضِ fixed-point وقتی داده نیست),
+  و کلیدِ نمایشیِ i18n. `all_ids()` sorted. + تستِ ثبات/کامل‌بودن.
+- **MD2.2:** `core/stat_affects_util.gd` (خالص): یک نگاشتِ پیش‌فرضِ توکار
+  `stat_id -> { capability_id: weight_q }` برای Core Stats (مثالِ متخصص:
+  `armor -> { survivability:+0.8, holding_power:+0.5 }`, `speed -> { mobility:+1.0,
+  harasser/raid:+0.4 }`, `vision -> { scout_power:+0.9, control_value:+0.2 }`).
+  وزن‌ها fixed-point. + تست.
+- **MD2.3:** ادغامِ `affects`ِ تعریف‌شده در فایلِ stat (MD1.2) روی نگاشتِ توکار:
+  یعنی مودساز می‌تواند برای Free Stat جدید `affects` بدهد و بدونِ کد به Capability وصل
+  شود. تابعِ `resolve_affects(stat_registry) -> Dictionary` قطعی. + تستِ merge.
+- **MD2.4:** اعتبارسنجیِ affects: کشفِ capabilityِ ناشناخته، وزنِ خارج از بازه، و
+  (اختیاری) هشدارِ حلقه — چون affects یک‌طرفه است (stat→capability) حلقه ساختاری ممکن
+  نیست، ولی capabilityِ نامعتبر باید رد شود. + تست.
+- **MD2.5:** `docs/CODE_MAP.md` + بخشِ جدیدِ `docs/MODDING.md` («چطور یک stat جدید را
+  به توانایی وصل کنی») + commit/push.
+
+**نکته‌ی معماری:** موتور هرگز فهرستِ Capability را تغییر نمی‌دهد؛ فقط مقدارها از
+stat/affects می‌آیند. این تضمین می‌کند AI با هر مودِ آینده کار کند (نقدِ بخشِ الف).
+
+---
+
+## فاز MD3 — Derived Metrics: از statِ خام به بردارِ Capability (متخصص: بند ۲، ۳) 🔴
+
+**هدف:** برای هر «تعریفِ واحد/ساختمان» یک **بردارِ Capabilityِ نرمال‌شده‌ی fixed-point**
+تولید کن که خروجیِ کلِ زنجیره‌ی `raw stats -> affects -> capability` است.
+
+- **MD3.1:** `core/derived_metrics_util.gd` (خالص): تابعِ
+  `compute_capabilities(entity_def, stat_registry, affects) -> { capability_id:
+  q_value }`. برای هر capability: جمعِ (وزن‌دارِ) statهای خامِ نگاشت‌شده، سپس
+  normalize به `[0..SCALE]` با یک منحنیِ اشباعِ قطعی (مثلاً نسبت به سقفِ stat در
+  registry). محاسبه کاملاً صحیح/fixed-point. + تستِ چند واحدِ نمونه.
+- **MD3.2:** ورودیِ ویژه: `cost_efficiency` = تابعی از (مجموعِ توانِ رزمی/بقا) تقسیم بر
+  `cost`. `resource_pressure` برای واحدهای اقتصادی. این‌ها نیاز به cost/build_time
+  دارند که در JSONِ واحد هست. + تست.
+- **MD3.3:** cache: یک تابعِ `cache_key(entity_def)` قطعی (id + hashِ statها/cost) و
+  یک wrapper که نتیجه را نگه می‌دارد (بودجه‌ی موبایل، بخشِ ۲.۶). cache صرفاً محاسباتی
+  است و روی hashِ شبیه‌سازی اثر ندارد. + تستِ یکسانیِ خروجیِ cache و بدون‌cache.
+- **MD3.4:** تابِ‌آوری: واحدی که statِ لازمِ یک capability را ندارد → `default_q`ِ آن
+  capability (بخشِ ۲.۵)، نه crash. + تستِ واحدِ ناقص.
+- **MD3.5:** `docs/CODE_MAP.md` + commit/push.
+
+**خروجیِ این فاز:** هر واحد/ساختمان یک «کارتِ توانایی» قطعی دارد که AI (و بعداً UI)
+از آن می‌خواند — بدونِ اینکه اسمِ واحد را بشناسد.
+
+---
+
+## فاز MD4 — Role Inference: نقشِ مشتق‌شده از Capability (متخصص: بند ۵) 🔴
+
+**هدف:** از بردارِ Capability یک یا چند **نقش** (`frontline_tank`, `glass_cannon`,
+`ranged_dps`, `siege_unit`, `scout`, `support`, `anti_air`, `builder`, `harasser`,
+`economy_unit`, `control_unit`؛ و برای ساختمان: `defensive`, `production`, `economic`,
+`tech`, `frontline`) استنتاج کن.
+
+- **MD4.1:** `core/role_inference_util.gd` (خالص): جدولِ «امضای نقش» = برای هر نقش یک
+  الگوی «کدام capabilityها باید بالا/پایین باشند» (fixed-point thresholds/وزن‌ها).
+  تابعِ `infer_roles(capabilities) -> [ {role, score_q} ]` مرتب‌شده‌ی نزولی، قطعی.
+  + تست.
+- **MD4.2:** نقشِ اصلی (`primary_role`) = بیشترین score؛ با گره‌گشاییِ پایدار (ترتیبِ
+  الفباییِ نقش) تا قطعی بماند. + تست گره.
+- **MD4.3:** تابِ‌آوری: بردارِ خالی/ناقص → نقشِ `generic` با scoreِ پایه. هیچ ورودی‌ای
+  نباید بدونِ نقش خارج شود. + تست.
+- **MD4.4:** آزمونِ صحت با واحدهای مصنوعیِ سبک (پیش‌درآمدِ MD13): تانکِ سنگین →
+  `frontline_tank`؛ اسنایپرِ شکننده → `glass_cannon`/`ranged_dps`؛ اسکاوتِ سریع →
+  `scout`/`harasser`. + تست‌های تأییدی.
+- **MD4.5:** `docs/CODE_MAP.md` + commit/push.
+
+**نکته:** فیلدِ `category` موجود در JSON (infantry/armor/…) فقط برچسبِ نمایشی می‌ماند؛
+نقشِ تصمیم‌سازِ AI از این‌جا (capability) می‌آید، نه از category.
+
+---
+
+## فاز MD5 — وزنِ نقش/متریک در شخصیتِ AI (متخصص: بند ۴، ۶) 🟠
+
+**هدف:** اتصالِ بردارِ ۳۵ پارامتریِ `AiProfile` به **وزنِ نقش‌ها و وزنِ متریک‌ها**
+(نه فقط ۴ عددِ macro فعلی). شخصیت باید روی «ارزشِ نقش» اثر بگذارد، نه روی اسمِ واحد.
+
+- **MD5.1:** `modules/ai_commander/ai_weight_derivation_util.gd` (خالص): از
+  `strategy_bias`+`personality` یک نگاشتِ `role_id -> weight_q` و `capability_id ->
+  weight_q` مشتق کن (مثالِ متخصص: AIِ دفاعی → `frontline_tank:1.5`, `glass_cannon:0.6`؛
+  AIِ تهاجمی → `harasser:1.5`, `glass_cannon:1.4`). fixed-point و قطعی. + تست دو
+  آرکتایپِ متضاد.
+- **MD5.2:** حفظِ سازگاری: `ai_strategy_derivation_util` (۴ عددِ macro موجود) دست‌نخورده
+  می‌ماند؛ لایه‌ی وزن‌دهیِ جدید **در کنارِ** آن اضافه می‌شود، نه جایگزین. تستِ موجود
+  نباید بشکند. + تستِ هم‌زیستی.
+- **MD5.3:** فرمولِ مشتق باید از knobهای معناداری استفاده کند (aggression, defense,
+  offense, harassment, focus_fire, patience, …) با نگاشتِ مستند و قابلِ‌ردیابی
+  (کامنتِ «چرا این knob روی این نقش»). + تست حساسیت (تغییرِ knob → تغییرِ جهتِ درستِ
+  وزن).
+- **MD5.4:** لایه‌ی نمایشیِ خلاصه (cosmetic): «این AI چه نقش‌هایی را ترجیح می‌دهد» برای
+  UIِ AI builder/roster. + تست خلاصه.
+- **MD5.5:** i18n (در صورتِ نیاز) + `docs/CODE_MAP.md` + commit/push.
+
+---
+
+## فاز MD6 — Policy Profile: سیاست‌های سختِ رفتاری (متخصص: بند ۱۱) 🔴
+
+**هدف:** علاوه بر وزن‌ها، **قواعدِ سختِ رفتاری** (مثلِ «اگر امنیتِ پایگاه<۷۰ حمله نکن»)
+که اجازه می‌دهد دو AI با وزنِ مشابه، متفاوت بازی کنند.
+
+- **MD6.1:** `modules/ai_commander/ai_policy_util.gd` (خالص): یک مدلِ policy =
+  فهرستی از قواعدِ `{ when: <condition_key>, op: <lt/gt/ge/le>, value_q, then:
+  <action_flag> }`. شرط‌ها روی «بردارِ Contextِ» MD7 ارزیابی می‌شوند. قطعی. + تست
+  ارزیابیِ قاعده.
+- **MD6.2:** مجموعه‌ی condition_keyها و action_flagهای مجاز (بسته و نسخه‌دار):
+  `base_security`, `enemy_distance`, `economy_gap`, `army_ratio`, `frontline_pressure`
+  → flagها: `allow_attack`, `prefer_static_defense`, `prefer_tank_when_pressured`,
+  `prefer_economy`, `avoid_risky_units`, `prefer_harass_when_exposed`, … + تست
+  کامل‌بودنِ فهرست.
+- **MD6.3:** presetهای policy برای آرکتایپ‌ها (دفاعی/تهاجمی/اقتصادی/فریبکار) طبقِ
+  مثال‌های متخصص، و مشتقِ policy از knobهای `AiProfile` برای AIهای دلخواه. + تست
+  رفتارِ متضاد.
+- **MD6.4:** تابِ‌آوری: policyِ خالی → رفتارِ پیش‌فرضِ فعلیِ AI (هیچ قاعده = مثلِ الان).
+  عدمِ شکستنِ رفتارِ موجود. + تست.
+- **MD6.5:** i18n + `docs/CODE_MAP.md` + commit/push.
+
+---
