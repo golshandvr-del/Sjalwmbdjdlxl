@@ -6622,6 +6622,61 @@ func test_mc14_combine_firing_exceeds_cap_and_turret_flag() -> void:
 	_check(not FiringCombinationUtil.has_turret(fixed_slots), "has_turret false for fixed-only slots")
 
 
+# --- MC14.5 (req16/18): cosmetic turret/idle-spin angle math ----------------
+
+func test_mc14_turret_aim_angle_tracks_target() -> void:
+	print("test_mc14_turret_aim_angle_tracks_target")
+	# A turret aims at the target regardless of the unit heading. Target due east
+	# of the barrel -> angle 0; due south -> +PI/2 (y grows down).
+	var east: float = TurretAngleUtil.aim_angle(Vector2(0, 0), Vector2(10, 0))
+	_check(absf(east - 0.0) < 0.001, "aim east is angle 0")
+	var south: float = TurretAngleUtil.aim_angle(Vector2(0, 0), Vector2(0, 10))
+	_check(absf(south - (PI / 2.0)) < 0.001, "aim south is +PI/2")
+	# firing_part_angle: a turret with a target ignores the (northward) heading.
+	var heading_north: float = -PI / 2.0
+	var turret_angle: float = TurretAngleUtil.firing_part_angle(GraphicModel.MOUNT_TURRET, heading_north, Vector2(0, 0), Vector2(10, 0), true)
+	_check(absf(turret_angle - 0.0) < 0.001, "turret aims at target, not heading")
+	# A turret with NO target falls back to the heading.
+	var no_target: float = TurretAngleUtil.firing_part_angle(GraphicModel.MOUNT_TURRET, heading_north, Vector2(0, 0), Vector2(0, 0), false)
+	_check(absf(no_target - heading_north) < 0.001, "turret without target uses heading")
+
+
+func test_mc14_turret_fixed_uses_heading_and_facing_seed() -> void:
+	print("test_mc14_turret_fixed_uses_heading_and_facing_seed")
+	# A fixed mount always uses the unit heading, ignoring any target.
+	var heading: float = PI / 3.0
+	var fixed: float = TurretAngleUtil.firing_part_angle(GraphicModel.MOUNT_FIXED, heading, Vector2(0, 0), Vector2(10, 0), true)
+	_check(absf(TurretAngleUtil.wrap_angle(fixed - heading)) < 0.001, "fixed mount uses heading even with a target")
+	# Authored facing seeds a heading angle.
+	_check(absf(TurretAngleUtil.facing_to_angle("right") - 0.0) < 0.001, "facing right -> 0")
+	_check(absf(TurretAngleUtil.facing_to_angle("up") - (-PI / 2.0)) < 0.001, "facing up -> -PI/2")
+	_check(absf(TurretAngleUtil.facing_to_angle("left") - PI) < 0.001, "facing left -> PI")
+	# Unknown facing seeds the default (up).
+	_check(absf(TurretAngleUtil.facing_to_angle("bogus") - (-PI / 2.0)) < 0.001, "unknown facing seeds default (up)")
+
+
+func test_mc14_turret_idle_spin_and_step_toward() -> void:
+	print("test_mc14_turret_idle_spin_and_step_toward")
+	# Idle spin advances with time and is deterministic in its inputs.
+	var a0: float = TurretAngleUtil.idle_spin_angle(0.0)
+	var a1: float = TurretAngleUtil.idle_spin_angle(1.0)
+	_check(absf(a0 - 0.0) < 0.001, "idle spin at t=0 is 0")
+	_check(a1 != a0, "idle spin advances with time")
+	_check(absf(TurretAngleUtil.idle_spin_angle(1.0) - a1) < 0.000001, "idle spin is deterministic")
+	# Two buildings with different phase offsets scan out of sync.
+	_check(TurretAngleUtil.idle_spin_angle(1.0, 1.0) != a1, "phase offset desyncs the scan")
+	# step_toward moves at most max_step and snaps when within reach.
+	var stepped: float = TurretAngleUtil.step_toward(0.0, 1.0, 0.25)
+	_check(absf(stepped - 0.25) < 0.001, "step_toward moves by max_step when far")
+	var snapped: float = TurretAngleUtil.step_toward(0.0, 0.1, 0.25)
+	_check(absf(snapped - 0.1) < 0.001, "step_toward snaps to target when within reach")
+	# Shortest path: current=3.0, target=-3.0. The short way is FORWARD across PI
+	# (delta = wrap(-3.0 - 3.0) = wrap(-6.0) ~= +0.283), so a 0.5 step reaches the
+	# target and snaps to wrap(-3.0) = -3.0.
+	var short_path: float = TurretAngleUtil.step_toward(3.0, -3.0, 0.5)
+	_check(absf(short_path - TurretAngleUtil.wrap_angle(-3.0)) < 0.001, "step_toward takes the shortest arc across PI")
+
+
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
 	print("test_mc10_diplomacy_i18n_keys_present_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
