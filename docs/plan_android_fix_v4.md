@@ -189,3 +189,101 @@
 > اضافه می‌کند و بقیه را مو‌به‌مو پیاده می‌کند.
 
 ---
+
+## ۲. تصمیم‌های کلیدیِ طراحی (قوانینِ الزامیِ همه‌ی فازها)
+
+> این بخش پیش از فازبندی می‌آید چون **هر فاز باید از این قوانین تبعیت کند**. AIِ
+> مجری موظف است این‌ها را قبل از نوشتنِ هر خطِ کد بخواند.
+
+### ۲.۱ قطعیت با محاسبه‌ی صحیحِ مقیاس‌شده (Fixed-Point) — قانونِ طلاییِ این دور
+تمامِ فرمول‌های AI/متریک/utility که نظرِ متخصص با اعشار نوشته، در این پروژه با
+**عددِ صحیحِ مقیاس‌شده** پیاده می‌شوند تا lockstep نشکند:
+
+- یک ثابتِ سراسری `SCALE = 1000` (سه رقمِ اعشارِ مؤثر). هر «مقدارِ نرمال‌شده‌ی
+  `[0.0..1.0]`» به‌صورتِ صحیحِ `[0..1000]` نگه‌داری و محاسبه می‌شود.
+- ضرب/جمع/میانگین همه روی `int` انجام و در پایان با تقسیمِ صحیح + `round`ِ نیم‌به‌بالا
+  به بازه‌ی مقصد برمی‌گردد. هیچ `float` نباید در مسیرِ تصمیم که روی worldstate/hash اثر
+  دارد باقی بماند.
+- `AiProfile` همچنان می‌تواند فیلدهایش را به‌صورتِ float در JSON ذخیره کند (فایلِ روی
+  دیسک)، اما **هنگامِ ورود به مسیرِ تصمیمِ قطعی، یک‌بار به fixed-point تبدیل** می‌شود
+  (`q = int(round(f * SCALE))`). این تبدیل در یک نقطه‌ی واحد و قطعی انجام می‌شود.
+- **آزمونِ قطعیت (اجباری در هر فاز):** برای هر util، یک تستِ headless که «همان ورودی →
+  همان خروجیِ بایت‌به‌بایت» را چند بار تکرار می‌کند، و در جایی که ترتیب مهم است،
+  مرتب‌سازیِ پایدار (`sort` روی id) را می‌آزماید.
+
+### ۲.۲ جداسازیِ سختِ Cosmetic از Simulation (تکرارِ قانونِ اساسیِ پروژه)
+هر چیزِ «تصویری» (نمایشِ متریک/نقش در UI، آیکنِ Capability، رنگ‌بندیِ خطر) **cosmetic**
+است و **هرگز** در `core/state_hasher.gd` اثر نمی‌گذارد. هر چیزی که رفتارِ شبیه‌سازی را
+تغییر می‌دهد (انتخابِ نیرو، جای‌گذاریِ ساختمان، حرکت) فقط از راهِ **Command** و **قطعی**
+است. متریک/نقش/utility اگر روی «تصمیمِ Command» اثر بگذارند باید قطعی (بخشِ ۲.۱)
+باشند؛ اگر فقط برای نمایش‌اند، cosmetic.
+
+### ۲.۳ یکی‌سازیِ «Derived Metric» و «Capability» در یک لایه‌ی واحد
+برای پرهیز از دو مفهومِ موازی (نقدِ بخشِ الف، بند ۴)، یک اسمِ واحد انتخاب می‌کنیم:
+**Capability** = همان «شاخصِ سطح‌بالا / Derived Metric» است. یعنی:
+
+- statهای خام (health، armor، …) **از راهِ فرمول‌های ثابتِ موتور** یا **از راهِ
+  `affects`ِ مود** به یک مجموعه‌ی **ثابتِ Capability**‌های شناخته‌شده‌ی موتور می‌رسند.
+- موتور فقط این مجموعه‌ی ثابت را می‌شناسد (نمونه‌ها): `survivability`,
+  `damage_output`, `mobility`, `holding_power`, `siege_power`, `scout_power`,
+  `support_power`, `cost_efficiency`, `anti_air_power`, `resource_pressure`
+  (برای واحد)؛ و برای ساختمان: `defense_value`, `production_value`, `tech_value`,
+  `economic_value`, `frontline_value`, `repair_value`, `control_value`.
+- **AI فقط با Capability و Role کار می‌کند، هرگز با statِ خام و هرگز با اسمِ واحد.**
+- مجموعه‌ی Capabilityها **بسته و نسخه‌دار** است (contractِ موتور). مودها **مقدارِ**
+  Capability را عوض می‌کنند (از راهِ stat یا affects)، نه **فهرستِ** آن را. این همان
+  «لایه‌ی واسطِ استاندارد» است که خودِ متخصص در انتها توصیه کرد.
+
+### ۲.۴ دو ردیفِ Stat: Core (رزرو‌شده) و Free (مود)
+- **Core Stats:** موتور گیم‌پلی (combat/economy/units/buildings) مستقیم می‌خواندشان و
+  contractِ ثابت دارند. اضافه‌شدنِ Free Stat هرگز نباید این‌ها را بشکند.
+- **Free/Mod Stats:** هر تعریفِ جدید. **فقط** از راهِ `affects` روی Capabilityها اثر
+  می‌گذارند؛ هرگز مستقیم به منطقِ combat وصل نمی‌شوند. اگر یک Free Stat بخواهد روی
+  گیم‌پلی اثرِ مکانیکی بگذارد، این کار در **لایه‌ی محتوا/اسکریپتِ مود** است، نه هسته.
+
+### ۲.۵ تابِ‌آوری (Resilience) و مقادیرِ پیش‌فرضِ امن
+هر Capability باید حتی وقتی statِ منبعش غایب است یک مقدارِ پیش‌فرضِ تعریف‌شده بدهد
+(نه crash، نه صفرِ تصادفی). RoleInference هم باید با بردارِ Capabilityِ ناقص یک نقشِ
+معتبر (`unknown`/`generic`) برگرداند. هیچ مسیرِ تصمیمِ AI نباید با «کلید نیست»
+بشکند.
+
+### ۲.۶ بودجه‌ی محاسباتی (موبایل)
+- Utility scoring فقط روی **مرزهای tickِ برنامه‌ریزی** (مثلِ `DEFAULT_PLAN_INTERVAL`
+  فعلی) اجرا می‌شود، نه هر tick.
+- نتیجه‌ی Capability/Role برای هر «تعریفِ واحد/ساختمان» یک‌بار محاسبه و **cache** می‌شود
+  (کلید = id + hashِ statها)؛ چون تعریفِ واحد بینِ بازی ثابت است.
+- نامزدهای تصمیم پیش از scoring فیلتر می‌شوند (فقط واحدهای قابلِ‌ساختِ فعلی، فقط
+  تایل‌های معتبرِ ساخت).
+
+---
+
+## ۳. جدولِ نگاشتِ اجزای معماریِ متخصص → کدِ پروژه + وضعیتِ فعلی
+
+> ستونِ «وضعیتِ فعلی» نتیجه‌ی ممیزیِ کدِ موجود است (تأییدشده با خواندنِ فایل‌ها).
+> این جدول **منبعِ واحدِ حقیقت** برای اینکه چه چیزی هست، چه چیزی نیست، و کجا ساخته
+> می‌شود.
+
+| # | جزءِ معماریِ متخصص | محل/ریشه در کد | وضعیتِ فعلی (ممیزی‌شده) | فاز |
+|---|---------------------|-----------------|---------------------------|-----|
+| ۱ | Stat به‌عنوان Data (نه hard-code) | `tools/stat_registry.gd`, `core/data_loader.gd`, `data/units/*.json` | 🔴 `stat_registry` یک `const STATS` **ثابتِ ۱۳تایی** است؛ statها در JSONِ واحد هستند ولی خودِ **تعریفِ** stat کد است | MD1 |
+| ۲ | متادیتای Stat (`higher_is_better`, `ai_importance`, `affects`, min/max/type/category) | `tools/stat_registry.gd` | 🔴 فقط `needs_value/applies_to/group/default` هست؛ نه `higher_is_better`، نه `ai_importance`، نه `affects` | MD1 |
+| ۳ | لایه‌ی Capability (واسطِ ثابتِ موتور) | جدید: `core/capability_registry.gd` | 🔴 اصلاً وجود ندارد | MD2 |
+| ۴ | نگاشتِ `affects`: Stat → Capability | جدید: `core/stat_affects_util.gd` | 🔴 وجود ندارد | MD2 |
+| ۵ | Derived Metrics (= Capability) از statِ خام | جدید: `core/derived_metrics_util.gd` | 🔴 وجود ندارد؛ هیچ‌جا از stat خام متریک ساخته نمی‌شود | MD3 |
+| ۶ | RoleInference (نقش از روی Capability) | جدید: `core/role_inference_util.gd` | 🔴 وجود ندارد؛ فیلدِ `category` در JSON فقط برچسبِ خام است، استنتاج نیست | MD4 |
+| ۷ | وزنِ نقش/متریک در شخصیتِ AI | `tools/ai_profile.gd` (۳۵ knob), `modules/ai_commander/ai_strategy_derivation_util.gd` | 🟠 ۳۵ knob هست ولی فقط به ۴ عددِ macro (`attack_army_size`…) نگاشت می‌شود؛ **هیچ role_weight/metric_weight نیست** | MD5 |
+| ۸ | Policy Profile (سیاست‌های سختِ رفتاری) | جدید: `modules/ai_commander/ai_policy_util.gd` | 🔴 وجود ندارد؛ رفتار فقط از ۴ عددِ آستانه می‌آید | MD6 |
+| ۹ | Context (map/enemy/economy/threat) خلاصه | جدید: `modules/ai_commander/ai_context_util.gd` | 🟠 پراکنده هست (`_enemy_near_base`, `_resources`) ولی یک «بردارِ وضعیتِ» واحد نیست | MD7 |
+| ۱۰ | Utility scoring برای تولیدِ نیرو | جدید: `modules/ai_commander/unit_utility_util.gd` | 🔴 وجود ندارد؛ AI فعلاً **همیشه `"soldier"`** می‌سازد (hard-coded در `ai_commander_module.gd`) | MD8 |
+| ۱۱ | Site scoring + Utility برای ساختمان | جدید: `modules/ai_commander/building_utility_util.gd`, `core/placement_planner.gd` | 🔴 جای‌گذاری فقط «حلقه‌ی نزدیکِ HQ» است؛ ارزیابیِ choke/threat/synergy نیست | MD9 |
+| ۱۲ | تصمیم‌گیریِ مرحله‌ای (state→macro→category→pick) | `modules/ai_commander/strategic_ai_module.gd` | 🟠 اولویت‌بندیِ ساده هست (research/expand/upgrade/push) ولی «انتخابِ دسته سپس انتخابِ دقیق» نیست | MD10 |
+| ۱۳ | Learning (درون‌بازی + بین‌بازی) روی role/policy/prefs | MC13: `modules/diplomacy/*`, `tools/ai_reputation_store.gd` | 🟠 یادگیریِ دیپلماسی هست؛ **یادگیریِ role/unit/site نیست** | MD11 |
+| ۱۴ | تستِ واحدهای مصنوعی (۵–۶ آرکتایپ) | جدید: `tests/` + `data/test_synthetic/` | 🔴 وجود ندارد؛ باید بستهٔ تستِ آرکتایپی ساخته شود | MD13 |
+| ۱۵ | UIِ داده‌محورِ Stat (کنترل به‌ازای هر stat) | `ui/shared/mod_editor.gd` | 🟠 mod editor فقط چند فیلد دارد؛ UIِ پویا از registry نیست | MD12 |
+
+> **یافته‌ی کلیدیِ ممیزی:** بزرگ‌ترین شکاف این است که **AI اصلاً بین انواعِ نیرو
+> انتخاب نمی‌کند** — تابعِ `_manage_economy` در `ai_commander_module.gd` به‌صورتِ
+> ثابت `"unit_type": "soldier"` می‌فرستد. کلِ ارزشِ خطِ لوله‌ی متخصص دقیقاً همین‌جا
+> ظاهر می‌شود (فاز MD8).
+
+---
