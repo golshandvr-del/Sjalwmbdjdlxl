@@ -429,6 +429,13 @@ func _init() -> void:
 	test_mc8_defaults_resolve_keeps_valid_drops_stale()
 	test_mc8_main_menu_wires_editor_hub_button()
 	test_mc8_editorhub_i18n_keys_present_in_all_locales()
+	# Phase MC9 (request 10): map-colour -> team extraction + rebel posture.
+	test_mc9_used_owners_from_all_entity_arrays()
+	test_mc9_used_owners_sorted_deduped_and_clamped()
+	test_mc9_used_owners_includes_flag_teams()
+	test_mc9_team_count_and_color_hexes()
+	test_mc9_restrict_choices_drops_unused()
+	test_mc9_used_owners_empty_map()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
