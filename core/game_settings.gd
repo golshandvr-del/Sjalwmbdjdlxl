@@ -300,6 +300,19 @@ func set_main_mod(value: String) -> bool:
 	return true
 
 
+# MC8.3 (request 9): set the persisted DEFAULT scenario/GUI ids. Any String
+# (including "" to clear) is accepted; the editor-defaults screen validates the
+# id against the discovered list before offering it.
+func set_default_map(value: String) -> bool:
+	_set_pref("default_map", value)
+	return true
+
+
+func set_default_gui(value: String) -> bool:
+	_set_pref("default_gui", value)
+	return true
+
+
 # --- GUI scale resolution (Phase G) -----------------------------------------
 #
 # The single source of truth for "how big should the interface be drawn". The
@@ -504,6 +517,10 @@ func _is_valid(key: String, value: Variant) -> bool:
 			return _is_string_array(value)
 		"main_mod":
 			# MC6.2: any String (including "") is a valid stored main id.
+			return value is String
+		"default_map", "default_gui":
+			# MC8.3: any String (including "") is a valid stored default id; the
+			# editor-defaults screen validates it against the discovered list.
 			return value is String
 	return false
 
