@@ -476,6 +476,9 @@ func _init() -> void:
 	test_mc12_strategy_derivation_legacy_presets()
 	test_mc12_strategy_derivation_from_profile_distinct()
 	test_mc12_strategy_derivation_deterministic()
+	# Phase MC12.4 (request 13): AI profile summary / tags.
+	test_mc12_profile_summary_role_style_danger()
+	test_mc12_profile_summary_tags_and_bundle()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5721,6 +5724,64 @@ func test_mc12_strategy_derivation_deterministic() -> void:
 	var a: Dictionary = AiStrategyDerivationUtil.derive_from_profile(p)
 	var b: Dictionary = AiStrategyDerivationUtil.derive_from_profile(p)
 	_check(JSON.stringify(a) == JSON.stringify(b), "derivation is deterministic")
+
+
+func test_mc12_profile_summary_role_style_danger() -> void:
+	print("test_mc12_profile_summary_role_style_danger")
+	# An aggressive, high-skill general reads as an offensive, lethal threat.
+	var conqueror: AiProfile = AiProfile.from_dict({
+		"id": "conq", "archetype": "conqueror", "role_key": "ai.profile.conq.role",
+		"personality": {"aggression": 0.95},
+		"strategy_bias": {"offense": 0.95, "defense": 0.2, "economy": 0.3},
+		"difficulty": {"analysis_quality": 0.95, "reaction_speed": 0.95, "execution": 0.95},
+	})
+	_check(AiProfileSummaryUtil.role_key(conqueror) == "ai.profile.conq.role",
+		"explicit role_key preferred")
+	_check(AiProfileSummaryUtil.style_key(conqueror) == "ai.style.aggressive",
+		"offense-heavy vector reads as aggressive style")
+	_check(AiProfileSummaryUtil.danger_key(conqueror) == "ai.danger.lethal",
+		"high skill + aggression reads as lethal")
+	# A passive, low-skill economist reads far less dangerous and economic.
+	var farmer: AiProfile = AiProfile.from_dict({
+		"id": "farm", "archetype": "economist",
+		"personality": {"aggression": 0.05},
+		"strategy_bias": {"offense": 0.1, "defense": 0.3, "economy": 0.95},
+		"difficulty": {"analysis_quality": 0.1, "reaction_speed": 0.1, "execution": 0.1},
+	})
+	_check(AiProfileSummaryUtil.style_key(farmer) == "ai.style.economic",
+		"economy-heavy vector reads as economic style")
+	_check(AiProfileSummaryUtil.danger_index(farmer) < AiProfileSummaryUtil.danger_index(conqueror),
+		"the farmer is less dangerous than the conqueror")
+	# role falls back to archetype-derived key when role_key is absent.
+	_check(AiProfileSummaryUtil.role_key(farmer) == "ai.role.economist",
+		"missing role_key falls back to archetype")
+
+
+func test_mc12_profile_summary_tags_and_bundle() -> void:
+	print("test_mc12_profile_summary_tags_and_bundle")
+	var treacherous: AiProfile = AiProfile.from_dict({
+		"id": "snake",
+		"personality": {"aggression": 0.9, "greed": 0.8},
+		"diplomacy_bias": {"deceit": 0.9, "vengeance": 0.8, "sociability": 0.1, "trust": 0.1},
+		"strategy_bias": {"harassment": 0.9, "technology": 0.8},
+	})
+	var tags: Array = AiProfileSummaryUtil.tags(treacherous)
+	_check(tags.has("ai.tag.treacherous"), "high deceit -> treacherous tag")
+	_check(tags.has("ai.tag.vengeful"), "high vengeance -> vengeful tag")
+	_check(tags.has("ai.tag.reclusive"), "low sociability -> reclusive tag")
+	_check(tags.has("ai.tag.raider"), "high harassment -> raider tag")
+	_check(not tags.has("ai.tag.trusting"), "low trust -> no trusting tag")
+	# Deterministic: same profile -> identical ordered tag list twice.
+	_check(JSON.stringify(tags) == JSON.stringify(AiProfileSummaryUtil.tags(treacherous)),
+		"tags are deterministic")
+	# summarize() bundles everything with the expected keys.
+	var s: Dictionary = AiProfileSummaryUtil.summarize(treacherous)
+	for key in ["id", "name_key", "role_key", "style_key", "danger_index", "danger_key", "tags"]:
+		_check(s.has(key), "summary has '%s'" % key)
+	_check(s["id"] == "snake", "summary carries id")
+	# A null profile is tolerated (neutral fallback, no crash).
+	var neutral: Dictionary = AiProfileSummaryUtil.summarize(null)
+	_check(neutral["danger_index"] >= 0, "null profile summary is safe")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
