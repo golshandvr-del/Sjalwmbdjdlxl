@@ -102,6 +102,16 @@ func _ensure_state() -> void:
 		# MC9.4: owner(String) -> "main" | "rebel" (general mode). Rebels have no
 		# base, so economy/research/hq-upgrade planners are disabled for them.
 		section["mode"] = {}
+	if not section.has("behaviour"):
+		# MC12.3: owner(String) -> derived behaviour dict (attack_army_size,
+		# expansion_cap, upgrade_reserve, research_first). When present it OVERRIDES
+		# the legacy PERSONALITY preset, letting a full AiProfile vector drive the
+		# planner. Absent -> fall back to the named preset (backward compatible).
+		section["behaviour"] = {}
+	if not section.has("profile_id"):
+		# MC12.3: owner(String) -> the AiProfile id that produced the behaviour
+		# (cosmetic / for UI + reputation lookup). Absent for legacy named AIs.
+		section["profile_id"] = {}
 
 
 # --- Public configuration (called by the scenario loader) -------------------
@@ -114,6 +124,48 @@ func set_strategic_player(owner: int, personality: String = "balanced") -> void:
 	(section["posture"] as Dictionary)[str(owner)] = "build"
 	if not (section["mode"] as Dictionary).has(str(owner)):
 		(section["mode"] as Dictionary)[str(owner)] = AiGeneralModeUtil.MODE_MAIN
+	# A named preset has no profile; drop any stale profile-derived override so
+	# the legacy preset path is used deterministically.
+	(section["behaviour"] as Dictionary).erase(str(owner))
+	(section["profile_id"] as Dictionary).erase(str(owner))
+
+
+# MC12.3: mark a player as AI-controlled by a full AiProfile vector. The
+# profile's strategy_bias/personality knobs are derived (once, deterministically)
+# into the same behaviour dictionary the legacy presets use, then stored in world
+# state so the planner reads it every tick without re-deriving. `profile` is any
+# object exposing get_value(category, knob) (an AiProfile). Falls back to the
+# balanced preset when profile is null.
+func set_strategic_player_profile(owner: int, profile) -> void:
+	var section: Dictionary = nexus.world_state.get_section(SECTION)
+	var behaviour: Dictionary = AiStrategyDerivationUtil.derive_from_profile(profile)
+	# Keep a legacy-compatible name label for any code that reads "controlled".
+	(section["controlled"] as Dictionary)[str(owner)] = "balanced"
+	(section["posture"] as Dictionary)[str(owner)] = "build"
+	if not (section["mode"] as Dictionary).has(str(owner)):
+		(section["mode"] as Dictionary)[str(owner)] = AiGeneralModeUtil.MODE_MAIN
+	(section["behaviour"] as Dictionary)[str(owner)] = behaviour
+	var pid: String = ""
+	if profile != null and profile.has_method("id"):
+		pid = str(profile.id())
+	(section["profile_id"] as Dictionary)[str(owner)] = pid
+
+
+# MC12.3: the effective behaviour dictionary for an owner. Prefers a stored
+# profile-derived override, else the legacy named preset (via derivation util
+# which mirrors PERSONALITY exactly), else balanced. Deterministic.
+func behaviour_for(owner: int) -> Dictionary:
+	var section: Dictionary = nexus.world_state.get_section(SECTION)
+	var overrides: Dictionary = section.get("behaviour", {})
+	if overrides.has(str(owner)):
+		return (overrides[str(owner)] as Dictionary).duplicate(true)
+	var name: String = str(section.get("controlled", {}).get(str(owner), "balanced"))
+	return AiStrategyDerivationUtil.derive_from_name(name)
+
+
+# MC12.3: the AiProfile id backing an owner, or "" for a legacy named AI.
+func profile_id(owner: int) -> String:
+	return str(nexus.world_state.get_section(SECTION).get("profile_id", {}).get(str(owner), ""))
 
 
 # MC9.4: set an AI owner's general mode ("main" or "rebel"). The scenario loader
@@ -150,7 +202,9 @@ func on_tick(_delta_tick: int) -> void:
 		# Phase-shift by owner so multiple AIs do not all plan on the same tick.
 		if (tick + owner) % DEFAULT_PLAN_INTERVAL != 0:
 			continue
-		var personality: Dictionary = PERSONALITY.get(str(controlled[owner_key]), PERSONALITY["balanced"])
+		# MC12.3: effective behaviour prefers a profile-derived override, else the
+		# legacy named preset. Both share the same dictionary shape.
+		var personality: Dictionary = behaviour_for(owner)
 		_plan_for_player(owner, personality)
 
 
