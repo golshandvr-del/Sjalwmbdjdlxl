@@ -335,6 +335,27 @@ static func validate(graphic: Variant) -> Array:
 
 	problems.append_array(validate_layer_sizes(pa))
 
+	# MC14.3 (req16/18): optional facing + firing-part flags (cosmetic; absent ->
+	# no problems). Facing, when present, must be one of the cardinal art
+	# orientations; an authored graphic may declare AT MOST one firing part, and
+	# each firing part's mount must be fixed/turret.
+	if g.has("facing"):
+		var f: String = str(g.get("facing", "")).strip_edges().to_lower()
+		if not FACINGS.has(f):
+			problems.append("graphic.facing must be one of up/down/left/right")
+	var firing_count: int = 0
+	for i in pa.size():
+		if not (pa[i] is Dictionary):
+			continue
+		var fpart: Dictionary = pa[i] as Dictionary
+		if bool(fpart.get("is_firing_part", false)):
+			firing_count += 1
+			var mnt: String = str(fpart.get("firing_mount", DEFAULT_MOUNT)).strip_edges().to_lower()
+			if not MOUNTS.has(mnt):
+				problems.append("part %d firing_mount must be fixed or turret" % i)
+	if firing_count > MAX_FIRING_PARTS:
+		problems.append("graphic declares %d firing parts (max %d)" % [firing_count, MAX_FIRING_PARTS])
+
 	# MC4.2: optional animation block (cosmetic; absent -> no problems).
 	if g.has("animation"):
 		problems.append_array(validate_animation(g["animation"]))
