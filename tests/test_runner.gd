@@ -5338,6 +5338,29 @@ func test_mc10_deployment_command_authority_returns() -> void:
 	_check(int(clamped["duration_ticks"]) >= 1, "duration clamped to at least 1")
 
 
+func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
+	print("test_mc10_diplomacy_i18n_keys_present_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	# Every relationship state must have a display key.
+	for state in RelationshipUtil.STATES:
+		var skey: String = "ui.diplomacy.state.%s" % state
+		_check(en.has(skey), "en has '%s'" % skey)
+		_check(fa.has(skey), "fa has '%s'" % skey)
+	# Every treaty type must have a display key.
+	for type_id in TreatyUtil.TYPES:
+		var tkey: String = "ui.diplomacy.treaty.%s" % type_id
+		_check(en.has(tkey), "en has '%s'" % tkey)
+		_check(fa.has(tkey), "fa has '%s'" % tkey)
+	# Core diplomacy UI labels.
+	for key in ["ui.diplomacy.title", "ui.diplomacy.propose", "ui.diplomacy.respond",
+			"ui.diplomacy.accept", "ui.diplomacy.reject", "ui.diplomacy.declare_war",
+			"ui.diplomacy.break_treaty", "ui.diplomacy.gives", "ui.diplomacy.wants",
+			"ui.diplomacy.duration", "ui.diplomacy.trust"]:
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
+
+
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
 	print("test_phase_e_editor_keys_localized_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
