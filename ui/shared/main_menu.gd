@@ -309,6 +309,14 @@ func _on_options() -> void:
 	get_tree().change_scene_to_file(OPTIONS_SCENE)
 
 
+# MC8.2 (req 9): open the unified editor hub. The hub itself launches the map /
+# mod / GUI editors and the defaults screen, and NavService routes their "back"
+# to the hub and the hub's "back" to this main menu.
+func _on_editor() -> void:
+	_store_locale()
+	get_tree().change_scene_to_file(NavService.EDITOR_HUB)
+
+
 func _on_mod_editor() -> void:
 	_store_locale()
 	get_tree().change_scene_to_file(MOD_EDITOR_SCENE)
