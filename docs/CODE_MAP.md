@@ -117,6 +117,12 @@ scenes/       صحنه‌های Godot (.tscn)
 | `tools/gui_widget_catalog.gd` | (MC7) فهرستِ logical_idهای مجاز برای هر صفحه (تضمینِ «نام ظاهری، کارکرد ثابت») + `validate_project_dict` |
 | `ui/shared/gui_render_util.gd` | (MC7) تبدیلِ مدلِ GUI به چیدمانِ رندری با fallback به پیش‌فرض (cosmetic) |
 | `ui/shared/gui_editor.gd` | (MC7) صحنه‌ی ادیتورِ GUI: صفحات/ویجت‌ها، ویرایشِ rect/icon/نامِ ظاهری، ویرایشِ پس‌زمینه (رنگ/عکس/ویدئو)، save/export/import — thin view روی `GuiProject` |
+| `tools/ai_profile.gd` | (MC12) مدلِ شخصیتِ AI: بردارِ ۳۵ پارامتریِ رفتار + ۹ پروفایلِ پیش‌فرض (data/ai_profiles) + خلاصه/نقش/سبک |
+| `tools/ai_builder_util.gd` | (MC14) منطقِ خالصِ سازندهٔ AI: presetهای آرکتایپ، randomizeِ بذرمحور، duplicate/reset/export/import |
+| `ui/shared/ai_roster_util.gd` | (MC14) فهرستِ AI (۹ پیش‌فرض + ساختهٔ کاربر) برای match setup: toggle/selected/resolve — id-مرتب |
+| `tools/turret_angle_util.gd` | (MC14.5) ریاضیِ زاویه‌ی cosmetic: aim به هدف، fixed از heading/facing، idle-spinِ ساختمانِ دفاعی، `step_toward` |
+| `tools/firing_combination_util.gd` | (MC14.4) ترکیبِ بخش‌های شلیکِ نیروهای ادغام‌شده با سقفِ `MAX_COMBINED_FIRING_PARTS` (=۲) — قطعی، بی‌رندر |
+| `tools/graphic_facing_edit_util.gd` | (MC14.6) منطقِ خالصِ ویرایشِ facing + firing-part/mount در mod editor: set/toggle/mount با تضمینِ «حداکثر ۱ بخشِ شلیکِ authored» |
 
 ---
 
