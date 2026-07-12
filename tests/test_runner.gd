@@ -465,6 +465,10 @@ func _init() -> void:
 	test_mc11_mission_request_roundtrip()
 	test_mc11_ai_message_text_descriptor()
 	test_mc11_ai_message_keys_present_in_all_locales()
+	# Phase MC12 (request 13): AI personality profile model.
+	test_mc12_ai_profile_schema_and_defaults()
+	test_mc12_ai_profile_load_clamp_and_partial()
+	test_mc12_ai_profile_roundtrip_deterministic()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5491,6 +5495,87 @@ func test_mc11_ai_message_keys_present_in_all_locales() -> void:
 	for key in AiMessageTextUtil.all_keys():
 		_check(en.has(key), "en has '%s'" % key)
 		_check(fa.has(key), "fa has '%s'" % key)
+
+
+# --- Phase MC12 (request 13): AI personality profile model ------------------
+func test_mc12_ai_profile_schema_and_defaults() -> void:
+	print("test_mc12_ai_profile_schema_and_defaults")
+	# Exactly 35 numeric knobs across the five categories.
+	_check(AiProfile.knob_count() == 35, "profile has 35 knobs total")
+	_check(AiProfile.keys_for("personality").size() == 10, "10 personality knobs")
+	_check(AiProfile.keys_for("strategy_bias").size() == 10, "10 strategy knobs")
+	_check(AiProfile.keys_for("diplomacy_bias").size() == 7, "7 diplomacy knobs")
+	_check(AiProfile.keys_for("learning_bias").size() == 5, "5 learning knobs")
+	_check(AiProfile.keys_for("difficulty").size() == 3, "3 difficulty knobs")
+	_check(AiProfile.keys_for("bogus").is_empty(), "unknown category -> empty keys")
+	# A fresh profile is fully neutral (every knob 0.5) and valid.
+	var p: AiProfile = AiProfile.new()
+	p.init_new("test")
+	_check(p.is_valid(), "fresh profile with id is valid")
+	_check(p.personality("aggression") == 0.5, "unspecified knob defaults to neutral")
+	_check(p.difficulty("execution") == 0.5, "difficulty knob defaults to neutral")
+	# The safe default profile is a valid "balanced" general.
+	var d: AiProfile = AiProfile.default_profile()
+	_check(d.is_valid() and d.id() == "balanced", "default_profile is valid balanced")
+	_check(d.archetype() == "balanced", "default archetype tag")
+	# Missing id is the only hard error.
+	var empty: AiProfile = AiProfile.new()
+	empty.init_new("")
+	_check(empty.validate() == "missing_id", "blank id fails validation")
+
+
+func test_mc12_ai_profile_load_clamp_and_partial() -> void:
+	print("test_mc12_ai_profile_load_clamp_and_partial")
+	# Out-of-range values are clamped; unknown knobs dropped; partial dict OK.
+	var p: AiProfile = AiProfile.from_dict({
+		"id": "hannibal",
+		"display_name_key": "ai.profile.hannibal.name",
+		"role_key": "ai.profile.hannibal.role",
+		"archetype": "opportunist",
+		"personality": {"aggression": 1.7, "caution": -0.3, "bogus_knob": 0.9},
+		"strategy_bias": {"harassment": 0.8},
+	})
+	_check(p.is_valid(), "loaded profile valid")
+	_check(p.personality("aggression") == 1.0, "over-range clamped to 1.0")
+	_check(p.personality("caution") == 0.0, "under-range clamped to 0.0")
+	_check(p.strategy("harassment") == 0.8, "specified strategy knob kept")
+	# Unspecified knobs stay neutral; unknown knob is not present as a real key.
+	_check(p.strategy("economy") == 0.5, "unspecified strategy neutral")
+	_check(not AiProfile.keys_for("personality").has("bogus_knob"), "bogus knob not a real key")
+	_check(p.display_name_key() == "ai.profile.hannibal.name", "display key loaded")
+	_check(p.archetype() == "opportunist", "archetype loaded")
+	# String-encoded numbers coerce; set_value clamps + rejects unknown knob.
+	var q: AiProfile = AiProfile.from_dict({"id": "x", "difficulty": {"analysis_quality": "0.75"}})
+	_check(q.difficulty("analysis_quality") == 0.75, "string number coerced")
+	_check(q.set_value("difficulty", "reaction_speed", 2.0) == 1.0, "set clamps to 1.0")
+	_check(q.set_value("difficulty", "no_such_knob", 0.3) == 0.5, "unknown knob rejected")
+	# load() with no id returns false but still leaves a fully-populated vector.
+	var r: AiProfile = AiProfile.new()
+	_check(not r.load({"personality": {"pride": 0.9}}), "no id -> load returns false")
+	_check(r.personality("pride") == 0.9, "vector still populated on idless load")
+
+
+func test_mc12_ai_profile_roundtrip_deterministic() -> void:
+	print("test_mc12_ai_profile_roundtrip_deterministic")
+	var src: AiProfile = AiProfile.from_dict({
+		"id": "caesar",
+		"archetype": "aggressor",
+		"personality": {"aggression": 0.9, "boldness": 0.8},
+		"diplomacy_bias": {"deceit": 0.6, "vengeance": 0.7},
+	})
+	var data: Dictionary = src.to_dict()
+	var back: AiProfile = AiProfile.from_dict(data)
+	_check(back.id() == "caesar", "roundtrip id")
+	_check(back.personality("aggression") == 0.9, "roundtrip personality knob")
+	_check(back.diplomacy("deceit") == 0.6, "roundtrip diplomacy knob")
+	# Every category present + complete after roundtrip.
+	for category in AiProfile.CATEGORIES:
+		_check(back.vector(category).size() == AiProfile.keys_for(category).size(),
+			"roundtrip category '%s' complete" % category)
+	# Deterministic: serialising twice yields identical JSON text.
+	var json_a: String = JSON.stringify(src.to_dict())
+	var json_b: String = JSON.stringify(back.to_dict())
+	_check(json_a == json_b, "to_dict is deterministic across roundtrip")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
