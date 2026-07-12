@@ -5226,6 +5226,117 @@ func test_mc9_strategic_ai_gates_planners_by_mode() -> void:
 	_check(src.contains("func set_general_mode"), "module exposes set_general_mode")
 
 
+# --- Phase MC10 (requests 11/12/17): dynamic diplomacy pure models -----------
+
+func test_mc10_relationship_states_and_flags() -> void:
+	print("test_mc10_relationship_states_and_flags")
+	_check(RelationshipUtil.is_valid("ally"), "ally is a valid state")
+	_check(not RelationshipUtil.is_valid("garbage"), "garbage is not valid")
+	_check(RelationshipUtil.normalize("garbage") == RelationshipUtil.DEFAULT_STATE, "unknown normalizes to default")
+	_check(RelationshipUtil.normalize("enemy") == RelationshipUtil.ENEMY, "known state kept")
+	# Only rival/enemy are hostile; neutral is NOT (request 17 correctness).
+	_check(RelationshipUtil.is_hostile("enemy"), "enemy is hostile")
+	_check(RelationshipUtil.is_hostile("rival"), "rival is hostile")
+	_check(not RelationshipUtil.is_hostile("neutral"), "neutral is not hostile")
+	_check(not RelationshipUtil.is_hostile("ally"), "ally is not hostile")
+	# Only ally/vassal are friendly (mapped to shared team).
+	_check(RelationshipUtil.is_friendly("ally"), "ally is friendly")
+	_check(RelationshipUtil.is_friendly("vassal"), "vassal is friendly")
+	_check(not RelationshipUtil.is_friendly("neutral"), "neutral is not friendly")
+
+
+func test_mc10_relationship_transitions() -> void:
+	print("test_mc10_relationship_transitions")
+	# Staying in the same state is always legal.
+	_check(RelationshipUtil.can_transition("neutral", "neutral"), "self transition allowed")
+	# You cannot leap enemy -> ally directly; must go through ceasefire.
+	_check(not RelationshipUtil.can_transition("enemy", "ally"), "enemy cannot jump to ally")
+	_check(RelationshipUtil.can_transition("enemy", "ceasefire"), "enemy can ceasefire")
+	_check(RelationshipUtil.can_transition("negotiating", "ally"), "negotiating can become ally")
+	# apply_transition returns the new state when legal, else the old one.
+	_check(RelationshipUtil.apply_transition("enemy", "ceasefire") == "ceasefire", "legal apply moves")
+	_check(RelationshipUtil.apply_transition("enemy", "ally") == "enemy", "illegal apply stays put")
+
+
+func test_mc10_relationship_pair_key_stable() -> void:
+	print("test_mc10_relationship_pair_key_stable")
+	# Pair key is order-independent so (a,b) and (b,a) collapse to one entry.
+	_check(RelationshipUtil.pair_key(2, 5) == RelationshipUtil.pair_key(5, 2), "pair key order independent")
+	_check(RelationshipUtil.pair_key(2, 5) == "2:5", "pair key low:high")
+	_check(RelationshipUtil.pair_key(7, 7) == "7:7", "same-owner pair key")
+
+
+func test_mc10_treaty_make_validate_and_types() -> void:
+	print("test_mc10_treaty_make_validate_and_types")
+	var t: Dictionary = TreatyUtil.make_treaty(
+		TreatyUtil.ALLIANCE_TEMP, 0, 1, {"gold": 100}, {"units": [3]}, 600, 10)
+	_check(TreatyUtil.is_valid(t), "well-formed treaty validates")
+	_check(str(t["status"]) == TreatyUtil.STATUS_PROPOSED, "new treaty is proposed")
+	_check(TreatyUtil.makes_allies(TreatyUtil.ALLIANCE_FULL), "alliance_full makes allies")
+	_check(TreatyUtil.makes_allies(TreatyUtil.ALLIANCE_TEMP), "alliance_temp makes allies")
+	_check(not TreatyUtil.makes_allies(TreatyUtil.CEASEFIRE), "ceasefire is not an alliance")
+	_check(TreatyUtil.makes_hostile(TreatyUtil.DECLARE_WAR), "declare_war makes hostile")
+	_check(TreatyUtil.makes_hostile(TreatyUtil.BETRAYAL), "betrayal makes hostile")
+	# Validation error tokens.
+	var self_t: Dictionary = TreatyUtil.make_treaty(TreatyUtil.CEASEFIRE, 2, 2, {}, {}, 0, 0)
+	_check(TreatyUtil.validate(self_t) == "self_treaty", "self treaty rejected")
+	var bad_type: Dictionary = {"type": "nope", "proposer": 0, "target": 1}
+	_check(TreatyUtil.validate(bad_type) == "bad_type", "bad type rejected")
+
+
+func test_mc10_treaty_expiry_and_serialize() -> void:
+	print("test_mc10_treaty_expiry_and_serialize")
+	var t: Dictionary = TreatyUtil.make_treaty(TreatyUtil.NON_AGGRESSION, 0, 1, {}, {}, 100, 5)
+	# Accepted at tick 50 -> expires at 150.
+	_check(TreatyUtil.expiry_tick(t, 50) == 150, "expiry = accepted + duration")
+	_check(not TreatyUtil.is_expired(t, 50, 149), "not expired before window ends")
+	_check(TreatyUtil.is_expired(t, 50, 150), "expired at window end")
+	# Permanent treaty (duration 0) never expires on its own.
+	var perm: Dictionary = TreatyUtil.make_treaty(TreatyUtil.ALLIANCE_FULL, 0, 1, {}, {}, 0, 0)
+	_check(TreatyUtil.expiry_tick(perm, 10) == -1, "permanent has no expiry tick")
+	_check(not TreatyUtil.is_expired(perm, 10, 99999), "permanent never expires")
+	# Round-trip preserves status and payload.
+	var acc: Dictionary = t.duplicate(true)
+	acc["status"] = TreatyUtil.STATUS_ACCEPTED
+	var round_trip: Dictionary = TreatyUtil.from_dict(TreatyUtil.to_dict(acc))
+	_check(str(round_trip["status"]) == TreatyUtil.STATUS_ACCEPTED, "status survives round-trip")
+	_check(int(round_trip["duration_ticks"]) == 100, "duration survives round-trip")
+
+
+func test_mc10_political_cost_alliance_and_betrayal() -> void:
+	print("test_mc10_political_cost_alliance_and_betrayal")
+	# First alliance is free; each beyond escalates.
+	_check(PoliticalCostUtil.alliance_cost(0) == 0.0, "first alliance is free")
+	_check(PoliticalCostUtil.alliance_cost(1) == PoliticalCostUtil.ALLIANCE_COST_BASE, "second alliance = base cost")
+	_check(PoliticalCostUtil.alliance_cost(2) == PoliticalCostUtil.ALLIANCE_COST_BASE + PoliticalCostUtil.ALLIANCE_COST_STEP, "third alliance escalates")
+	# Betrayal is a flat, heavy hit.
+	_check(PoliticalCostUtil.betrayal_cost() == PoliticalCostUtil.BETRAYAL_COST, "betrayal cost constant")
+	# Trust stays clamped to 0..100.
+	_check(PoliticalCostUtil.apply_cost(10.0, 35.0) == 0.0, "trust never below zero")
+	_check(PoliticalCostUtil.apply_cost(90.0, -30.0) == 100.0, "trust never above 100")
+	# Acceptance factor is trust/100.
+	_check(is_equal_approx(PoliticalCostUtil.acceptance_factor(50.0), 0.5), "acceptance factor = trust/100")
+
+
+func test_mc10_deployment_command_authority_returns() -> void:
+	print("test_mc10_deployment_command_authority_returns")
+	var dep: Dictionary = DeploymentUtil.make_deployment(0, 1, [10, 11], 100, 50)
+	_check(DeploymentUtil.is_valid(dep), "well-formed deployment validates")
+	_check(DeploymentUtil.return_tick(dep) == 150, "return tick = start + duration")
+	# While active + unexpired, the borrower commands the loaned units.
+	_check(DeploymentUtil.commander_of(dep, 10, 120) == 1, "borrower commands during loan")
+	# Once expired, command snaps back to the owner (exploit-proof).
+	_check(DeploymentUtil.commander_of(dep, 10, 150) == 0, "owner reclaims after expiry")
+	# A unit not in the loan is always commanded by the owner.
+	_check(DeploymentUtil.commander_of(dep, 99, 120) == 0, "non-loaned unit stays with owner")
+	# Recalling ends the loan immediately: borrower loses authority.
+	var recalled: Dictionary = DeploymentUtil.end_deployment(dep, true)
+	_check(DeploymentUtil.commander_of(recalled, 10, 120) == 0, "recalled loan reverts to owner")
+	# Duration is clamped to >= 1 tick (never a permanent transfer).
+	var clamped: Dictionary = DeploymentUtil.make_deployment(0, 1, [5], 0, 0)
+	_check(int(clamped["duration_ticks"]) >= 1, "duration clamped to at least 1")
+
+
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
 	print("test_phase_e_editor_keys_localized_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
