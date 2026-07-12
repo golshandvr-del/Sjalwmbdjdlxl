@@ -472,6 +472,10 @@ func _init() -> void:
 	test_mc12_ai_profile_catalog_lists_nine()
 	test_mc12_ai_profile_catalog_loads_valid_defaults()
 	test_mc12_ai_profile_catalog_fallback_on_missing()
+	# Phase MC12.3 (request 13): AiProfile -> strategic behaviour derivation.
+	test_mc12_strategy_derivation_legacy_presets()
+	test_mc12_strategy_derivation_from_profile_distinct()
+	test_mc12_strategy_derivation_deterministic()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5646,6 +5650,77 @@ func test_mc12_ai_profile_catalog_fallback_on_missing() -> void:
 	_check(all.size() == 9, "load_all tolerates a null reader")
 	for entry in all:
 		_check((entry as AiProfile).is_valid(), "fallback entry valid")
+
+
+func test_mc12_strategy_derivation_legacy_presets() -> void:
+	print("test_mc12_strategy_derivation_legacy_presets")
+	# derive_from_name must reproduce the legacy StrategicAiModule presets exactly
+	# so pre-MC12 scenarios/tests keep byte-identical numbers.
+	var eco: Dictionary = AiStrategyDerivationUtil.derive_from_name("economic")
+	_check(eco["attack_army_size"] == 6, "economic army size unchanged")
+	_check(eco["expansion_cap"] == 3, "economic expansion cap unchanged")
+	_check(eco["upgrade_reserve"] == 300, "economic reserve unchanged")
+	_check(bool(eco["research_first"]) == true, "economic researches first")
+	var agg: Dictionary = AiStrategyDerivationUtil.derive_from_name("aggressive")
+	_check(agg["attack_army_size"] == 3, "aggressive army size unchanged")
+	_check(bool(agg["research_first"]) == false, "aggressive does not research first")
+	# Unknown name -> balanced fallback.
+	var unknown: Dictionary = AiStrategyDerivationUtil.derive_from_name("bogus")
+	_check(unknown["attack_army_size"] == 4, "unknown name falls back to balanced")
+	# null profile -> balanced fallback.
+	var nul: Dictionary = AiStrategyDerivationUtil.derive_from_profile(null)
+	_check(nul["attack_army_size"] == 4, "null profile falls back to balanced")
+
+
+func test_mc12_strategy_derivation_from_profile_distinct() -> void:
+	print("test_mc12_strategy_derivation_from_profile_distinct")
+	# A patient, defensive, tech/economy general masses a bigger army and
+	# researches first.
+	var turtle: AiProfile = AiProfile.from_dict({
+		"id": "turtle",
+		"personality": {"patience": 1.0, "caution": 1.0, "aggression": 0.0},
+		"strategy_bias": {"military": 0.9, "defense": 0.9, "technology": 0.9,
+			"economy": 0.8, "offense": 0.1, "tempo": 0.1, "expansion": 0.2, "greed": 0.1},
+	})
+	# A bold, aggressive, tempo/offense general commits early and expands hard.
+	var blitz: AiProfile = AiProfile.from_dict({
+		"id": "blitz",
+		"personality": {"patience": 0.0, "caution": 0.0, "aggression": 1.0, "greed": 0.9},
+		"strategy_bias": {"military": 0.2, "defense": 0.1, "technology": 0.1,
+			"economy": 0.2, "offense": 0.95, "tempo": 0.95, "expansion": 0.9},
+	})
+	var t: Dictionary = AiStrategyDerivationUtil.derive_from_profile(turtle)
+	var b: Dictionary = AiStrategyDerivationUtil.derive_from_profile(blitz)
+	_check(int(t["attack_army_size"]) > int(b["attack_army_size"]),
+		"patient/defensive general masses a bigger army than the blitzer")
+	_check(bool(t["research_first"]) == true, "tech/economy general researches first")
+	_check(bool(b["research_first"]) == false, "tempo/offense general does not research first")
+	_check(int(t["upgrade_reserve"]) > int(b["upgrade_reserve"]),
+		"cautious/defensive general keeps a bigger reserve")
+	# All derived numbers stay inside the documented bounds.
+	for d in [t, b]:
+		_check(int(d["attack_army_size"]) >= AiStrategyDerivationUtil.ARMY_MIN
+			and int(d["attack_army_size"]) <= AiStrategyDerivationUtil.ARMY_MAX,
+			"army size in bounds")
+		_check(int(d["expansion_cap"]) >= AiStrategyDerivationUtil.EXPANSION_MIN
+			and int(d["expansion_cap"]) <= AiStrategyDerivationUtil.EXPANSION_MAX,
+			"expansion cap in bounds")
+		_check(int(d["upgrade_reserve"]) >= AiStrategyDerivationUtil.RESERVE_MIN
+			and int(d["upgrade_reserve"]) <= AiStrategyDerivationUtil.RESERVE_MAX,
+			"reserve in bounds")
+
+
+func test_mc12_strategy_derivation_deterministic() -> void:
+	print("test_mc12_strategy_derivation_deterministic")
+	# Same profile -> byte-identical behaviour dict, twice.
+	var p: AiProfile = AiProfile.from_dict({
+		"id": "det",
+		"personality": {"patience": 0.7, "aggression": 0.3},
+		"strategy_bias": {"technology": 0.6, "economy": 0.6, "offense": 0.4, "tempo": 0.3},
+	})
+	var a: Dictionary = AiStrategyDerivationUtil.derive_from_profile(p)
+	var b: Dictionary = AiStrategyDerivationUtil.derive_from_profile(p)
+	_check(JSON.stringify(a) == JSON.stringify(b), "derivation is deterministic")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
