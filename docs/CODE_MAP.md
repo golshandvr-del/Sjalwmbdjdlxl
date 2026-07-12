@@ -113,6 +113,10 @@ scenes/       صحنه‌های Godot (.tscn)
 | `tools/mod_editor.gd` / `mod_project.gd` / `scenario_project.gd` | مدل‌ها |
 | `tools/check_code_policy.gd` | linter انگلیسی‌فقط (CI) |
 | `tools/build_release.sh` | بیلد release (P8.6) |
+| `tools/gui_project.gd` | (MC7) مدلِ داده‌محورِ GUI: صفحه‌ها→ویجت‌ها (logical_id/rect/icon/display_name)؛ پس‌زمینه‌ی color/image/video با `validate_video_background` (فقط .ogv، حداکثر ۱۶MB/۳۰s)؛ round-trip JSON (`.nexgui`)، save/load |
+| `tools/gui_widget_catalog.gd` | (MC7) فهرستِ logical_idهای مجاز برای هر صفحه (تضمینِ «نام ظاهری، کارکرد ثابت») + `validate_project_dict` |
+| `ui/shared/gui_render_util.gd` | (MC7) تبدیلِ مدلِ GUI به چیدمانِ رندری با fallback به پیش‌فرض (cosmetic) |
+| `ui/shared/gui_editor.gd` | (MC7) صحنه‌ی ادیتورِ GUI: صفحات/ویجت‌ها، ویرایشِ rect/icon/نامِ ظاهری، ویرایشِ پس‌زمینه (رنگ/عکس/ویدئو)، save/export/import — thin view روی `GuiProject` |
 
 ---
 
