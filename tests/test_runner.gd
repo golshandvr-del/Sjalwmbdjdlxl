@@ -4935,6 +4935,93 @@ func test_mc7_guieditor_i18n_keys_present_in_all_locales() -> void:
 		_check(fa.has(key), "fa has '%s'" % key)
 
 
+# ----------------------------------------------------------------------------
+# Phase MC8 (request 9): Editor hub + "Defaults" tab.
+#
+# EditorDefaultsUtil is the PURE selection/validation half of the Defaults
+# screen (pick a default map/mod/gui). It builds a stable sorted choice list
+# from raw discovery data and resolves a stored default id so a deleted target
+# collapses to "" instead of dangling. Tested headlessly with plain arrays.
+# A static guard confirms the main menu opens the editor hub, and an i18n guard
+# confirms the hub/defaults keys exist in every locale.
+# ----------------------------------------------------------------------------
+
+func test_mc8_defaults_build_choices_sorted_and_deduped() -> void:
+	print("test_mc8_defaults_build_choices_sorted_and_deduped")
+	var choices: Array = EditorDefaultsUtil.build_choices(["gamma", "alpha", "beta", "alpha", "  "])
+	_check(choices.size() == 3, "blanks dropped and duplicates collapsed")
+	_check(str(choices[0]["id"]) == "alpha", "sorted: alpha first")
+	_check(str(choices[1]["id"]) == "beta", "sorted: beta second")
+	_check(str(choices[2]["id"]) == "gamma", "sorted: gamma last")
+
+
+func test_mc8_defaults_build_choices_from_strings_and_dicts() -> void:
+	print("test_mc8_defaults_build_choices_from_strings_and_dicts")
+	var raw: Array = [
+		"plain_id",
+		{ "id": "with_name", "name": "Pretty Name" },
+		{ "id": "no_name" },
+		{ "id": "  " },
+	]
+	var choices: Array = EditorDefaultsUtil.build_choices(raw)
+	_check(choices.size() == 3, "blank-id dict dropped")
+	_check(EditorDefaultsUtil.display_name(choices, "with_name", "(none)") == "Pretty Name",
+		"dict name is used for display")
+	_check(EditorDefaultsUtil.display_name(choices, "no_name", "(none)") == "no_name",
+		"missing name falls back to the id")
+	_check(EditorDefaultsUtil.display_name(choices, "plain_id", "(none)") == "plain_id",
+		"string entry uses id as name")
+
+
+func test_mc8_defaults_has_choice_and_display_name() -> void:
+	print("test_mc8_defaults_has_choice_and_display_name")
+	var choices: Array = EditorDefaultsUtil.build_choices(["a", "b"])
+	_check(EditorDefaultsUtil.has_choice(choices, "a"), "has_choice true for present id")
+	_check(not EditorDefaultsUtil.has_choice(choices, "z"), "has_choice false for absent id")
+	_check(EditorDefaultsUtil.display_name(choices, "", "(none)") == "(none)",
+		"blank id shows the none-text")
+	_check(EditorDefaultsUtil.display_name(choices, "z", "(none)") == "(none)",
+		"unknown id shows the none-text")
+
+
+func test_mc8_defaults_resolve_keeps_valid_drops_stale() -> void:
+	print("test_mc8_defaults_resolve_keeps_valid_drops_stale")
+	var choices: Array = EditorDefaultsUtil.build_choices(["map_a", "map_b"])
+	_check(EditorDefaultsUtil.resolve_default("map_a", choices) == "map_a",
+		"valid stored default is kept")
+	_check(EditorDefaultsUtil.resolve_default("deleted_map", choices) == "",
+		"stale stored default collapses to empty")
+	_check(EditorDefaultsUtil.resolve_default("", choices) == "",
+		"empty default stays empty (use built-in)")
+	_check(EditorDefaultsUtil.resolve_default("  map_b  ", choices) == "map_b",
+		"stored id is trimmed before matching")
+
+
+func test_mc8_main_menu_wires_editor_hub_button() -> void:
+	print("test_mc8_main_menu_wires_editor_hub_button")
+	var src: String = FileAccess.get_file_as_string("res://ui/shared/main_menu.gd")
+	_check(src.contains("_editor_button"), "main menu references the Editor button")
+	_check(src.contains("_editor_button.pressed.connect(_on_editor)"),
+		"Editor button is connected to _on_editor")
+	_check(src.contains("NavService.EDITOR_HUB"), "_on_editor navigates to the editor hub")
+	_check(src.contains("ui.menu.editor"), "Editor button label is localized")
+
+
+func test_mc8_editorhub_i18n_keys_present_in_all_locales() -> void:
+	print("test_mc8_editorhub_i18n_keys_present_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	var required: Array = [
+		"ui.menu.editor",
+		"ui.editorhub.title", "ui.editorhub.gui_editor", "ui.editorhub.defaults",
+		"ui.editordefaults.title", "ui.editordefaults.map_tab", "ui.editordefaults.mod_tab",
+		"ui.editordefaults.gui_tab", "ui.editordefaults.none", "ui.editordefaults.saved",
+	]
+	for key in required:
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
+
+
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
 	print("test_phase_e_editor_keys_localized_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
