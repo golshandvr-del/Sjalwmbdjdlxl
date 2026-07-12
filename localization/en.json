@@ -1,6 +1,12 @@
 {
 	"locale": "en",
 	"strings": {
+		"ai.msg.accept": "Very well. I accept your {treaty}.",
+		"ai.msg.break_treaty": "Our {treaty} is hereby broken.",
+		"ai.msg.declare_war": "This means war between us.",
+		"ai.msg.generic": "I have a diplomatic message for you.",
+		"ai.msg.propose": "I propose a {treaty}. Do we have terms?",
+		"ai.msg.reject": "No. I decline your {treaty}.",
 		"building.barracks.level_2.name": "Barracks (Mechanized)",
 		"building.barracks.name": "Barracks",
 		"building.hq.name": "Headquarters",
