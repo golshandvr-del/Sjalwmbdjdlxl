@@ -1,0 +1,51 @@
+{
+  "id": "hannibal",
+  "display_name_key": "ai.profile.hannibal.name",
+  "role_key": "ai.profile.hannibal.role",
+  "archetype": "tactician",
+  "personality": {
+    "aggression": 0.75,
+    "caution": 0.5,
+    "ambition": 0.8,
+    "patience": 0.6,
+    "boldness": 0.9,
+    "loyalty": 0.65,
+    "pride": 0.6,
+    "greed": 0.45,
+    "adaptability": 0.95,
+    "discipline": 0.85
+  },
+  "strategy_bias": {
+    "economy": 0.4,
+    "military": 0.75,
+    "technology": 0.55,
+    "expansion": 0.55,
+    "defense": 0.4,
+    "offense": 0.8,
+    "tempo": 0.65,
+    "scouting": 0.85,
+    "harassment": 0.9,
+    "focus_fire": 0.9
+  },
+  "diplomacy_bias": {
+    "trust": 0.45,
+    "vengeance": 0.7,
+    "generosity": 0.4,
+    "deceit": 0.75,
+    "sociability": 0.5,
+    "forgiveness": 0.4,
+    "opportunism": 0.7
+  },
+  "learning_bias": {
+    "in_match_rate": 0.8,
+    "memory_weight": 0.6,
+    "exploration": 0.75,
+    "grudge_decay": 0.4,
+    "imitation": 0.55
+  },
+  "difficulty": {
+    "analysis_quality": 0.95,
+    "reaction_speed": 0.8,
+    "execution": 0.9
+  }
+}
