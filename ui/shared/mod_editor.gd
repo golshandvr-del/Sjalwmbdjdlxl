@@ -770,9 +770,97 @@ func _build_main_tab(box: VBoxContainer, entity: Dictionary) -> void:
 		box.add_child(stats_label)
 		_build_stat_picker(box, entity, -1)
 
+	# MC14.6 (req16/18): facing + firing-part/mount picker for units & buildings
+	# (objects are static scenery, so they get no firing controls).
+	if _active_catalog != ModProject.OBJECTS_CATALOG:
+		_build_facing_firing_section(box, entity)
+
 	# Object-only extras: placement + extractable + yields (R9.1).
 	if _active_catalog == ModProject.OBJECTS_CATALOG:
 		_build_object_extras(box, entity)
+
+
+# --- MC14.6 (req16/18): facing + firing-part / mount picker -----------------
+# A thin view over GraphicFacingEditUtil: an OptionButton to pick the unit's
+# facing, an OptionButton to pick which part fires (or "none"), and a mount
+# picker (fixed / turret) shown only when a firing part is chosen. All mutation
+# is delegated to the pure util so the single-firing-part rule cannot drift.
+func _build_facing_firing_section(box: VBoxContainer, entity: Dictionary) -> void:
+	var title: Label = Label.new()
+	title.text = _loc.t("ui.modeditor.facing_firing")
+	title.add_theme_font_size_override("font_size", 15)
+	box.add_child(title)
+
+	# Facing picker.
+	var facing_row: HBoxContainer = HBoxContainer.new()
+	facing_row.add_theme_constant_override("separation", 6)
+	box.add_child(facing_row)
+	var facing_label: Label = Label.new()
+	facing_label.text = _loc.t("ui.modeditor.facing")
+	facing_row.add_child(facing_label)
+	var facing_opt: OptionButton = OptionButton.new()
+	var facings: Array = GraphicFacingEditUtil.facing_choices()
+	var current_facing: String = GraphicFacingEditUtil.get_entity_facing(entity)
+	for i in range(facings.size()):
+		var f: String = str(facings[i])
+		facing_opt.add_item(_loc.t("ui.modeditor.facing.%s" % f), i)
+		if f == current_facing:
+			facing_opt.select(i)
+	facing_opt.item_selected.connect(func(idx: int) -> void: _set_entity_facing(str(facings[idx])))
+	facing_row.add_child(facing_opt)
+
+	# Firing-part picker: "none" + one entry per part.
+	var fire_row: HBoxContainer = HBoxContainer.new()
+	fire_row.add_theme_constant_override("separation", 6)
+	box.add_child(fire_row)
+	var fire_label: Label = Label.new()
+	fire_label.text = _loc.t("ui.modeditor.firing_part")
+	fire_row.add_child(fire_label)
+	var fire_opt: OptionButton = OptionButton.new()
+	fire_opt.add_item(_loc.t("ui.modeditor.firing_part.none"), 0)
+	var part_count: int = GraphicFacingEditUtil.part_count(entity)
+	for p in range(part_count):
+		fire_opt.add_item("%s %d" % [_loc.t("ui.modeditor.part"), p + 1], p + 1)
+	var fire_index: int = GraphicFacingEditUtil.firing_part_index(entity)
+	fire_opt.select(fire_index + 1)
+	fire_opt.item_selected.connect(func(idx: int) -> void: _set_firing_part(idx - 1))
+	fire_row.add_child(fire_opt)
+
+	# Mount picker: only meaningful when a firing part is chosen.
+	if GraphicFacingEditUtil.has_firing_part(entity):
+		var mount_row: HBoxContainer = HBoxContainer.new()
+		mount_row.add_theme_constant_override("separation", 6)
+		box.add_child(mount_row)
+		var mount_label: Label = Label.new()
+		mount_label.text = _loc.t("ui.modeditor.firing_mount")
+		mount_row.add_child(mount_label)
+		var mount_opt: OptionButton = OptionButton.new()
+		var mounts: Array = GraphicFacingEditUtil.mount_choices()
+		var current_mount: String = GraphicFacingEditUtil.firing_part_mount(entity)
+		for i in range(mounts.size()):
+			var m: String = str(mounts[i])
+			mount_opt.add_item(_loc.t("ui.modeditor.mount.%s" % m), i)
+			if m == current_mount:
+				mount_opt.select(i)
+		mount_opt.item_selected.connect(func(idx: int) -> void: _set_firing_mount(str(mounts[idx])))
+		mount_row.add_child(mount_opt)
+
+
+func _set_entity_facing(facing: String) -> void:
+	var entity: Dictionary = _selected_entity()
+	_commit(GraphicFacingEditUtil.set_entity_facing(entity, facing))
+
+
+func _set_firing_part(part_index: int) -> void:
+	var entity: Dictionary = _selected_entity()
+	_commit(GraphicFacingEditUtil.set_firing_part(entity, part_index))
+	# Rebuild the detail panel so the mount picker appears/disappears.
+	_refresh_detail()
+
+
+func _set_firing_mount(mount: String) -> void:
+	var entity: Dictionary = _selected_entity()
+	_commit(GraphicFacingEditUtil.set_firing_mount(entity, mount))
 
 
 # A "px width x height + upload PNG" row for one graphic part.
