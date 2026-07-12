@@ -1,0 +1,51 @@
+{
+  "id": "genghis",
+  "display_name_key": "ai.profile.genghis.name",
+  "role_key": "ai.profile.genghis.role",
+  "archetype": "conqueror",
+  "personality": {
+    "aggression": 0.98,
+    "caution": 0.3,
+    "ambition": 0.98,
+    "patience": 0.45,
+    "boldness": 0.85,
+    "loyalty": 0.6,
+    "pride": 0.75,
+    "greed": 0.7,
+    "adaptability": 0.9,
+    "discipline": 0.9
+  },
+  "strategy_bias": {
+    "economy": 0.4,
+    "military": 0.95,
+    "technology": 0.6,
+    "expansion": 0.95,
+    "defense": 0.3,
+    "offense": 0.95,
+    "tempo": 0.9,
+    "scouting": 0.9,
+    "harassment": 0.85,
+    "focus_fire": 0.85
+  },
+  "diplomacy_bias": {
+    "trust": 0.4,
+    "vengeance": 0.9,
+    "generosity": 0.4,
+    "deceit": 0.55,
+    "sociability": 0.45,
+    "forgiveness": 0.3,
+    "opportunism": 0.65
+  },
+  "learning_bias": {
+    "in_match_rate": 0.8,
+    "memory_weight": 0.7,
+    "exploration": 0.7,
+    "grudge_decay": 0.3,
+    "imitation": 0.6
+  },
+  "difficulty": {
+    "analysis_quality": 0.9,
+    "reaction_speed": 0.9,
+    "execution": 0.9
+  }
+}
