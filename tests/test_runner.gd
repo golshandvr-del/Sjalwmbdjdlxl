@@ -440,6 +440,9 @@ func _init() -> void:
 	test_mc9_color_team_choices_fallback_when_blank()
 	test_mc9_resolve_team_on_map_snaps_stale()
 	test_mc9_restrict_overrides_to_map()
+	test_mc9_owners_with_hq()
+	test_mc9_rebel_owners()
+	test_mc9_rebel_owners_all_rebel_when_no_hq()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5135,6 +5138,35 @@ func test_mc9_restrict_overrides_to_map() -> void:
 	_check(int(fixed[0]) == 2, "override on a valid colour is preserved")
 	_check(int(fixed[1]) == 2, "override on an unused colour snaps to first map colour")
 	_check(int(fixed[2]) == 4, "second valid colour preserved")
+
+
+# --- Phase MC9.3 (request 10): rebel / faction detection --------------------
+func test_mc9_owners_with_hq() -> void:
+	print("test_mc9_owners_with_hq")
+	var scenario: Dictionary = {
+		"buildings": [{ "type": "hq", "owner": 0 }, { "type": "factory", "owner": 1 }, { "type": "hq", "owner": 2 }],
+		"units": [{ "owner": 1 }, { "owner": 3 }],
+	}
+	_check(MapColorUtil.owners_with_hq(scenario) == [0, 2], "only HQ owners counted, sorted")
+
+
+func test_mc9_rebel_owners() -> void:
+	print("test_mc9_rebel_owners")
+	var scenario: Dictionary = {
+		"buildings": [{ "type": "hq", "owner": 0 }],
+		"units": [{ "owner": 0 }, { "owner": 1 }, { "owner": 3 }],
+	}
+	# 0 has an HQ (main); 1 and 3 have only units (rebel).
+	_check(MapColorUtil.rebel_owners(scenario) == [1, 3], "unit-only colours are rebels, sorted")
+	_check(not MapColorUtil.is_rebel(scenario, 0), "HQ owner is not a rebel")
+	_check(MapColorUtil.is_rebel(scenario, 1), "unit-only owner is a rebel")
+
+
+func test_mc9_rebel_owners_all_rebel_when_no_hq() -> void:
+	print("test_mc9_rebel_owners_all_rebel_when_no_hq")
+	var scenario: Dictionary = { "units": [{ "owner": 2 }, { "owner": 5 }] }
+	_check(MapColorUtil.owners_with_hq(scenario) == [], "no HQ anywhere")
+	_check(MapColorUtil.rebel_owners(scenario) == [2, 5], "all used colours are rebels when no HQ exists")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
