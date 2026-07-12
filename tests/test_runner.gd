@@ -518,6 +518,10 @@ func _init() -> void:
 	test_mc14_roster_toggle_selection_is_pure_and_sorted()
 	test_mc14_roster_selected_rows_follow_roster_order()
 	test_mc14_roster_resolve_profiles_and_custom_override()
+	# Phase MC14.3 (request 16/18): graphic facing + firing-part model.
+	test_mc14_graphic_facing_normalise_and_roundtrip()
+	test_mc14_graphic_set_firing_part_enforces_single()
+	test_mc14_graphic_validate_rejects_bad_facing_and_multi_firing()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
