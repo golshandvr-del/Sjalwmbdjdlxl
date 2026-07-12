@@ -488,6 +488,11 @@ func _init() -> void:
 	test_mc13_brain_loyal_will_not_betray_ally()
 	test_mc13_brain_responds_to_incoming_offers()
 	test_mc13_brain_deterministic_same_context()
+	# Phase MC13.2 (request 15): in-match short-term learning.
+	test_mc13_learning_trust_betrayal_and_heal()
+	test_mc13_learning_rate_scales_with_profile()
+	test_mc13_learning_threat_zones_reinforce_decay_hottest()
+	test_mc13_learning_tactics_success_and_best()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -6012,6 +6017,81 @@ func test_mc13_brain_deterministic_same_context() -> void:
 	var b: Dictionary = AiDiplomacyBrain.decide(ctx.duplicate(true))
 	_check(a["action"] == b["action"], "same action across runs")
 	_check(is_equal_approx(float(a["score"]), float(b["score"])), "same score across runs")
+
+
+# --- MC13.2: in-match short-term learning -------------------------------------
+
+func test_mc13_learning_trust_betrayal_and_heal() -> void:
+	print("test_mc13_learning_trust_betrayal_and_heal")
+	var state: Dictionary = AiLearningUtil.new_state()
+	var profile: AiProfile = _mc13_profile({"learning_bias": {"in_match_rate": 1.0}})
+	# Fresh trust is the neutral start.
+	_check(is_equal_approx(AiLearningUtil.get_trust(state, 0, 1), AiLearningUtil.TRUST_START),
+		"unseen pair starts at neutral trust")
+	# A betrayal collapses trust well below the start.
+	var after: float = AiLearningUtil.record_betrayal(state, 0, 1, profile)
+	_check(after < AiLearningUtil.TRUST_START, "betrayal drops trust below neutral")
+	_check(after >= AiLearningUtil.TRUST_MIN, "trust never underflows")
+	# Order-independent pair key: (1,0) sees the same value as (0,1).
+	_check(is_equal_approx(AiLearningUtil.get_trust(state, 1, 0), after),
+		"trust is symmetric on the pair")
+	# Peace ticks heal back toward neutral but never overshoot it.
+	for _i in range(100):
+		AiLearningUtil.heal_trust(state, 0, 1)
+	_check(is_equal_approx(AiLearningUtil.get_trust(state, 0, 1), AiLearningUtil.TRUST_START),
+		"healing caps at neutral start")
+
+
+func test_mc13_learning_rate_scales_with_profile() -> void:
+	print("test_mc13_learning_rate_scales_with_profile")
+	var slow: AiProfile = _mc13_profile({"learning_bias": {"in_match_rate": 0.0}})
+	var fast: AiProfile = _mc13_profile({"learning_bias": {"in_match_rate": 1.0}})
+	var s_slow: Dictionary = AiLearningUtil.new_state()
+	var s_fast: Dictionary = AiLearningUtil.new_state()
+	var t_slow: float = AiLearningUtil.record_betrayal(s_slow, 0, 1, slow)
+	var t_fast: float = AiLearningUtil.record_betrayal(s_fast, 0, 1, fast)
+	# A fast learner loses more trust from the same betrayal than a slow one.
+	_check(t_fast < t_slow, "fast learner drops trust more than slow learner")
+	# Even the slowest learner still reacts (rate floor > 0).
+	_check(t_slow < AiLearningUtil.TRUST_START, "slow learner still reacts to betrayal")
+
+
+func test_mc13_learning_threat_zones_reinforce_decay_hottest() -> void:
+	print("test_mc13_learning_threat_zones_reinforce_decay_hottest")
+	var state: Dictionary = AiLearningUtil.new_state()
+	# Zone size 4: tiles (0..3) map to zone 0:0, tile 8 maps to zone 2:0.
+	_check(AiLearningUtil.zone_key(2, 1, 4) == "0:0", "tile bucketed to zone 0:0")
+	_check(AiLearningUtil.zone_key(8, 0, 4) == "2:0", "tile bucketed to zone 2:0")
+	# Reinforce one sector three times, another once.
+	for _i in range(3):
+		AiLearningUtil.reinforce_zone(state, 1, 1, 4)   # zone 0:0
+	AiLearningUtil.reinforce_zone(state, 8, 0, 4)       # zone 2:0
+	_check(AiLearningUtil.hottest_zone(state) == "0:0", "most-attacked zone is hottest")
+	var before: float = AiLearningUtil.zone_weight(state, 1, 1, 4)
+	AiLearningUtil.decay_zones(state)
+	_check(AiLearningUtil.zone_weight(state, 1, 1, 4) < before, "decay lowers zone weight")
+	# Empty state has no hottest zone.
+	_check(AiLearningUtil.hottest_zone(AiLearningUtil.new_state()) == "",
+		"empty state has no hottest zone")
+
+
+func test_mc13_learning_tactics_success_and_best() -> void:
+	print("test_mc13_learning_tactics_success_and_best")
+	var state: Dictionary = AiLearningUtil.new_state()
+	# Unknown tactic sits at the 0.5 prior.
+	_check(is_equal_approx(AiLearningUtil.tactic_success_rate(state, "flank"), 0.5),
+		"unknown tactic priors at 0.5")
+	# "flank" wins 2/2, "rush" wins 0/2.
+	AiLearningUtil.record_tactic(state, "flank", true)
+	AiLearningUtil.record_tactic(state, "flank", true)
+	AiLearningUtil.record_tactic(state, "rush", false)
+	AiLearningUtil.record_tactic(state, "rush", false)
+	_check(is_equal_approx(AiLearningUtil.tactic_success_rate(state, "flank"), 1.0),
+		"winning tactic rate is 1.0")
+	_check(is_equal_approx(AiLearningUtil.tactic_success_rate(state, "rush"), 0.0),
+		"losing tactic rate is 0.0")
+	_check(AiLearningUtil.best_tactic(state, ["rush", "flank"]) == "flank",
+		"best tactic is the successful one")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
