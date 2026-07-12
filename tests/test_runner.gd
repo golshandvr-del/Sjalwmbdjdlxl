@@ -469,6 +469,9 @@ func _init() -> void:
 	test_mc12_ai_profile_schema_and_defaults()
 	test_mc12_ai_profile_load_clamp_and_partial()
 	test_mc12_ai_profile_roundtrip_deterministic()
+	test_mc12_ai_profile_catalog_lists_nine()
+	test_mc12_ai_profile_catalog_loads_valid_defaults()
+	test_mc12_ai_profile_catalog_fallback_on_missing()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5578,6 +5581,73 @@ func test_mc12_ai_profile_roundtrip_deterministic() -> void:
 	_check(json_a == json_b, "to_dict is deterministic across roundtrip")
 
 
+func test_mc12_ai_profile_catalog_lists_nine() -> void:
+	print("test_mc12_ai_profile_catalog_lists_nine")
+	var ids: Array = AiProfileCatalog.ids()
+	_check(ids.size() == 9, "catalog lists nine default profiles")
+	# Stable alphabetical order.
+	var sorted_copy: Array = ids.duplicate()
+	sorted_copy.sort()
+	_check(ids == sorted_copy, "catalog ids are in stable sorted order")
+	# All the historically-named generals are present.
+	for expected in ["fabius", "alexander", "talleyrand", "hannibal", "bismarck",
+			"alaric", "caesar", "genghis", "cyrus"]:
+		_check(ids.has(expected), "catalog includes '%s'" % expected)
+	# path_for points into the profile dir.
+	_check(AiProfileCatalog.path_for("caesar") == "res://data/ai_profiles/caesar.json",
+		"path_for builds the right res path")
+
+
+func test_mc12_ai_profile_catalog_loads_valid_defaults() -> void:
+	print("test_mc12_ai_profile_catalog_loads_valid_defaults")
+	var reader: RealJsonReader = RealJsonReader.new()
+	var all: Array = AiProfileCatalog.load_all(reader)
+	_check(all.size() == 9, "load_all returns nine profiles")
+	for i in range(all.size()):
+		var p: AiProfile = all[i]
+		var id: String = AiProfileCatalog.ids()[i]
+		_check(p.id() == id, "profile %d has expected id '%s'" % [i, id])
+		_check(p.is_valid(), "profile '%s' is valid" % id)
+		# Every category must be complete (35 knobs) after loading the real file.
+		var total: int = 0
+		for category in AiProfile.CATEGORIES:
+			var vec: Dictionary = p.vector(category)
+			_check(vec.size() == AiProfile.keys_for(category).size(),
+				"'%s' category '%s' complete" % [id, category])
+			total += vec.size()
+			# Every knob in range.
+			for knob in vec:
+				var v: float = float(vec[knob])
+				_check(v >= 0.0 and v <= 1.0, "'%s'.%s.%s in range" % [id, category, knob])
+		_check(total == 35, "'%s' has all 35 knobs" % id)
+		# Each carries a localization key + archetype.
+		_check(not p.display_name_key().is_empty(), "'%s' has a name key" % id)
+		_check(not p.archetype().is_empty(), "'%s' has an archetype" % id)
+	# Two distinct generals must actually differ (not all neutral).
+	var fabius: AiProfile = AiProfileCatalog.load_profile("fabius", reader)
+	var genghis: AiProfile = AiProfileCatalog.load_profile("genghis", reader)
+	_check(fabius.personality("aggression") < genghis.personality("aggression"),
+		"Fabius is less aggressive than Genghis")
+	_check(fabius.strategy("defense") > genghis.strategy("defense"),
+		"Fabius favours defense more than Genghis")
+
+
+func test_mc12_ai_profile_catalog_fallback_on_missing() -> void:
+	print("test_mc12_ai_profile_catalog_fallback_on_missing")
+	# A reader that always returns null (missing file) -> neutral fallback that
+	# still carries the requested id and is valid.
+	var empty_reader: NullJsonReader = NullJsonReader.new()
+	var p: AiProfile = AiProfileCatalog.load_profile("napoleon", empty_reader)
+	_check(p.is_valid(), "fallback profile is valid")
+	_check(p.id() == "napoleon", "fallback keeps requested id")
+	_check(p.personality("aggression") == 0.5, "fallback is neutral")
+	# load_all with a null reader still returns nine valid profiles.
+	var all: Array = AiProfileCatalog.load_all(empty_reader)
+	_check(all.size() == 9, "load_all tolerates a null reader")
+	for entry in all:
+		_check((entry as AiProfile).is_valid(), "fallback entry valid")
+
+
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
 	print("test_mc10_diplomacy_i18n_keys_present_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
@@ -7583,3 +7653,22 @@ class RecordingTransport extends RefCounted:
 
 	func is_host() -> bool:
 		return true
+
+
+# A tiny reader used by the MC12 catalog tests that reads a real JSON file from
+# res:// (mirrors DataLoader.load_json_file) so the nine shipped profiles are
+# exercised end-to-end.
+class RealJsonReader extends RefCounted:
+	func load_json_file(path: String) -> Variant:
+		var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+		if file == null:
+			return null
+		var parsed: Variant = JSON.parse_string(file.get_as_text())
+		return parsed
+
+
+# A reader that always reports a missing file, used to prove the catalog's
+# neutral fallback (MC12.2).
+class NullJsonReader extends RefCounted:
+	func load_json_file(_path: String) -> Variant:
+		return null
