@@ -481,6 +481,13 @@ func _init() -> void:
 	test_mc12_profile_summary_tags_and_bundle()
 	# Phase MC12.5 (request 13): AI profile / summary i18n coverage.
 	test_mc12_ai_profile_i18n_keys_present_in_all_locales()
+	# Phase MC13.1 (requests 14/15): AI diplomacy decision brain.
+	test_mc13_brain_defensive_seeks_peace_when_pressured()
+	test_mc13_brain_opportunist_declares_war_on_weak()
+	test_mc13_brain_vengeful_wars_distrusted_rival()
+	test_mc13_brain_loyal_will_not_betray_ally()
+	test_mc13_brain_responds_to_incoming_offers()
+	test_mc13_brain_deterministic_same_context()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5824,6 +5831,187 @@ func test_mc12_ai_profile_i18n_keys_present_in_all_locales() -> void:
 		var key: String = "ai.tag.%s" % tag
 		_check(en.has(key), "en has '%s'" % key)
 		_check(fa.has(key), "fa has '%s'" % key)
+
+
+# --- MC13.1: AI diplomacy decision brain --------------------------------------
+
+# Build a minimal AiProfile with a couple of overridden knobs for a scenario.
+func _mc13_profile(overrides: Dictionary) -> AiProfile:
+	var p: AiProfile = AiProfile.default_profile()
+	for cat in overrides.keys():
+		var knobs: Dictionary = overrides[cat]
+		for knob in knobs.keys():
+			p.set_value(cat, knob, float(knobs[knob]))
+	return p
+
+
+func test_mc13_brain_defensive_seeks_peace_when_pressured() -> void:
+	print("test_mc13_brain_defensive_seeks_peace_when_pressured")
+	# A cautious, low-aggression AI, weaker than its enemy and under heavy
+	# pressure, should sue for peace rather than press the attack.
+	var profile: AiProfile = _mc13_profile({
+		"personality": {"aggression": 0.1, "caution": 0.9},
+	})
+	var ctx: Dictionary = {
+		"profile": profile,
+		"relationship": "enemy",
+		"trust": 40.0,
+		"my_strength": 0.5,
+		"their_strength": 1.5,
+		"threat": 0.9,
+	}
+	var out: Dictionary = AiDiplomacyBrain.decide(ctx)
+	_check(out["action"] == AiDiplomacyBrain.ACTION_PROPOSE_PEACE,
+		"pressured weak defender proposes peace (got '%s')" % str(out["action"]))
+	_check(float(out["score"]) >= AiDiplomacyBrain.ACT_THRESHOLD,
+		"peace score clears the action threshold")
+
+
+func test_mc13_brain_opportunist_declares_war_on_weak() -> void:
+	print("test_mc13_brain_opportunist_declares_war_on_weak")
+	# A strong, aggressive, ambitious AI facing a weak, distrusted neutral with
+	# no pressure on itself should declare war to grab the advantage.
+	var profile: AiProfile = _mc13_profile({
+		"personality": {"aggression": 0.95, "ambition": 0.9, "greed": 0.8},
+	})
+	var ctx: Dictionary = {
+		"profile": profile,
+		"relationship": "neutral",
+		"trust": 10.0,
+		"my_strength": 2.0,
+		"their_strength": 0.6,
+		"threat": 0.0,
+	}
+	var out: Dictionary = AiDiplomacyBrain.decide(ctx)
+	_check(out["action"] == AiDiplomacyBrain.ACTION_DECLARE_WAR,
+		"strong aggressor declares war on weak target (got '%s')" % str(out["action"]))
+
+
+func test_mc13_brain_vengeful_wars_distrusted_rival() -> void:
+	print("test_mc13_brain_vengeful_wars_distrusted_rival")
+	# A vengeful AI against a rival it does not trust leans to war even at rough
+	# parity, thanks to the vengeance bonus on rivals/enemies.
+	var vengeful: AiProfile = _mc13_profile({
+		"personality": {"aggression": 0.6, "ambition": 0.5},
+		"diplomacy_bias": {"vengeance": 1.0, "trust": 0.0},
+	})
+	var ctx_vengeful: Dictionary = {
+		"profile": vengeful,
+		"relationship": "rival",
+		"trust": 5.0,
+		"my_strength": 1.2,
+		"their_strength": 1.0,
+		"threat": 0.1,
+	}
+	var out_v: Dictionary = AiDiplomacyBrain.decide(ctx_vengeful)
+	# A forgiving, unaggressive AI in the SAME situation should NOT go to war.
+	var meek: AiProfile = _mc13_profile({
+		"personality": {"aggression": 0.1, "ambition": 0.1},
+		"diplomacy_bias": {"vengeance": 0.0, "trust": 0.9, "sociability": 0.1},
+	})
+	var out_m: Dictionary = AiDiplomacyBrain.decide({
+		"profile": meek,
+		"relationship": "rival",
+		"trust": 5.0,
+		"my_strength": 1.2,
+		"their_strength": 1.0,
+		"threat": 0.1,
+	})
+	_check(out_v["action"] == AiDiplomacyBrain.ACTION_DECLARE_WAR,
+		"vengeful rival goes to war (got '%s')" % str(out_v["action"]))
+	_check(out_m["action"] != AiDiplomacyBrain.ACTION_DECLARE_WAR,
+		"meek rival does not go to war (got '%s')" % str(out_m["action"]))
+
+
+func test_mc13_brain_loyal_will_not_betray_ally() -> void:
+	print("test_mc13_brain_loyal_will_not_betray_ally")
+	# High loyalty, low deceit: even when betrayal would pay (we are stronger and
+	# greedy) the personality gate must keep us from betraying an ally.
+	var loyal: AiProfile = _mc13_profile({
+		"personality": {"loyalty": 1.0, "greed": 0.9},
+		"diplomacy_bias": {"deceit": 0.0, "opportunism": 0.0},
+	})
+	var out: Dictionary = AiDiplomacyBrain.decide({
+		"profile": loyal,
+		"relationship": "ally",
+		"trust": 80.0,
+		"my_strength": 2.0,
+		"their_strength": 0.5,
+		"threat": 0.0,
+	})
+	_check(out["action"] != AiDiplomacyBrain.ACTION_BETRAY,
+		"loyal AI never betrays an ally (got '%s')" % str(out["action"]))
+	# A treacherous opportunist in the same spot SHOULD consider betrayal.
+	var snake: AiProfile = _mc13_profile({
+		"personality": {"loyalty": 0.0, "greed": 1.0},
+		"diplomacy_bias": {"deceit": 1.0, "opportunism": 1.0},
+	})
+	var out2: Dictionary = AiDiplomacyBrain.decide({
+		"profile": snake,
+		"relationship": "ally",
+		"trust": 80.0,
+		"my_strength": 2.0,
+		"their_strength": 0.5,
+		"threat": 0.0,
+	})
+	_check(out2["action"] == AiDiplomacyBrain.ACTION_BETRAY,
+		"treacherous AI betrays a weak ally (got '%s')" % str(out2["action"]))
+
+
+func test_mc13_brain_responds_to_incoming_offers() -> void:
+	print("test_mc13_brain_responds_to_incoming_offers")
+	# A pressured, trusting AI accepts a ceasefire.
+	var trusting: AiProfile = _mc13_profile({
+		"diplomacy_bias": {"trust": 0.9, "sociability": 0.9},
+	})
+	var accept: Dictionary = AiDiplomacyBrain.decide({
+		"profile": trusting,
+		"relationship": "enemy",
+		"trust": 80.0,
+		"my_strength": 0.5,
+		"their_strength": 1.5,
+		"threat": 0.9,
+		"incoming_offer": "ceasefire",
+	})
+	_check(accept["action"] == AiDiplomacyBrain.ACTION_ACCEPT,
+		"pressured trusting AI accepts ceasefire (got '%s')" % str(accept["action"]))
+	# A very-low-trust alliance offer is rejected outright.
+	var wary: AiProfile = _mc13_profile({"diplomacy_bias": {"trust": 0.0}})
+	var reject: Dictionary = AiDiplomacyBrain.decide({
+		"profile": wary,
+		"relationship": "neutral",
+		"trust": 5.0,
+		"reputation": -1.0,
+		"incoming_offer": "alliance_full",
+	})
+	_check(reject["action"] == AiDiplomacyBrain.ACTION_REJECT,
+		"distrusted alliance offer rejected (got '%s')" % str(reject["action"]))
+	# A declare_war "offer" is reported as reject (a notification, not accepted).
+	var war_note: Dictionary = AiDiplomacyBrain.decide({
+		"relationship": "neutral", "incoming_offer": "declare_war"})
+	_check(war_note["action"] == AiDiplomacyBrain.ACTION_REJECT,
+		"declare_war notification maps to reject")
+
+
+func test_mc13_brain_deterministic_same_context() -> void:
+	print("test_mc13_brain_deterministic_same_context")
+	# The brain is pure: identical context -> identical decision, every time.
+	var profile: AiProfile = _mc13_profile({
+		"personality": {"aggression": 0.7, "ambition": 0.6},
+		"diplomacy_bias": {"vengeance": 0.5},
+	})
+	var ctx: Dictionary = {
+		"profile": profile,
+		"relationship": "rival",
+		"trust": 30.0,
+		"my_strength": 1.4,
+		"their_strength": 0.9,
+		"threat": 0.2,
+	}
+	var a: Dictionary = AiDiplomacyBrain.decide(ctx.duplicate(true))
+	var b: Dictionary = AiDiplomacyBrain.decide(ctx.duplicate(true))
+	_check(a["action"] == b["action"], "same action across runs")
+	_check(is_equal_approx(float(a["score"]), float(b["score"])), "same score across runs")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
