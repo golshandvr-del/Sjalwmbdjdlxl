@@ -1,6 +1,12 @@
 {
 	"locale": "fa",
 	"strings": {
+		"ai.msg.accept": "بسیار خوب. {treaty} شما را می‌پذیرم.",
+		"ai.msg.break_treaty": "{treaty} میانِ ما بدین‌وسیله فسخ شد.",
+		"ai.msg.declare_war": "این یعنی جنگ میانِ ما.",
+		"ai.msg.generic": "یک پیامِ دیپلماتیک برایت دارم.",
+		"ai.msg.propose": "یک {treaty} پیشنهاد می‌کنم. توافق داریم؟",
+		"ai.msg.reject": "خیر. {treaty} شما را رد می‌کنم.",
 		"building.barracks.level_2.name": "پادگان (مکانیزه)",
 		"building.barracks.name": "پادگان",
 		"building.hq.name": "مقر فرماندهی",
