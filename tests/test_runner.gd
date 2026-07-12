@@ -447,6 +447,14 @@ func _init() -> void:
 	test_mc9_general_mode_planner_gates()
 	test_mc9_general_mode_flags_and_from_map()
 	test_mc9_strategic_ai_gates_planners_by_mode()
+	# Phase MC10 (requests 11/12/17): dynamic diplomacy pure models.
+	test_mc10_relationship_states_and_flags()
+	test_mc10_relationship_transitions()
+	test_mc10_relationship_pair_key_stable()
+	test_mc10_treaty_make_validate_and_types()
+	test_mc10_treaty_expiry_and_serialize()
+	test_mc10_political_cost_alliance_and_betrayal()
+	test_mc10_deployment_command_authority_returns()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
