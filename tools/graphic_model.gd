@@ -94,6 +94,99 @@ static func default_part(layer: int, px_w: int = 64, px_h: int = 64, texture: St
 	return { "layer": int(layer), "px": { "w": int(px_w), "h": int(px_h) }, "texture": texture }
 
 
+# --- MC14.3 (req16/18): facing + firing-part helpers ------------------------
+
+# Coerce an arbitrary value to a valid facing, falling back to DEFAULT_FACING for
+# anything unknown. Keeps authored data honest without ever raising.
+static func normalise_facing(value: Variant) -> String:
+	var f: String = str(value).strip_edges().to_lower()
+	return f if FACINGS.has(f) else DEFAULT_FACING
+
+
+# Coerce an arbitrary value to a valid firing mount, defaulting to MOUNT_FIXED.
+static func normalise_mount(value: Variant) -> String:
+	var m: String = str(value).strip_edges().to_lower()
+	return m if MOUNTS.has(m) else DEFAULT_MOUNT
+
+
+# Read a graphic's facing (defaulting when absent/invalid). Null-safe.
+static func get_facing(graphic: Variant) -> String:
+	if not (graphic is Dictionary):
+		return DEFAULT_FACING
+	return normalise_facing((graphic as Dictionary).get("facing", DEFAULT_FACING))
+
+
+# Return a copy of `graphic` with its facing set to a normalised value. Never
+# mutates the input (authoring stays snapshot-friendly for undo/redo).
+static func set_facing(graphic: Variant, value: Variant) -> Dictionary:
+	var g: Dictionary = (graphic as Dictionary).duplicate(true) if graphic is Dictionary else default_graphic()
+	g["facing"] = normalise_facing(value)
+	return g
+
+
+# True if a single part dictionary is flagged as a firing part.
+static func part_is_firing(part: Variant) -> bool:
+	return part is Dictionary and bool((part as Dictionary).get("is_firing_part", false))
+
+
+# The firing mount of a single part (defaults to FIXED). Null-safe.
+static func part_mount(part: Variant) -> String:
+	if not (part is Dictionary):
+		return DEFAULT_MOUNT
+	return normalise_mount((part as Dictionary).get("firing_mount", DEFAULT_MOUNT))
+
+
+# Count how many parts of a graphic are flagged as firing parts.
+static func count_firing_parts(graphic: Variant) -> int:
+	if not (graphic is Dictionary):
+		return 0
+	var parts: Variant = (graphic as Dictionary).get("parts", [])
+	if not (parts is Array):
+		return 0
+	var n: int = 0
+	for part in (parts as Array):
+		if part_is_firing(part):
+			n += 1
+	return n
+
+
+# The index of the first firing part, or -1 when the graphic has none.
+static func first_firing_index(graphic: Variant) -> int:
+	if not (graphic is Dictionary):
+		return -1
+	var parts: Variant = (graphic as Dictionary).get("parts", [])
+	if not (parts is Array):
+		return -1
+	var arr: Array = parts as Array
+	for i in arr.size():
+		if part_is_firing(arr[i]):
+			return i
+	return -1
+
+
+# Return a copy of `graphic` where exactly the part at `part_index` is the firing
+# part (with the given mount) and every other part's firing flag is cleared. This
+# enforces the authored cap of one firing part (MAX_FIRING_PARTS) by construction.
+# `part_index` < 0 clears ALL firing flags (no firing part).
+static func set_firing_part(graphic: Variant, part_index: int, mount: Variant = DEFAULT_MOUNT) -> Dictionary:
+	var g: Dictionary = (graphic as Dictionary).duplicate(true) if graphic is Dictionary else default_graphic()
+	var parts: Array = (g.get("parts", []) as Array).duplicate(true) if g.get("parts", []) is Array else []
+	var wanted_mount: String = normalise_mount(mount)
+	for i in parts.size():
+		if not (parts[i] is Dictionary):
+			continue
+		var p: Dictionary = (parts[i] as Dictionary).duplicate(true)
+		if i == part_index:
+			p["is_firing_part"] = true
+			p["firing_mount"] = wanted_mount
+		else:
+			p.erase("is_firing_part")
+			p.erase("firing_mount")
+		parts[i] = p
+	g["parts"] = parts
+	return g
+
+
 # --- MC4.2 (request 5): optional animation sprites --------------------------
 # An entity may OPTIONALLY carry an `animation` block describing the cosmetic
 # art the AnimationEventUtil layer plays. This is PURELY visual (out of the
