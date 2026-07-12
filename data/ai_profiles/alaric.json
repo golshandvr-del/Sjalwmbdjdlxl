@@ -1,0 +1,51 @@
+{
+  "id": "alaric",
+  "display_name_key": "ai.profile.alaric.name",
+  "role_key": "ai.profile.alaric.role",
+  "archetype": "raider",
+  "personality": {
+    "aggression": 0.85,
+    "caution": 0.35,
+    "ambition": 0.7,
+    "patience": 0.3,
+    "boldness": 0.8,
+    "loyalty": 0.35,
+    "pride": 0.6,
+    "greed": 0.85,
+    "adaptability": 0.7,
+    "discipline": 0.45
+  },
+  "strategy_bias": {
+    "economy": 0.25,
+    "military": 0.8,
+    "technology": 0.3,
+    "expansion": 0.5,
+    "defense": 0.25,
+    "offense": 0.85,
+    "tempo": 0.8,
+    "scouting": 0.7,
+    "harassment": 0.95,
+    "focus_fire": 0.6
+  },
+  "diplomacy_bias": {
+    "trust": 0.35,
+    "vengeance": 0.65,
+    "generosity": 0.3,
+    "deceit": 0.6,
+    "sociability": 0.4,
+    "forgiveness": 0.4,
+    "opportunism": 0.8
+  },
+  "learning_bias": {
+    "in_match_rate": 0.7,
+    "memory_weight": 0.45,
+    "exploration": 0.65,
+    "grudge_decay": 0.45,
+    "imitation": 0.5
+  },
+  "difficulty": {
+    "analysis_quality": 0.7,
+    "reaction_speed": 0.8,
+    "execution": 0.75
+  }
+}
