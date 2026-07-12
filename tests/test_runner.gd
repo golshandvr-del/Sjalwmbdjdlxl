@@ -530,6 +530,10 @@ func _init() -> void:
 	test_mc14_turret_aim_angle_tracks_target()
 	test_mc14_turret_fixed_uses_heading_and_facing_seed()
 	test_mc14_turret_idle_spin_and_step_toward()
+	# Phase MC14.6 (request 16/18): mod editor facing/firing edit logic (pure).
+	test_mc14_facing_edit_set_and_read_facing()
+	test_mc14_facing_edit_firing_part_single_and_toggle()
+	test_mc14_facing_edit_mount_change_and_choices()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -6675,6 +6679,78 @@ func test_mc14_turret_idle_spin_and_step_toward() -> void:
 	# target and snaps to wrap(-3.0) = -3.0.
 	var short_path: float = TurretAngleUtil.step_toward(3.0, -3.0, 0.5)
 	_check(absf(short_path - TurretAngleUtil.wrap_angle(-3.0)) < 0.001, "step_toward takes the shortest arc across PI")
+
+
+# --- MC14.6 (req16/18): mod editor facing + firing-part edit logic ----------
+
+func test_mc14_facing_edit_set_and_read_facing() -> void:
+	print("test_mc14_facing_edit_set_and_read_facing")
+	# Facing / mount choices mirror the model constants (deterministic order).
+	_check(GraphicFacingEditUtil.facing_choices() == GraphicModel.FACINGS, "facing choices mirror model")
+	_check(GraphicFacingEditUtil.mount_choices() == GraphicModel.MOUNTS, "mount choices mirror model")
+	# A fresh entity reads the default facing.
+	var entity: Dictionary = {"graphic": GraphicModel.default_graphic()}
+	_check(GraphicFacingEditUtil.get_entity_facing(entity) == GraphicModel.DEFAULT_FACING, "default facing read")
+	# set_entity_facing normalises and does NOT mutate the original entity.
+	var e2: Dictionary = GraphicFacingEditUtil.set_entity_facing(entity, "Left")
+	_check(GraphicFacingEditUtil.get_entity_facing(e2) == GraphicModel.FACING_LEFT, "facing set to left")
+	_check(GraphicFacingEditUtil.get_entity_facing(entity) == GraphicModel.DEFAULT_FACING, "original entity unchanged")
+	# Null-safe on garbage input.
+	_check(GraphicFacingEditUtil.get_entity_facing(null) == GraphicModel.DEFAULT_FACING, "null entity reads default facing")
+
+
+func test_mc14_facing_edit_firing_part_single_and_toggle() -> void:
+	print("test_mc14_facing_edit_firing_part_single_and_toggle")
+	var entity: Dictionary = {
+		"graphic": {
+			"mode": GraphicModel.MODE_MULTI,
+			"logical_size": {"w": 1, "h": 1},
+			"parts": [
+				GraphicModel.default_part(1, 64, 64),
+				GraphicModel.default_part(2, 48, 48),
+				GraphicModel.default_part(3, 32, 32),
+			],
+		},
+	}
+	_check(not GraphicFacingEditUtil.has_firing_part(entity), "no firing part initially")
+	_check(GraphicFacingEditUtil.part_count(entity) == 3, "three parts counted")
+	# Mark part 1 as a turret firing part.
+	var e1: Dictionary = GraphicFacingEditUtil.set_firing_part(entity, 1, GraphicModel.MOUNT_TURRET)
+	_check(GraphicFacingEditUtil.firing_part_index(e1) == 1, "firing part at index 1")
+	_check(GraphicFacingEditUtil.firing_part_mount(e1) == GraphicModel.MOUNT_TURRET, "mount is turret")
+	_check(not GraphicFacingEditUtil.has_firing_part(entity), "original entity untouched")
+	# Toggling the same part clears it (single-firing-part rule holds).
+	var e2: Dictionary = GraphicFacingEditUtil.toggle_firing_part(e1, 1)
+	_check(not GraphicFacingEditUtil.has_firing_part(e2), "toggling same part clears firing")
+	# Toggling a different part moves the flag (never accumulates two).
+	var e3: Dictionary = GraphicFacingEditUtil.toggle_firing_part(e1, 0, GraphicModel.MOUNT_FIXED)
+	_check(GraphicFacingEditUtil.firing_part_index(e3) == 0, "firing part moved to index 0")
+	_check(GraphicModel.count_firing_parts((e3["graphic"] as Dictionary)) == 1, "still exactly one firing part")
+
+
+func test_mc14_facing_edit_mount_change_and_choices() -> void:
+	print("test_mc14_facing_edit_mount_change_and_choices")
+	var entity: Dictionary = {
+		"graphic": {
+			"mode": GraphicModel.MODE_MULTI,
+			"logical_size": {"w": 1, "h": 1},
+			"parts": [
+				GraphicModel.default_part(1, 64, 64),
+				GraphicModel.default_part(2, 48, 48),
+			],
+		},
+	}
+	var e1: Dictionary = GraphicFacingEditUtil.set_firing_part(entity, 0, GraphicModel.MOUNT_FIXED)
+	_check(GraphicFacingEditUtil.firing_part_mount(e1) == GraphicModel.MOUNT_FIXED, "mount starts fixed")
+	# Changing mount keeps the same firing part but flips fixed->turret.
+	var e2: Dictionary = GraphicFacingEditUtil.set_firing_mount(e1, GraphicModel.MOUNT_TURRET)
+	_check(GraphicFacingEditUtil.firing_part_index(e2) == 0, "firing part unchanged after mount change")
+	_check(GraphicFacingEditUtil.firing_part_mount(e2) == GraphicModel.MOUNT_TURRET, "mount changed to turret")
+	# set_firing_mount on an entity with no firing part is a safe no-op copy.
+	var e3: Dictionary = GraphicFacingEditUtil.set_firing_mount(entity, GraphicModel.MOUNT_TURRET)
+	_check(not GraphicFacingEditUtil.has_firing_part(e3), "no-op mount change when no firing part")
+	# Default mount when there is no firing part.
+	_check(GraphicFacingEditUtil.firing_part_mount(entity) == GraphicModel.DEFAULT_MOUNT, "default mount when none")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
