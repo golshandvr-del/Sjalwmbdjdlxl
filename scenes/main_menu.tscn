@@ -78,6 +78,11 @@ custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
 text = "Multiplayer"
 
+[node name="EditorButton" type="Button" parent="Center/Box/MainPanel" unique_id=2099989600]
+custom_minimum_size = Vector2(320, 52)
+layout_mode = 2
+text = "Editor"
+
 [node name="ModEditorButton" type="Button" parent="Center/Box/MainPanel" unique_id=2099989503]
 custom_minimum_size = Vector2(320, 52)
 layout_mode = 2
