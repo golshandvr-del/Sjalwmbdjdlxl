@@ -422,6 +422,13 @@ func _init() -> void:
 	# Phase MC7.4/7.7 (request 8): editor wiring + i18n key coverage.
 	test_mc7_gui_editor_back_route_and_scene_registered()
 	test_mc7_guieditor_i18n_keys_present_in_all_locales()
+	# Phase MC8 (request 9): editor hub + defaults tab selection logic.
+	test_mc8_defaults_build_choices_sorted_and_deduped()
+	test_mc8_defaults_build_choices_from_strings_and_dicts()
+	test_mc8_defaults_has_choice_and_display_name()
+	test_mc8_defaults_resolve_keeps_valid_drops_stale()
+	test_mc8_main_menu_wires_editor_hub_button()
+	test_mc8_editorhub_i18n_keys_present_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
