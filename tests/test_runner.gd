@@ -502,6 +502,10 @@ func _init() -> void:
 	test_mc13_difficulty_reaction_cadence()
 	test_mc13_difficulty_score_jitter_scales_with_quality()
 	test_mc13_difficulty_apply_downgrades_on_error()
+	# Phase MC13.6 (request 14/15): brain action -> readable i18n message bridge.
+	test_mc13_brain_action_text_maps_each_action_to_key()
+	test_mc13_brain_action_text_describe_is_deterministic()
+	test_mc13_brain_action_i18n_keys_present_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -6232,6 +6236,52 @@ func test_mc13_difficulty_apply_downgrades_on_error() -> void:
 	_check(bool(out.get("unforced_error", false)), "apply flags the unforced error")
 	# apply() must not mutate the caller's dictionary.
 	_check(decision["action"] == "declare_war", "apply never mutates its input")
+
+
+# --- MC13.6: brain action -> readable message bridge --------------------------
+
+func test_mc13_brain_action_text_maps_each_action_to_key() -> void:
+	print("test_mc13_brain_action_text_maps_each_action_to_key")
+	# Every real brain action (except "none") gets its own dedicated key.
+	for action in AiBrainActionTextUtil.ACTS:
+		_check(AiBrainActionTextUtil.is_message_action(action),
+			"'%s' is a message action" % action)
+		var key: String = AiBrainActionTextUtil.message_key(action)
+		_check(key == "ai.brain." + action, "'%s' -> '%s'" % [action, key])
+	# "none" and unknown tokens are NOT message actions and fall back to generic.
+	_check(not AiBrainActionTextUtil.is_message_action(AiDiplomacyBrain.ACTION_NONE),
+		"'none' is not a message action")
+	_check(AiBrainActionTextUtil.message_key(AiDiplomacyBrain.ACTION_NONE)
+		== "ai.brain.generic", "'none' -> generic key")
+	_check(AiBrainActionTextUtil.message_key("bogus") == "ai.brain.generic",
+		"unknown action -> generic key")
+
+
+func test_mc13_brain_action_text_describe_is_deterministic() -> void:
+	print("test_mc13_brain_action_text_describe_is_deterministic")
+	var d1: Dictionary = AiBrainActionTextUtil.describe(
+		AiDiplomacyBrain.ACTION_PROPOSE_ALLIANCE, 1, 2, "alliance_full")
+	var d2: Dictionary = AiBrainActionTextUtil.describe(
+		AiDiplomacyBrain.ACTION_PROPOSE_ALLIANCE, 1, 2, "alliance_full")
+	_check(d1["key"] == "ai.brain.propose_alliance", "propose_alliance key correct")
+	_check(str(d1) == str(d2), "same inputs -> identical descriptor (deterministic)")
+	var args: Dictionary = d1["args"]
+	_check(int(args["sender"]) == 1, "sender echoed")
+	_check(int(args["recipient"]) == 2, "recipient echoed")
+	_check(str(args["treaty"]) == "alliance_full", "treaty echoed")
+	# treaty_type defaults to empty when omitted.
+	var d3: Dictionary = AiBrainActionTextUtil.describe(AiDiplomacyBrain.ACTION_BETRAY, 3, 4)
+	_check(str((d3["args"] as Dictionary)["treaty"]) == "", "treaty defaults to empty")
+
+
+func test_mc13_brain_action_i18n_keys_present_in_all_locales() -> void:
+	print("test_mc13_brain_action_i18n_keys_present_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	# Every key the util can emit must be localized in every locale.
+	for key in AiBrainActionTextUtil.all_keys():
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
