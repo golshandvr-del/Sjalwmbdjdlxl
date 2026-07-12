@@ -1,6 +1,14 @@
 {
 	"locale": "fa",
 	"strings": {
+		"ai.brain.accept": "موافقم. می‌پذیرم.",
+		"ai.brain.betray": "بیش از حد به من اعتماد کردی. اتحادِ ما تمام شد.",
+		"ai.brain.declare_war": "به تو اعلامِ جنگ می‌کنم.",
+		"ai.brain.generic": "به تصمیم رسیدم.",
+		"ai.brain.propose_alliance": "بیا هم‌پیمان شویم و کنار هم بایستیم.",
+		"ai.brain.propose_peace": "میانِ خودمان پیشنهادِ صلح می‌دهم.",
+		"ai.brain.reject": "خیر. رد می‌کنم.",
+		"ai.brain.send_aid": "خط را نگه دار، هم‌پیمان. کمک در راه است.",
 		"ai.danger.dangerous": "خطرناک",
 		"ai.danger.harmless": "بی‌خطر",
 		"ai.danger.lethal": "مرگبار",
