@@ -90,6 +90,13 @@ const DEFAULTS: Dictionary = {
 	# selection preference -- it never feeds the deterministic simulation hash.
 	"active_mods": [],
 	"main_mod": "",
+	# MC8.3 (request 9): the DEFAULT content picks chosen on the editor hub's
+	# "Defaults" tab -- the scenario id used for a quick match, and the GUI layout
+	# id applied on launch. The default MOD reuses "main_mod" above. Empty means
+	# "no explicit default; fall back to the built-in". Pure content-selection
+	# preferences; they never feed the deterministic simulation hash.
+	"default_map": "",
+	"default_gui": "",
 }
 
 var _world: WorldState = null
