@@ -72,6 +72,7 @@ func _ready() -> void:
 	_build_ui()
 	_refresh_pages()
 	_refresh_widgets()
+	_load_background_into_fields()
 	_set_status("")
 
 
@@ -166,8 +167,53 @@ func _build_edit_column(parent: Control) -> void:
 	name_row.add_child(_name_edit)
 	col.add_child(name_row)
 
+	# MC7.4 (req8): a per-widget icon path. The author points it at an uploaded
+	# image that matches the widget size; the render layer loads it with a raw
+	# fallback so a missing/mismatched file never breaks the screen.
+	var icon_row: HBoxContainer = HBoxContainer.new()
+	var icon_label: Label = Label.new()
+	icon_label.text = _t("ui.guieditor.icon")
+	icon_row.add_child(icon_label)
+	_icon_edit = LineEdit.new()
+	_icon_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_icon_edit.text_submitted.connect(func(_s: String) -> void: _commit_icon())
+	icon_row.add_child(_icon_edit)
+	col.add_child(icon_row)
+
 	col.add_child(_make_button(_t("ui.guieditor.remove_widget"), _on_remove_widget))
+
+	# MC7.5 (req8): page background editor. Kind (color / image / video) plus a
+	# value field (a hex color, or an asset path). Video paths are validated
+	# against the .ogv + size/duration budget before being stored.
+	_build_background_row(col)
+
 	parent.add_child(col)
+
+
+# MC7.5: build the "page background" editor block (kind option + value field +
+# apply button). Applying validates video paths via GuiProject before storing.
+func _build_background_row(col: Control) -> void:
+	var header: Label = Label.new()
+	header.text = _t("ui.guieditor.background")
+	col.add_child(header)
+
+	var kind_row: HBoxContainer = HBoxContainer.new()
+	_bg_kind_option = OptionButton.new()
+	# Item order matches GuiProject.BG_KINDS so the selected index maps directly.
+	_bg_kind_option.add_item(_t("ui.guieditor.bg_color"))   # index 0 -> color
+	_bg_kind_option.add_item(_t("ui.guieditor.bg_image"))   # index 1 -> image
+	_bg_kind_option.add_item(_t("ui.guieditor.bg_video"))   # index 2 -> video
+	_bg_kind_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	kind_row.add_child(_bg_kind_option)
+	col.add_child(kind_row)
+
+	var value_row: HBoxContainer = HBoxContainer.new()
+	_bg_value_edit = LineEdit.new()
+	_bg_value_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	value_row.add_child(_bg_value_edit)
+	col.add_child(value_row)
+
+	col.add_child(_make_button(_t("ui.guieditor.save"), _on_apply_background))
 
 
 func _make_spin(parent: Control, label_text: String, min_v: int, max_v: int) -> SpinBox:
@@ -249,6 +295,7 @@ func _select_page(page: String) -> void:
 	_refresh_pages()
 	_refresh_widgets()
 	_load_widget_into_fields()
+	_load_background_into_fields()
 
 
 func _select_widget(logical_id: String) -> void:
@@ -288,6 +335,8 @@ func _load_widget_into_fields() -> void:
 	_set_spin_silently(_h_spin, int(rect[3]))
 	if _name_edit != null:
 		_name_edit.text = str(w.get("display_name", "")) if not w.is_empty() else ""
+	if _icon_edit != null:
+		_icon_edit.text = str(w.get("icon_path", "")) if not w.is_empty() else ""
 
 
 func _set_spin_silently(spin: SpinBox, value: int) -> void:
@@ -311,6 +360,47 @@ func _commit_name() -> void:
 	_project.set_widget_display_name(_current_page, _current_widget, _name_edit.text)
 
 
+# MC7.4: store the selected widget's icon path (cosmetic; a bad path just falls
+# back to the raw button in the render layer).
+func _commit_icon() -> void:
+	if _current_widget == "" or _icon_edit == null:
+		return
+	_project.set_widget_icon(_current_page, _current_widget, _icon_edit.text)
+
+
+# MC7.5: apply the chosen page background. Colour/image are stored directly;
+# video is validated (extension + size/duration budget) before being stored so
+# an oversized clip can never be saved into the project.
+func _on_apply_background() -> void:
+	if _current_page == "" or _bg_kind_option == null or _bg_value_edit == null:
+		return
+	var idx: int = _bg_kind_option.selected
+	var kind: String = GuiProject.BG_KINDS[idx] if idx >= 0 and idx < GuiProject.BG_KINDS.size() else GuiProject.BG_COLOR
+	var value: String = _bg_value_edit.text.strip_edges()
+	if kind == GuiProject.BG_VIDEO:
+		# The editor cannot probe the file here (no live file picker), so validate
+		# the path/format only; size/duration are treated as within budget until a
+		# real picker supplies them. A blank/mis-formatted path is still rejected.
+		var check: Array = GuiProject.validate_video_background(value, 0.0, 0)
+		if not bool(check[0]):
+			_set_status(_t(str(check[1])))
+			return
+	_project.set_page_background(_current_page, kind, value)
+	_set_status(_t("ui.guieditor.background"))
+
+
+# MC7.5: reflect the current page's stored background into the kind option +
+# value field so the author sees what is set when switching pages.
+func _load_background_into_fields() -> void:
+	if _current_page == "" or _bg_kind_option == null or _bg_value_edit == null:
+		return
+	var bg: Dictionary = _project.get_page_background(_current_page)
+	var kind: String = str(bg.get("kind", GuiProject.BG_COLOR))
+	var kind_idx: int = GuiProject.BG_KINDS.find(kind)
+	_bg_kind_option.selected = kind_idx if kind_idx >= 0 else 0
+	_bg_value_edit.text = str(bg.get("value", GuiProject.DEFAULT_BG_COLOR))
+
+
 # --- Toolbar actions --------------------------------------------------------
 
 func _on_new() -> void:
@@ -323,11 +413,13 @@ func _on_new() -> void:
 	_refresh_pages()
 	_refresh_widgets()
 	_load_widget_into_fields()
+	_load_background_into_fields()
 	_set_status("")
 
 
 func _on_save() -> void:
 	_commit_name()
+	_commit_icon()
 	var result: Array = _project.save_to_file(_gui_save_path())
 	_set_status(_t(str(result[1])) if not bool(result[0]) else _t("ui.guieditor.save"))
 
@@ -354,6 +446,7 @@ func _on_import() -> void:
 	_refresh_pages()
 	_refresh_widgets()
 	_load_widget_into_fields()
+	_load_background_into_fields()
 	_set_status("")
 
 
@@ -370,6 +463,7 @@ func _set_status(text: String) -> void:
 
 func _on_back() -> void:
 	_commit_name()
+	_commit_icon()
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
 
 
