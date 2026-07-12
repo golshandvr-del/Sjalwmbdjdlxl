@@ -378,7 +378,7 @@
 
 ---
 
-## فاز MC14 — AI Builder + جهت/بخشِ شلیک در mod editor (درخواست‌های ۱۶، ۱۸) 🟠
+## فاز MC14 — AI Builder + جهت/بخشِ شلیک در mod editor (درخواست‌های ۱۶، ۱۸) ✅ (انجام شد)
 
 **هدف:** ساخت/import/export/لیستِ AI توسط کاربر + facing و firing-part برای نیروها.
 
