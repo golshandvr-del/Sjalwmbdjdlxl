@@ -44,6 +44,11 @@ const EVENT_TREATY_EXPIRED: String = "diplomacy.treaty_expired"
 # a fresh, shared team number that never collides with those base teams.
 const _ALLIANCE_TEAM_BASE: int = 100
 
+# MC13.5: how often (in ticks) the AI diplomacy brain is polled. Phase-shifted
+# per owner inside the planner via AiDifficultyUtil.should_react, so this is the
+# coarse cadence at which we even bother assembling the situation.
+const AI_DIPLOMACY_INTERVAL: int = 45
+
 
 func module_id() -> String:
 	return "diplomacy"
