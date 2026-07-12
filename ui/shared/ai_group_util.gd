@@ -83,3 +83,40 @@ static func teams_to_members(total: int, mode: String, overrides: Dictionary) ->
 # everyone on one side is degenerate; callers can warn on < 2.
 static func distinct_team_count(total: int, mode: String, overrides: Dictionary) -> int:
 	return teams_to_members(total, mode, overrides).size()
+
+
+# --- MC9.2 (request 10): map-colour-driven team choices ---------------------
+# Instead of the fixed TEAM_COUNT selector, Match Setup derives the SELECTABLE
+# team numbers from the colours ACTUALLY used on the chosen map. This returns
+# the sorted list of owner-colour slots the map uses (== the team numbers the
+# player may pick). Falls back to the default [0..TEAM_COUNT) when the map has
+# no colour info (e.g. a blank/undefined scenario).
+static func color_team_choices(scenario: Dictionary) -> Array:
+	var used: Array = MapColorUtil.used_owners(scenario)
+	if used.is_empty():
+		var out: Array = []
+		for t in range(TEAM_COUNT):
+			out.append(t)
+		return out
+	return used
+
+
+# Resolve a team choice CONSTRAINED to the map's colours: if the requested team
+# is one of the map colours use it, otherwise snap to the FIRST available map
+# colour so a stale selection (from a previous map) can never point at a colour
+# this map does not have. Deterministic.
+static func resolve_team_on_map(scenario: Dictionary, requested: int) -> int:
+	var choices: Array = color_team_choices(scenario)
+	if choices.has(requested):
+		return requested
+	return int(choices[0]) if not choices.is_empty() else clamp_team(requested)
+
+
+# Rebuild an owner -> team override table so every value is a valid map colour.
+# Any override pointing at an unused colour is snapped to the first map colour.
+# Used when the player switches maps mid-setup. Deterministic.
+static func restrict_overrides_to_map(scenario: Dictionary, overrides: Dictionary) -> Dictionary:
+	var out: Dictionary = {}
+	for key in overrides.keys():
+		out[key] = resolve_team_on_map(scenario, int(overrides[key]))
+	return out
