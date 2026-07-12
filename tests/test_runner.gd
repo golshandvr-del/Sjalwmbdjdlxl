@@ -493,6 +493,15 @@ func _init() -> void:
 	test_mc13_learning_rate_scales_with_profile()
 	test_mc13_learning_threat_zones_reinforce_decay_hottest()
 	test_mc13_learning_tactics_success_and_best()
+	# Phase MC13.3 (request 15): cross-match persistent reputation store.
+	test_mc13_reputation_directional_and_confidence()
+	test_mc13_reputation_export_import_roundtrip()
+	# Phase MC13.4 (request 15): difficulty = analysis quality + seeded errors.
+	test_mc13_difficulty_seeded_noise_deterministic()
+	test_mc13_difficulty_unforced_error_floor_above_zero()
+	test_mc13_difficulty_reaction_cadence()
+	test_mc13_difficulty_score_jitter_scales_with_quality()
+	test_mc13_difficulty_apply_downgrades_on_error()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -6092,6 +6101,137 @@ func test_mc13_learning_tactics_success_and_best() -> void:
 		"losing tactic rate is 0.0")
 	_check(AiLearningUtil.best_tactic(state, ["rush", "flank"]) == "flank",
 		"best tactic is the successful one")
+
+
+# --- MC13.3: cross-match reputation store -----------------------------------
+
+func test_mc13_reputation_directional_and_confidence() -> void:
+	print("test_mc13_reputation_directional_and_confidence")
+	var store: AiReputationStore = AiReputationStore.new()
+	# Unknown pair reads as neutral 0.
+	_check(is_equal_approx(store.reputation(0, 1), 0.0), "unknown pair reputation is 0")
+	# A single betrayal is damped by the confidence factor: raw -1 but only
+	# 1/CONFIDENCE_SPAN of the way there.
+	store.record_betrayal(0, 1)
+	_check(store.betrayals(0, 1) == 1, "betrayal recorded")
+	_check(store.reputation(0, 1) < 0.0, "one betrayal makes reputation negative")
+	_check(store.reputation(0, 1) > -1.0, "one data point is damped, not full -1")
+	# Reputation is DIRECTIONAL: owner 1's view of owner 0 is untouched.
+	_check(is_equal_approx(store.reputation(1, 0), 0.0), "reputation is directional")
+	# Enough consistent helps flips the score positive and toward +1.
+	var good: AiReputationStore = AiReputationStore.new()
+	for _i in range(10):
+		good.record_help(0, 1)
+	_check(good.reputation(0, 1) > 0.9, "many helps -> near +1 reputation")
+
+
+func test_mc13_reputation_export_import_roundtrip() -> void:
+	print("test_mc13_reputation_export_import_roundtrip")
+	var store: AiReputationStore = AiReputationStore.new()
+	store.record_betrayal(2, 3)
+	store.record_help(2, 3)
+	store.record_help(5, 4)
+	var snapshot: Dictionary = store.export_dict()
+	_check(int(snapshot.get("version", -1)) == AiReputationStore.SCHEMA_VERSION,
+		"export carries schema version")
+	# Round-trip into a fresh store must preserve every tally.
+	var restored: AiReputationStore = AiReputationStore.new()
+	restored.import_dict(snapshot)
+	_check(restored.betrayals(2, 3) == 1, "roundtrip betrayals preserved")
+	_check(restored.helps(2, 3) == 1, "roundtrip helps preserved")
+	_check(restored.helps(5, 4) == 1, "roundtrip second pair preserved")
+	# import_dict must ignore malformed entries without crashing.
+	restored.import_dict({"pairs": {"9>8": "not-a-dict", "1>0": {"betrayals": 4, "helps": 1}}})
+	_check(restored.betrayals(1, 0) == 4, "well-formed entry imported")
+	_check(restored.betrayals(9, 8) == 0, "malformed entry skipped safely")
+	# clear() wipes history (personality lives elsewhere, untouched here).
+	restored.clear()
+	_check(restored.betrayals(1, 0) == 0, "clear wipes the store")
+
+
+# --- MC13.4: difficulty = analysis quality, not error removal ---------------
+
+func test_mc13_difficulty_seeded_noise_deterministic() -> void:
+	print("test_mc13_difficulty_seeded_noise_deterministic")
+	# The seeded unit value is a pure function of its inputs: identical inputs
+	# yield identical output (lockstep-safe), and it stays within [0, 1).
+	var a: float = AiDifficultyUtil.seeded_unit(1234, 50, 2, 7)
+	var b: float = AiDifficultyUtil.seeded_unit(1234, 50, 2, 7)
+	_check(is_equal_approx(a, b), "same inputs -> same seeded noise")
+	_check(a >= 0.0 and a < 1.0, "seeded noise stays in [0,1)")
+	# Different salt / tick generally shifts the value (not asserting inequality
+	# hard, but confirming the function responds to inputs).
+	var c: float = AiDifficultyUtil.seeded_unit(1234, 51, 2, 7)
+	_check(c >= 0.0 and c < 1.0, "shifted tick still in range")
+
+
+func test_mc13_difficulty_unforced_error_floor_above_zero() -> void:
+	print("test_mc13_difficulty_unforced_error_floor_above_zero")
+	# Even a flawless-execution AI must keep a positive error rate (plan 1.d).
+	var best: AiProfile = _mc13_profile({"difficulty": {"execution": 1.0}})
+	var worst: AiProfile = _mc13_profile({"difficulty": {"execution": 0.0}})
+	var best_rate: float = AiDifficultyUtil.unforced_error_rate(best)
+	var worst_rate: float = AiDifficultyUtil.unforced_error_rate(worst)
+	_check(best_rate >= AiDifficultyUtil.MIN_UNFORCED_ERROR,
+		"best AI never reaches zero error")
+	_check(best_rate > 0.0, "error floor strictly above zero")
+	_check(worst_rate > best_rate, "clumsy AI errs more than skilled one")
+	_check(worst_rate <= AiDifficultyUtil.MAX_UNFORCED_ERROR,
+		"clumsy AI error rate capped for playability")
+
+
+func test_mc13_difficulty_reaction_cadence() -> void:
+	print("test_mc13_difficulty_reaction_cadence")
+	# A fast AI acts every opportunity; a slow one waits longer between actions.
+	var fast: AiProfile = _mc13_profile({"difficulty": {"reaction_speed": 1.0}})
+	var slow: AiProfile = _mc13_profile({"difficulty": {"reaction_speed": 0.0}})
+	_check(AiDifficultyUtil.reaction_period(fast) == 1, "fast AI reacts every tick")
+	_check(AiDifficultyUtil.reaction_period(slow) > 1, "slow AI reacts less often")
+	# should_react is deterministic and always true for a period-1 AI.
+	_check(AiDifficultyUtil.should_react(fast, 7, 3), "fast AI always allowed to react")
+	# For the slow AI, at least one of a full period window must allow reaction.
+	var period: int = AiDifficultyUtil.reaction_period(slow)
+	var any_react: bool = false
+	for t in range(period * 2):
+		if AiDifficultyUtil.should_react(slow, t, 0):
+			any_react = true
+	_check(any_react, "slow AI still reacts within its cadence window")
+
+
+func test_mc13_difficulty_score_jitter_scales_with_quality() -> void:
+	print("test_mc13_difficulty_score_jitter_scales_with_quality")
+	# A perfect-analysis AI does not perturb the clean score; a poor one drifts.
+	var sharp: AiProfile = _mc13_profile({"difficulty": {"analysis_quality": 1.0}})
+	var dull: AiProfile = _mc13_profile({"difficulty": {"analysis_quality": 0.0}})
+	var clean: float = 0.6
+	var sharp_score: float = AiDifficultyUtil.perturb_score(clean, sharp, 99, 10, 1)
+	_check(is_equal_approx(sharp_score, clean), "high-quality AI keeps clean score")
+	# The dull AI's score is jittered but stays clamped to [0,1] and is
+	# deterministic for the same seed/tick/owner.
+	var dull_score: float = AiDifficultyUtil.perturb_score(clean, dull, 99, 10, 1)
+	var dull_again: float = AiDifficultyUtil.perturb_score(clean, dull, 99, 10, 1)
+	_check(dull_score >= 0.0 and dull_score <= 1.0, "perturbed score stays clamped")
+	_check(is_equal_approx(dull_score, dull_again), "perturbation is deterministic")
+
+
+func test_mc13_difficulty_apply_downgrades_on_error() -> void:
+	print("test_mc13_difficulty_apply_downgrades_on_error")
+	# Find a (tick) where a mid AI commits an unforced error, then assert apply()
+	# downgrades the action to "none" for that exact seeded case.
+	var mid: AiProfile = _mc13_profile({"difficulty":
+		{"execution": 0.0, "analysis_quality": 0.5, "reaction_speed": 1.0}})
+	var err_tick: int = -1
+	for t in range(200):
+		if AiDifficultyUtil.is_unforced_error(mid, 42, t, 1):
+			err_tick = t
+			break
+	_check(err_tick >= 0, "an unforced error occurs within 200 ticks for a clumsy AI")
+	var decision: Dictionary = {"action": "declare_war", "score": 0.9}
+	var out: Dictionary = AiDifficultyUtil.apply(decision, mid, 42, err_tick, 1)
+	_check(out["action"] == "none", "unforced error downgrades action to none")
+	_check(bool(out.get("unforced_error", false)), "apply flags the unforced error")
+	# apply() must not mutate the caller's dictionary.
+	_check(decision["action"] == "declare_war", "apply never mutates its input")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
