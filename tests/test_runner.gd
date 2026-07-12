@@ -436,6 +436,10 @@ func _init() -> void:
 	test_mc9_team_count_and_color_hexes()
 	test_mc9_restrict_choices_drops_unused()
 	test_mc9_used_owners_empty_map()
+	test_mc9_color_team_choices_from_map()
+	test_mc9_color_team_choices_fallback_when_blank()
+	test_mc9_resolve_team_on_map_snaps_stale()
+	test_mc9_restrict_overrides_to_map()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5099,6 +5103,38 @@ func test_mc9_used_owners_empty_map() -> void:
 	_check(MapColorUtil.team_count({}) == 0, "empty dict yields zero teams")
 	_check(MapColorUtil.used_owners({ "units": "not_an_array" }) == [],
 		"malformed entity array is ignored safely")
+
+
+# --- Phase MC9.2 (request 10): map-colour-driven team selection -------------
+func test_mc9_color_team_choices_from_map() -> void:
+	print("test_mc9_color_team_choices_from_map")
+	var scenario: Dictionary = { "buildings": [{ "owner": 2 }], "units": [{ "owner": 5 }, { "owner": 2 }] }
+	var choices: Array = AiGroupUtil.color_team_choices(scenario)
+	_check(choices == [2, 5], "only the map's colours are selectable team numbers, sorted")
+
+
+func test_mc9_color_team_choices_fallback_when_blank() -> void:
+	print("test_mc9_color_team_choices_fallback_when_blank")
+	var choices: Array = AiGroupUtil.color_team_choices({})
+	_check(choices == [0, 1, 2, 3], "blank map falls back to default TEAM_COUNT slots")
+
+
+func test_mc9_resolve_team_on_map_snaps_stale() -> void:
+	print("test_mc9_resolve_team_on_map_snaps_stale")
+	var scenario: Dictionary = { "units": [{ "owner": 3 }, { "owner": 7 }] }
+	_check(AiGroupUtil.resolve_team_on_map(scenario, 7) == 7, "valid map colour kept")
+	_check(AiGroupUtil.resolve_team_on_map(scenario, 1) == 3,
+		"stale colour snaps to first available map colour")
+
+
+func test_mc9_restrict_overrides_to_map() -> void:
+	print("test_mc9_restrict_overrides_to_map")
+	var scenario: Dictionary = { "units": [{ "owner": 2 }, { "owner": 4 }] }
+	var overrides: Dictionary = { 0: 2, 1: 9, 2: 4 }
+	var fixed: Dictionary = AiGroupUtil.restrict_overrides_to_map(scenario, overrides)
+	_check(int(fixed[0]) == 2, "override on a valid colour is preserved")
+	_check(int(fixed[1]) == 2, "override on an unused colour snaps to first map colour")
+	_check(int(fixed[2]) == 4, "second valid colour preserved")
 
 
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
