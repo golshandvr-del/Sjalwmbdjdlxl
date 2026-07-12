@@ -513,6 +513,11 @@ func _init() -> void:
 	test_mc14_builder_duplicate_is_independent()
 	test_mc14_builder_reset_and_clamp()
 	test_mc14_builder_export_import_roundtrip()
+	# Phase MC14.2 (request 16): AI roster selection for match setup (pure).
+	test_mc14_roster_lists_builtins_then_custom_sorted()
+	test_mc14_roster_toggle_selection_is_pure_and_sorted()
+	test_mc14_roster_selected_rows_follow_roster_order()
+	test_mc14_roster_resolve_profiles_and_custom_override()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -6388,6 +6393,85 @@ func test_mc14_builder_export_import_roundtrip() -> void:
 	var bad: Dictionary = AiBuilderUtil.import_dict({"personality": {"aggression": 0.9}})
 	_check(not bool(bad["ok"]), "id-less payload flagged not ok")
 	_check((bad["profile"] as AiProfile).is_valid(), "fallback profile still valid")
+
+
+# --- MC14.2: AI roster selection for match setup (pure) -----------------------
+
+func test_mc14_roster_lists_builtins_then_custom_sorted() -> void:
+	print("test_mc14_roster_lists_builtins_then_custom_sorted")
+	# Two custom AIs; no reader (built-ins fall back to neutral summaries).
+	var alpha: Dictionary = AiBuilderUtil.export_dict(AiBuilderUtil.new_profile("alpha_ai"))
+	var zulu: Dictionary = AiBuilderUtil.export_dict(AiBuilderUtil.new_profile("zulu_ai"))
+	var custom: Dictionary = {"zulu_ai": zulu, "alpha_ai": alpha}
+	var roster: Array = AiRosterUtil.build_roster([], custom, null)
+	var builtins: int = AiProfileCatalog.ids().size()
+	_check(roster.size() == builtins + 2, "roster = builtins + custom count")
+	_check(AiRosterUtil.has_any(roster), "roster reports it is non-empty")
+	# Built-in block comes first and is id-sorted (alaric before talleyrand).
+	_check(str(roster[0].get("id", "")) == "alaric", "first built-in is alaric (sorted)")
+	_check(str(roster[builtins - 1].get("id", "")) == "talleyrand", "last built-in is talleyrand")
+	_check(str(roster[0].get("source", "")) == AiRosterUtil.SOURCE_BUILTIN, "built-in tagged builtin")
+	# Custom block follows, id-sorted (alpha before zulu), tagged custom.
+	_check(str(roster[builtins].get("id", "")) == "alpha_ai", "first custom is alpha_ai (sorted)")
+	_check(str(roster[builtins + 1].get("id", "")) == "zulu_ai", "second custom is zulu_ai")
+	_check(str(roster[builtins].get("source", "")) == AiRosterUtil.SOURCE_CUSTOM, "custom tagged custom")
+	# Every row carries a summary card (role/style/danger keys + tags array).
+	_check(roster[0].has("role_key") and roster[0].has("style_key"), "row carries summary keys")
+	_check(roster[0].get("tags", null) is Array, "row carries a tags array")
+
+
+func test_mc14_roster_toggle_selection_is_pure_and_sorted() -> void:
+	print("test_mc14_roster_toggle_selection_is_pure_and_sorted")
+	var sel: Array = []
+	sel = AiRosterUtil.toggle_selection(sel, "caesar")
+	_check(sel == ["caesar"], "toggle on adds the id")
+	sel = AiRosterUtil.toggle_selection(sel, "alexander")
+	_check(sel == ["alexander", "caesar"], "second add stays sorted")
+	sel = AiRosterUtil.toggle_selection(sel, "caesar")
+	_check(sel == ["alexander"], "toggling an existing id removes it")
+	# Purity: the input list is not mutated in place.
+	var before: Array = ["alexander"]
+	var after: Array = AiRosterUtil.toggle_selection(before, "cyrus")
+	_check(before == ["alexander"], "input list left unchanged (pure)")
+	_check(after == ["alexander", "cyrus"], "returned list has the new id, sorted")
+	# Blank id is ignored (just re-sorts + dedups).
+	var dedup: Array = AiRosterUtil.toggle_selection(["b", "a", "a"], "   ")
+	_check(dedup == ["a", "b"], "blank id just dedups + sorts")
+
+
+func test_mc14_roster_selected_rows_follow_roster_order() -> void:
+	print("test_mc14_roster_selected_rows_follow_roster_order")
+	var custom: Dictionary = {"mine": AiBuilderUtil.export_dict(AiBuilderUtil.new_profile("mine"))}
+	var roster: Array = AiRosterUtil.build_roster([], custom, null)
+	# Pick a built-in and the custom one, in a scrambled selection order.
+	var picked: Array = AiRosterUtil.selected_rows(roster, ["mine", "cyrus"])
+	_check(picked.size() == 2, "two rows selected")
+	# Roster order (built-in first) is preserved regardless of selection order.
+	_check(str(picked[0].get("id", "")) == "cyrus", "built-in row comes before custom")
+	_check(str(picked[1].get("id", "")) == "mine", "custom row comes second")
+	# Unknown ids are simply ignored.
+	var none: Array = AiRosterUtil.selected_rows(roster, ["does_not_exist"])
+	_check(none.is_empty(), "unknown selected id yields no rows")
+
+
+func test_mc14_roster_resolve_profiles_and_custom_override() -> void:
+	print("test_mc14_roster_resolve_profiles_and_custom_override")
+	# A custom profile whose id collides with a built-in: the user's own wins.
+	var mine: AiProfile = AiBuilderUtil.new_profile("caesar")
+	AiBuilderUtil.apply_archetype(mine, "defender")
+	var custom: Dictionary = {"caesar": AiBuilderUtil.export_dict(mine), "solo": AiBuilderUtil.export_dict(AiBuilderUtil.new_profile("solo"))}
+	var profiles: Array = AiRosterUtil.resolve_profiles(["solo", "caesar"], custom, null)
+	_check(profiles.size() == 2, "two profiles resolved")
+	# Sorted ids: caesar then solo.
+	_check((profiles[0] as AiProfile).id() == "caesar", "caesar resolved first (sorted)")
+	_check((profiles[0] as AiProfile).archetype() == "defender", "custom caesar overrides the built-in")
+	_check((profiles[1] as AiProfile).id() == "solo", "custom solo resolved")
+	# A pure built-in id (no custom) still resolves via the catalog.
+	var only_builtin: Array = AiRosterUtil.resolve_profiles(["genghis"], {}, null)
+	_check(only_builtin.size() == 1 and (only_builtin[0] as AiProfile).id() == "genghis", "built-in resolves without a custom entry")
+	# Duplicate + blank selection ids are de-duplicated safely.
+	var dupes: Array = AiRosterUtil.resolve_profiles(["solo", "solo", "  "], custom, null)
+	_check(dupes.size() == 1, "duplicate/blank selection ids collapse to one profile")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
