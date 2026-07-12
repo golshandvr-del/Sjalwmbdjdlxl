@@ -47,6 +47,10 @@ var _y_spin: SpinBox = null
 var _w_spin: SpinBox = null
 var _h_spin: SpinBox = null
 var _name_edit: LineEdit = null
+var _icon_edit: LineEdit = null
+# MC7.5: page background controls (kind option + value field).
+var _bg_kind_option: OptionButton = null
+var _bg_value_edit: LineEdit = null
 var _back_button: Button = null
 
 
