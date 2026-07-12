@@ -247,7 +247,7 @@ func _init() -> void:
 	test_mb13_plan_goals_deterministic_with_reserved()
 	test_mb13_single_unit_avoids_reserved_tile()
 	# Phase MB3 (Android back key, bug 6): NavService pure back-routing logic.
-	test_mb3_back_target_maps_each_child_to_main_menu()
+	test_mb3_back_target_maps_each_child_to_its_parent()
 	test_mb3_back_target_root_returns_empty()
 	test_mb3_back_target_unknown_scene_returns_empty()
 	test_mb3_is_root_true_only_for_main_menu()
@@ -4891,13 +4891,14 @@ func test_mc7_render_resolve_page_sorted_and_drops_blank() -> void:
 
 
 # MC7.4 (request 8): the GUI editor scene must be reachable and its BACK must
-# route to the main menu, exactly like the other editors. Pure NavService check
-# (no SceneTree) so it runs headless.
+# route to its parent, exactly like the other editors. Since MC8 (request 9) the
+# editors nest under the Editor Hub, so BACK from the GUI editor is the hub. Pure
+# NavService check (no SceneTree) so it runs headless.
 func test_mc7_gui_editor_back_route_and_scene_registered() -> void:
 	print("test_mc7_gui_editor_back_route_and_scene_registered")
 	_check(NavService.GUI_EDITOR == "res://scenes/gui_editor.tscn", "gui editor scene path constant")
 	_check(NavService.PARENTS.has(NavService.GUI_EDITOR), "gui editor registered in nav table")
-	_check(NavService.back_target(NavService.GUI_EDITOR) == NavService.MAIN_MENU, "gui editor back is main menu")
+	_check(NavService.back_target(NavService.GUI_EDITOR) == NavService.EDITOR_HUB, "gui editor back is the editor hub")
 	_check(not NavService.is_root(NavService.GUI_EDITOR), "gui editor is not root")
 	_check(not NavService.is_in_game(NavService.GUI_EDITOR), "gui editor is not in-game")
 	# The main-menu page in the widget catalog must offer the gui_editor function
@@ -5285,19 +5286,27 @@ func test_mb13_single_unit_avoids_reserved_tile() -> void:
 # guard the routing table the scene handlers rely on (see ui/shared/*.gd and
 # ui/mobile/game_hud.gd _notification handlers).
 
-func test_mb3_back_target_maps_each_child_to_main_menu() -> void:
-	print("test_mb3_back_target_maps_each_child_to_main_menu")
-	# Every non-root scene routes BACK to the main menu (its logical parent).
+func test_mb3_back_target_maps_each_child_to_its_parent() -> void:
+	print("test_mb3_back_target_maps_each_child_to_its_parent")
+	# Every non-root scene routes BACK to whatever PARENTS declares as its logical
+	# parent. Since MC8 (request 9) the map/mod/gui editors + defaults nest under
+	# the Editor Hub, so their parent is the hub, not the main menu directly;
+	# every OTHER child still points at the main menu.
 	for scene in NavService.PARENTS.keys():
-		_check(NavService.back_target(scene) == NavService.MAIN_MENU,
-			"back_target(%s) is main menu" % scene)
+		var expected: String = str(NavService.PARENTS[scene])
+		_check(NavService.back_target(scene) == expected,
+			"back_target(%s) is its declared parent" % scene)
 	# Spot-check a few named children so a renamed constant is caught too.
 	_check(NavService.back_target(NavService.MATCH_SETUP) == NavService.MAIN_MENU,
 		"match_setup back is main menu")
 	_check(NavService.back_target(NavService.LOBBY) == NavService.MAIN_MENU,
 		"lobby back is main menu")
-	_check(NavService.back_target(NavService.MAP_EDITOR) == NavService.MAIN_MENU,
-		"map_editor back is main menu")
+	# MC8: the editor hub is the top-level entry that returns to the main menu;
+	# the individual editors return to the hub.
+	_check(NavService.back_target(NavService.EDITOR_HUB) == NavService.MAIN_MENU,
+		"editor hub back is main menu")
+	_check(NavService.back_target(NavService.MAP_EDITOR) == NavService.EDITOR_HUB,
+		"map_editor back is the editor hub")
 
 
 func test_mb3_back_target_root_returns_empty() -> void:
