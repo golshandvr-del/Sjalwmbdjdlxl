@@ -506,6 +506,13 @@ func _init() -> void:
 	test_mc13_brain_action_text_maps_each_action_to_key()
 	test_mc13_brain_action_text_describe_is_deterministic()
 	test_mc13_brain_action_i18n_keys_present_in_all_locales()
+	# Phase MC14.1 (request 16): AI builder form logic (pure).
+	test_mc14_builder_new_profile_is_neutral_and_valid()
+	test_mc14_builder_archetype_presets_shift_knobs()
+	test_mc14_builder_randomize_is_seed_deterministic()
+	test_mc14_builder_duplicate_is_independent()
+	test_mc14_builder_reset_and_clamp()
+	test_mc14_builder_export_import_roundtrip()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -6282,6 +6289,105 @@ func test_mc13_brain_action_i18n_keys_present_in_all_locales() -> void:
 	for key in AiBrainActionTextUtil.all_keys():
 		_check(en.has(key), "en has '%s'" % key)
 		_check(fa.has(key), "fa has '%s'" % key)
+
+
+# --- MC14.1: AI builder form logic (pure) -------------------------------------
+
+func test_mc14_builder_new_profile_is_neutral_and_valid() -> void:
+	print("test_mc14_builder_new_profile_is_neutral_and_valid")
+	var p: AiProfile = AiBuilderUtil.new_profile("my_general")
+	_check(p.id() == "my_general", "id preserved")
+	_check(p.is_valid(), "fresh profile validates")
+	_check(p.archetype() == "balanced", "defaults to balanced archetype")
+	# Every knob starts neutral.
+	var all_neutral: bool = true
+	for category in AiProfile.CATEGORIES:
+		for knob in AiProfile.keys_for(category):
+			if absf(p.get_value(category, knob) - AiProfile.NEUTRAL) > 0.0001:
+				all_neutral = false
+	_check(all_neutral, "all 35 knobs start at 0.5")
+	# Blank id falls back to a safe default rather than an invalid profile.
+	var q: AiProfile = AiBuilderUtil.new_profile("   ")
+	_check(q.id() == "custom_ai", "blank id -> custom_ai fallback")
+
+
+func test_mc14_builder_archetype_presets_shift_knobs() -> void:
+	print("test_mc14_builder_archetype_presets_shift_knobs")
+	var agg: AiProfile = AiBuilderUtil.new_profile("a")
+	AiBuilderUtil.apply_archetype(agg, "aggressor")
+	_check(agg.archetype() == "aggressor", "archetype tag updated")
+	_check(agg.get_value("personality", "aggression") > 0.66, "aggressor is aggressive")
+	_check(agg.get_value("strategy_bias", "defense") < 0.5, "aggressor low on defense")
+	_check(agg.role_key() == "ai.role.aggressor", "role key set from preset")
+	var defn: AiProfile = AiBuilderUtil.new_profile("d")
+	AiBuilderUtil.apply_archetype(defn, "defender")
+	_check(defn.get_value("strategy_bias", "defense") > 0.66, "defender is defensive")
+	_check(defn.get_value("personality", "aggression") < 0.34, "defender low aggression")
+	# Unknown archetype degrades to balanced, id kept.
+	var b: AiProfile = AiBuilderUtil.new_profile("keep")
+	AiBuilderUtil.apply_archetype(b, "does_not_exist")
+	_check(b.archetype() == "balanced", "unknown archetype -> balanced")
+	_check(b.id() == "keep", "id preserved through archetype apply")
+
+
+func test_mc14_builder_randomize_is_seed_deterministic() -> void:
+	print("test_mc14_builder_randomize_is_seed_deterministic")
+	var p1: AiProfile = AiBuilderUtil.randomize_profile("r", 12345)
+	var p2: AiProfile = AiBuilderUtil.randomize_profile("r", 12345)
+	_check(str(p1.to_dict()) == str(p2.to_dict()), "same seed -> identical profile")
+	var p3: AiProfile = AiBuilderUtil.randomize_profile("r", 99999)
+	_check(str(p1.to_dict()) != str(p3.to_dict()), "different seed -> different profile")
+	_check(p1.is_valid(), "randomized profile validates")
+	# Every knob stays in range.
+	var in_range: bool = true
+	for category in AiProfile.CATEGORIES:
+		for knob in AiProfile.keys_for(category):
+			var v: float = p1.get_value(category, knob)
+			if v < 0.0 or v > 1.0:
+				in_range = false
+	_check(in_range, "all randomized knobs within [0,1]")
+
+
+func test_mc14_builder_duplicate_is_independent() -> void:
+	print("test_mc14_builder_duplicate_is_independent")
+	var src: AiProfile = AiBuilderUtil.new_profile("src")
+	AiBuilderUtil.apply_archetype(src, "raider")
+	var copy: AiProfile = AiBuilderUtil.duplicate_profile(src, "copy")
+	_check(copy.id() == "copy", "copy has new id")
+	_check(str(copy.vector("strategy_bias")) == str(src.vector("strategy_bias")),
+		"copy vectors match source at first")
+	# Mutating the copy must not touch the source.
+	AiBuilderUtil.set_knob(copy, "strategy_bias", "harassment", 0.0)
+	_check(copy.get_value("strategy_bias", "harassment") == 0.0, "copy edited")
+	_check(src.get_value("strategy_bias", "harassment") > 0.66, "source unchanged (deep copy)")
+
+
+func test_mc14_builder_reset_and_clamp() -> void:
+	print("test_mc14_builder_reset_and_clamp")
+	var p: AiProfile = AiBuilderUtil.new_profile("g")
+	AiBuilderUtil.apply_archetype(p, "conqueror")
+	# set_knob clamps out-of-range input.
+	_check(AiBuilderUtil.set_knob(p, "personality", "aggression", 5.0) == 1.0, "over-1 clamps to 1")
+	_check(AiBuilderUtil.set_knob(p, "personality", "caution", -3.0) == 0.0, "under-0 clamps to 0")
+	AiBuilderUtil.reset_knobs(p)
+	_check(p.get_value("personality", "aggression") == AiProfile.NEUTRAL, "reset returns to neutral")
+	_check(p.id() == "g", "reset keeps id")
+	_check(p.archetype() == "conqueror", "reset keeps archetype tag")
+
+
+func test_mc14_builder_export_import_roundtrip() -> void:
+	print("test_mc14_builder_export_import_roundtrip")
+	var p: AiProfile = AiBuilderUtil.randomize_profile("exp", 555)
+	AiBuilderUtil.set_display_name_key(p, "my.custom.name")
+	var d: Dictionary = AiBuilderUtil.export_dict(p)
+	var res: Dictionary = AiBuilderUtil.import_dict(d)
+	_check(bool(res["ok"]), "valid export imports ok")
+	var back: AiProfile = res["profile"]
+	_check(str(back.to_dict()) == str(p.to_dict()), "export/import round-trips byte-identical")
+	# An id-less payload imports as a safe fallback rather than crashing.
+	var bad: Dictionary = AiBuilderUtil.import_dict({"personality": {"aggression": 0.9}})
+	_check(not bool(bad["ok"]), "id-less payload flagged not ok")
+	_check((bad["profile"] as AiProfile).is_valid(), "fallback profile still valid")
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
