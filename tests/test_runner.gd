@@ -526,6 +526,10 @@ func _init() -> void:
 	test_mc14_combine_firing_slots_caps_at_two()
 	test_mc14_combine_firing_skips_sources_without_firing_part()
 	test_mc14_combine_firing_exceeds_cap_and_turret_flag()
+	# Phase MC14.5 (request 16/18): cosmetic turret/idle-spin angle math (pure).
+	test_mc14_turret_aim_angle_tracks_target()
+	test_mc14_turret_fixed_uses_heading_and_facing_seed()
+	test_mc14_turret_idle_spin_and_step_toward()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
