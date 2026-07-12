@@ -98,6 +98,10 @@ func _ensure_state() -> void:
 	if not section.has("posture"):
 		# owner(String) -> "build" | "attack" (current strategic posture).
 		section["posture"] = {}
+	if not section.has("mode"):
+		# MC9.4: owner(String) -> "main" | "rebel" (general mode). Rebels have no
+		# base, so economy/research/hq-upgrade planners are disabled for them.
+		section["mode"] = {}
 
 
 # --- Public configuration (called by the scenario loader) -------------------
@@ -108,6 +112,20 @@ func set_strategic_player(owner: int, personality: String = "balanced") -> void:
 	var name: String = personality if PERSONALITY.has(personality) else "balanced"
 	(section["controlled"] as Dictionary)[str(owner)] = name
 	(section["posture"] as Dictionary)[str(owner)] = "build"
+	if not (section["mode"] as Dictionary).has(str(owner)):
+		(section["mode"] as Dictionary)[str(owner)] = AiGeneralModeUtil.MODE_MAIN
+
+
+# MC9.4: set an AI owner's general mode ("main" or "rebel"). The scenario loader
+# calls this for rebel factions (colours with units but no HQ).
+func set_general_mode(owner: int, mode: String) -> void:
+	var section: Dictionary = nexus.world_state.get_section(SECTION)
+	(section["mode"] as Dictionary)[str(owner)] = AiGeneralModeUtil.normalise(mode)
+
+
+func general_mode(owner: int) -> String:
+	return AiGeneralModeUtil.normalise(
+		str(nexus.world_state.get_section(SECTION).get("mode", {}).get(str(owner), AiGeneralModeUtil.MODE_MAIN)))
 
 
 func posture(owner: int) -> String:
@@ -137,15 +155,23 @@ func on_tick(_delta_tick: int) -> void:
 
 
 func _plan_for_player(owner: int, personality: Dictionary) -> void:
+	# MC9.4: gate base-building planners by general mode. A rebel faction has no
+	# base, so economy/research/hq-upgrade are skipped; it only manoeuvres.
+	var flags: Dictionary = AiGeneralModeUtil.planner_flags(general_mode(owner))
 	# Priority order is intentional: secure tech/economy first, then decide
 	# whether to keep massing or to commit to the attack.
 	if bool(personality.get("research_first", true)):
-		_plan_research(owner)
-		_plan_expansion(owner, personality)
+		if bool(flags.get("research", true)):
+			_plan_research(owner)
+		if bool(flags.get("economy", true)):
+			_plan_expansion(owner, personality)
 	else:
-		_plan_expansion(owner, personality)
-		_plan_research(owner)
-	_plan_hq_upgrade(owner, personality)
+		if bool(flags.get("economy", true)):
+			_plan_expansion(owner, personality)
+		if bool(flags.get("research", true)):
+			_plan_research(owner)
+	if bool(flags.get("hq_upgrade", true)):
+		_plan_hq_upgrade(owner, personality)
 	_plan_army_posture(owner, personality)
 
 
