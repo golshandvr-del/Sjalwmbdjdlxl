@@ -479,6 +479,8 @@ func _init() -> void:
 	# Phase MC12.4 (request 13): AI profile summary / tags.
 	test_mc12_profile_summary_role_style_danger()
 	test_mc12_profile_summary_tags_and_bundle()
+	# Phase MC12.5 (request 13): AI profile / summary i18n coverage.
+	test_mc12_ai_profile_i18n_keys_present_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -5782,6 +5784,46 @@ func test_mc12_profile_summary_tags_and_bundle() -> void:
 	# A null profile is tolerated (neutral fallback, no crash).
 	var neutral: Dictionary = AiProfileSummaryUtil.summarize(null)
 	_check(neutral["danger_index"] >= 0, "null profile summary is safe")
+
+
+func test_mc12_ai_profile_i18n_keys_present_in_all_locales() -> void:
+	print("test_mc12_ai_profile_i18n_keys_present_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	# Every built-in profile's name + role key must be localized. We read the
+	# real JSON so the keys stay in sync with the data files.
+	var reader: RealJsonReader = RealJsonReader.new()
+	for id in AiProfileCatalog.ids():
+		var p: AiProfile = AiProfileCatalog.load_profile(id, reader)
+		var nk: String = p.display_name_key()
+		var rk: String = p.role_key()
+		_check(en.has(nk), "en has '%s'" % nk)
+		_check(fa.has(nk), "fa has '%s'" % nk)
+		_check(en.has(rk), "en has '%s'" % rk)
+		_check(fa.has(rk), "fa has '%s'" % rk)
+	# The neutral fallback profile's name/role key must also exist.
+	for key in ["ai.profile.balanced.name", "ai.profile.balanced.role"]:
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
+	# Every summary role/style/danger/tag key produced by the summary util.
+	for arch in ["aggressor", "conqueror", "defender", "diplomat", "leader",
+			"raider", "strategist", "tactician", "balanced"]:
+		var key: String = "ai.role.%s" % arch
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
+	for style in ["aggressive", "defensive", "economic", "technological", "harasser", "expansionist"]:
+		var key: String = "ai.style.%s" % style
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
+	for level in AiProfileSummaryUtil.DANGER_LEVELS:
+		var key: String = "ai.danger.%s" % level
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
+	for tag in ["aggressive", "cautious", "patient", "bold", "greedy", "trusting",
+			"treacherous", "vengeful", "generous", "reclusive", "techie", "raider", "economist"]:
+		var key: String = "ai.tag.%s" % tag
+		_check(en.has(key), "en has '%s'" % key)
+		_check(fa.has(key), "fa has '%s'" % key)
 
 
 func test_mc10_diplomacy_i18n_keys_present_in_all_locales() -> void:
