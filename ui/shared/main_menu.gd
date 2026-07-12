@@ -166,6 +166,7 @@ func _apply_labels() -> void:
 	# MB2.3 (bug 8): the gear carries no text label (icon only) but exposes a
 	# localized tooltip so its purpose stays discoverable.
 	_gear_button.tooltip_text = _loc.t("ui.menu.settings_gear")
+	_editor_button.text = _loc.t("ui.menu.editor")
 	_mod_editor_button.text = _loc.t("ui.menu.mod_editor")
 	_map_editor_button.text = _loc.t("ui.menu.map_editor")
 	_custom_games_button.text = _loc.t("ui.menu.custom_games")
