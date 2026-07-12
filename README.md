@@ -57,6 +57,20 @@ requirements `R#`, and the executable phase plan `P0`..`P8`). For a fast
 > under "نیازمندِ تأییدِ روی دستگاهِ اندروید" at the bottom of
 > `docs/PLAN_ANDROID_FIXES_V2.md`.
 
+> **Feature round (MC) + AI/Stat re-architecture round (MD).** Round 3
+> ([`docs/plan_android_fix_v3.md`](docs/plan_android_fix_v3.md), phases
+> `MC1`..`MC14`, 18 requests) added deep gameplay, dynamic diplomacy, the 35-knob
+> AI personality vector, and the builder tools. Round 4
+> ([`docs/plan_android_fix_v4.md`](docs/plan_android_fix_v4.md), phases
+> `MD1`..`MD14`) is a **foundational re-architecture** implementing an expert AI's
+> two-part design: (1) **stats as data assets** (not hard-coded) with a fixed
+> engine-side **Capability layer** they map onto via `affects`, and (2) a
+> **multi-layer deterministic AI decision pipeline** — `Raw Stats -> Derived
+> Metrics/Capabilities -> Role Inference -> Personality Weights + Policy ->
+> Context -> Utility Scoring -> Staged Action Selection -> Learning`. All decision
+> math is fixed-point (`SCALE=1000`) for lockstep safety. See that plan for the
+> full phase breakdown, the expert-opinion critique, and the determinism rules.
+
 ---
 
 ## Architecture -- The Central Brain ("Nexus")
