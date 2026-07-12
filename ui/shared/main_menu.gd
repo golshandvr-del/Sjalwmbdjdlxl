@@ -123,6 +123,7 @@ func _ready() -> void:
 	_multiplayer_button.pressed.connect(func() -> void: _show_panel(MenuPanel.MULTIPLAYER))
 	_gear_button.pressed.connect(_on_options)
 	_setup_gear_icon()
+	_editor_button.pressed.connect(_on_editor)
 	_mod_editor_button.pressed.connect(_on_mod_editor)
 	_map_editor_button.pressed.connect(_on_map_editor)
 	_custom_games_button.pressed.connect(_on_custom_games)
