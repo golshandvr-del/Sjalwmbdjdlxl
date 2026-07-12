@@ -71,6 +71,27 @@ var _drag_start: Vector2 = Vector2.ZERO
 var _move_mode: MoveModeUtil = MoveModeUtil.new()
 var _move_mode_button: Button = null
 
+# MC11.2/11.3/11.4 (request 11): the in-game Messages panel, mirrored from the
+# mobile HUD. A toggle button opens a three-tab panel: plain Chat, Strategic
+# (propose a structured treaty), and Mission (attack/defend a point). All logic
+# lives in the pure MessageLogUtil / TreatyUtil / MissionRequestUtil; the HUD
+# only builds widgets and issues deterministic diplomatic Commands. The chat
+# transcript is cosmetic (never part of the state hash).
+var _msg_button: Button = null
+var _msg_panel: PanelContainer = null
+var _msg_log: Array = []
+var _msg_recipient: OptionButton = null
+var _msg_history: RichTextLabel = null
+var _msg_text_edit: LineEdit = null
+var _treaty_type_opt: OptionButton = null
+var _treaty_target_opt: OptionButton = null
+var _treaty_duration: SpinBox = null
+var _mission_type_opt: OptionButton = null
+var _mission_target_opt: OptionButton = null
+var _mission_cell_x: SpinBox = null
+var _mission_cell_y: SpinBox = null
+var _mission_commit: HSlider = null
+
 
 func _ready() -> void:
 	# Phase G: apply the persisted GUI scale so the desktop HUD matches Options.
