@@ -5029,6 +5029,78 @@ func test_mc8_editorhub_i18n_keys_present_in_all_locales() -> void:
 		_check(fa.has(key), "fa has '%s'" % key)
 
 
+# ----------------------------------------------------------------------------
+# Phase MC9 (request 10): teams derived from map colours + rebel posture.
+#
+# MapColorUtil scans a scenario/map dict and reports which of the 16 owner
+# palette colours are actually in use (across players/buildings/units/flags),
+# so Match Setup can offer exactly those colours as team slots -- independent of
+# where HQs sit. Pure and deterministic (sorted output). These tests pin the
+# scan sources, clamping, sorting, and the choice-restriction contract.
+# ----------------------------------------------------------------------------
+
+func test_mc9_used_owners_from_all_entity_arrays() -> void:
+	print("test_mc9_used_owners_from_all_entity_arrays")
+	var scenario: Dictionary = {
+		"players": [{ "owner": 0 }, { "owner": 3 }],
+		"buildings": [{ "type": "hq", "owner": 3, "x": 1, "y": 1 }],
+		"units": [{ "type": "soldier", "owner": 7, "x": 2, "y": 2 }],
+	}
+	var used: Array = MapColorUtil.used_owners(scenario)
+	_check(used == [0, 3, 7], "collects owners from players/buildings/units, sorted")
+
+
+func test_mc9_used_owners_sorted_deduped_and_clamped() -> void:
+	print("test_mc9_used_owners_sorted_deduped_and_clamped")
+	var scenario: Dictionary = {
+		"units": [{ "owner": 5 }, { "owner": 5 }, { "owner": 2 }, { "owner": 99 }, { "owner": -4 }],
+	}
+	var used: Array = MapColorUtil.used_owners(scenario)
+	# 99 clamps to 15, -4 clamps to 0; duplicates collapse; result sorted.
+	_check(used == [0, 2, 5, 15], "duplicates removed, out-of-range clamped, sorted")
+
+
+func test_mc9_used_owners_includes_flag_teams() -> void:
+	print("test_mc9_used_owners_includes_flag_teams")
+	var scenario: Dictionary = {
+		"units": [{ "owner": 1 }],
+		"flags": [{ "index": 0, "x": 1, "y": 1, "team": 4 }, { "index": 1, "x": 2, "y": 2, "team": 1 }],
+	}
+	var used: Array = MapColorUtil.used_owners(scenario)
+	_check(used == [1, 4], "flag team ids count as used colours")
+
+
+func test_mc9_team_count_and_color_hexes() -> void:
+	print("test_mc9_team_count_and_color_hexes")
+	var scenario: Dictionary = {
+		"buildings": [{ "owner": 0 }, { "owner": 1 }, { "owner": 2 }, { "owner": 3 }],
+	}
+	_check(MapColorUtil.team_count(scenario) == 4, "four colours -> four team slots")
+	var hexes: Array = MapColorUtil.used_color_hexes(scenario)
+	_check(hexes.size() == 4, "one hex per used colour")
+	_check(str(hexes[0]) == MapPaletteUtil.color_hex(0), "hex order matches sorted owners")
+	_check(MapColorUtil.is_owner_used(scenario, 2), "is_owner_used true for present colour")
+	_check(not MapColorUtil.is_owner_used(scenario, 9), "is_owner_used false for absent colour")
+
+
+func test_mc9_restrict_choices_drops_unused() -> void:
+	print("test_mc9_restrict_choices_drops_unused")
+	var scenario: Dictionary = { "units": [{ "owner": 1 }, { "owner": 4 }] }
+	# Requested 0..4 but only 1 and 4 exist on the map.
+	var allowed: Array = MapColorUtil.restrict_choices(scenario, [0, 1, 2, 3, 4])
+	_check(allowed == [1, 4], "only map colours survive the restriction, sorted")
+	_check(MapColorUtil.restrict_choices(scenario, [0, 2, 3]) == [],
+		"no overlap yields an empty allowed set")
+
+
+func test_mc9_used_owners_empty_map() -> void:
+	print("test_mc9_used_owners_empty_map")
+	_check(MapColorUtil.used_owners({}) == [], "empty dict has no used owners")
+	_check(MapColorUtil.team_count({}) == 0, "empty dict yields zero teams")
+	_check(MapColorUtil.used_owners({ "units": "not_an_array" }) == [],
+		"malformed entity array is ignored safely")
+
+
 func test_phase_e_editor_keys_localized_in_all_locales() -> void:
 	print("test_phase_e_editor_keys_localized_in_all_locales")
 	var en: Dictionary = _load_locale_strings("res://localization/en.json")
