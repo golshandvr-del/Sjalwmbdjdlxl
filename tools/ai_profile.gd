@@ -156,3 +156,162 @@ func init_new(id: String) -> void:
 		for knob in keys_for(category):
 			vec[knob] = NEUTRAL
 		_vectors[category] = vec
+
+
+# --- Loading ----------------------------------------------------------------
+
+# Populate this profile from a (possibly partial) dictionary. Missing knobs stay
+# neutral; out-of-range values are clamped; unknown knobs are ignored. Returns
+# true when the dictionary carried a usable id, false otherwise (the profile is
+# still left in a valid, fully-populated state either way).
+func load(data: Dictionary) -> bool:
+	var id: String = str(data.get("id", "")).strip_edges()
+	init_new(id)
+	_display_name_key = str(data.get("display_name_key", "")).strip_edges()
+	_role_key = str(data.get("role_key", "")).strip_edges()
+	_archetype = str(data.get("archetype", "")).strip_edges()
+	for category in CATEGORIES:
+		if not (data.get(category, null) is Dictionary):
+			continue
+		var src: Dictionary = data[category]
+		var vec: Dictionary = _vectors[category]
+		for knob in keys_for(category):
+			if src.has(knob):
+				vec[knob] = _clamp_unit(src[knob])
+	return not id.is_empty()
+
+
+# Build a NEW profile object from a dictionary in one call.
+static func from_dict(data: Dictionary) -> AiProfile:
+	var p: AiProfile = AiProfile.new()
+	p.load(data)
+	return p
+
+
+# The safe fallback profile used when nothing else is available: a neutral
+# "balanced" general. Deterministic and always valid.
+static func default_profile() -> AiProfile:
+	var p: AiProfile = AiProfile.new()
+	p.init_new("balanced")
+	p._display_name_key = "ai.profile.balanced.name"
+	p._role_key = "ai.profile.balanced.role"
+	p._archetype = "balanced"
+	return p
+
+
+# --- Validation -------------------------------------------------------------
+
+# Return an empty string when the profile is usable, or a short reason token
+# ("missing_id" / "empty") otherwise. A profile with an id and a full vector set
+# is always valid because load()/init_new() guarantee range + completeness.
+func validate() -> String:
+	if _id.is_empty():
+		return "missing_id"
+	if _vectors.is_empty():
+		return "empty"
+	for category in CATEGORIES:
+		if not (_vectors.get(category, null) is Dictionary):
+			return "missing_category"
+	return ""
+
+
+func is_valid() -> bool:
+	return validate().is_empty()
+
+
+# --- Accessors --------------------------------------------------------------
+
+func id() -> String:
+	return _id
+
+
+func display_name_key() -> String:
+	return _display_name_key
+
+
+func role_key() -> String:
+	return _role_key
+
+
+func archetype() -> String:
+	return _archetype
+
+
+# The value of one knob in one category, or NEUTRAL if either is unknown.
+func get_value(category: String, knob: String) -> float:
+	if not (_vectors.get(category, null) is Dictionary):
+		return NEUTRAL
+	var vec: Dictionary = _vectors[category]
+	return float(vec.get(knob, NEUTRAL))
+
+
+# Set one knob (clamped). Unknown category/knob is ignored. Returns the stored
+# value so callers can confirm the clamp.
+func set_value(category: String, knob: String, value: float) -> float:
+	if not (_vectors.get(category, null) is Dictionary):
+		return NEUTRAL
+	if not keys_for(category).has(knob):
+		return NEUTRAL
+	var clamped: float = _clamp_unit(value)
+	(_vectors[category] as Dictionary)[knob] = clamped
+	return clamped
+
+
+# The full (clamped, complete) vector for a category, or {} if unknown.
+func vector(category: String) -> Dictionary:
+	if not (_vectors.get(category, null) is Dictionary):
+		return {}
+	return (_vectors[category] as Dictionary).duplicate(true)
+
+
+# Convenience shorthands for the common categories.
+func personality(knob: String) -> float:
+	return get_value("personality", knob)
+
+
+func strategy(knob: String) -> float:
+	return get_value("strategy_bias", knob)
+
+
+func diplomacy(knob: String) -> float:
+	return get_value("diplomacy_bias", knob)
+
+
+func learning(knob: String) -> float:
+	return get_value("learning_bias", knob)
+
+
+func difficulty(knob: String) -> float:
+	return get_value("difficulty", knob)
+
+
+# --- Serialisation ----------------------------------------------------------
+
+# A stable, deterministic dictionary: categories in CATEGORIES order, knobs in
+# their canonical per-category order, every value a clamped float. Byte-identical
+# for equal profiles, which keeps exported .nexai files reproducible.
+func to_dict() -> Dictionary:
+	var out: Dictionary = {
+		"id": _id,
+		"display_name_key": _display_name_key,
+		"role_key": _role_key,
+		"archetype": _archetype,
+	}
+	for category in CATEGORIES:
+		var vec: Dictionary = {}
+		for knob in keys_for(category):
+			vec[knob] = _clamp_unit(get_value(category, knob))
+		out[category] = vec
+	return out
+
+
+# --- Helpers ----------------------------------------------------------------
+
+# Coerce any input to a float in [0.0, 1.0]. Non-numeric -> NEUTRAL.
+static func _clamp_unit(value) -> float:
+	var f: float = NEUTRAL
+	if value is float or value is int:
+		f = float(value)
+	elif value is String and (value as String).is_valid_float():
+		f = (value as String).to_float()
+	return clampf(f, 0.0, 1.0)
