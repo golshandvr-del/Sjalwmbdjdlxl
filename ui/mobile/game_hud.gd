@@ -937,6 +937,7 @@ func _build_p3_widgets() -> void:
 	_build_selection_panel()
 	_build_select_mode_widgets()
 	_build_move_mode_widgets()
+	_build_message_panel()
 	# Apply the initial responsive placement for the current orientation.
 	_apply_responsive_layout()
 
