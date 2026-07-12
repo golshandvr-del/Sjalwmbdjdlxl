@@ -132,6 +132,7 @@ func _ready() -> void:
 	_overlay.visible = false
 	_selection_box.visible = false
 	_build_move_mode_widget()
+	_build_message_panel()
 	_apply_static_labels()
 
 
