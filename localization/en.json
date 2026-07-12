@@ -1,6 +1,14 @@
 {
 	"locale": "en",
 	"strings": {
+		"ai.brain.accept": "Agreed. I accept.",
+		"ai.brain.betray": "You trusted me too much. Our alliance is over.",
+		"ai.brain.declare_war": "I declare war upon you.",
+		"ai.brain.generic": "I have reached a decision.",
+		"ai.brain.propose_alliance": "Let us stand together as allies.",
+		"ai.brain.propose_peace": "I offer peace between us.",
+		"ai.brain.reject": "No. I refuse.",
+		"ai.brain.send_aid": "Hold the line, ally. Aid is on its way.",
 		"ai.danger.dangerous": "Dangerous",
 		"ai.danger.harmless": "Harmless",
 		"ai.danger.lethal": "Lethal",
