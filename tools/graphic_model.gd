@@ -55,6 +55,10 @@ const DEFAULT_MOUNT: String = MOUNT_FIXED
 # The authored-graphic cap on firing parts (combination logic in MC14.4 raises
 # the in-game cap to MAX_COMBINED_FIRING_PARTS).
 const MAX_FIRING_PARTS: int = 1
+# When units are COMBINED in-game (MC14.4) the resulting unit may carry up to
+# this many firing parts -- one per source, capped so a fused unit never becomes
+# an unbounded gun platform.
+const MAX_COMBINED_FIRING_PARTS: int = 2
 
 # Allowed pixel-resolution bounds (cosmetic only). Configurable per project; the
 # editor shows these under the upload box.
