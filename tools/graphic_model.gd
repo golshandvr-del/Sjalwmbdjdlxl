@@ -29,6 +29,33 @@ const MODE_SINGLE: String = "single"
 const MODE_MULTI: String = "multi"
 const MAX_PARTS: int = 3
 
+# --- MC14.3 (req16/18): facing + firing part -------------------------------
+# `facing` names which way the authored unit's art points when it is at rest /
+# moving forward. It is a COSMETIC hint the render layer (MC14.5) reads to align
+# the sprite with the unit's movement heading; the deterministic simulation
+# never reads it. The four cardinal art orientations cover every sprite an
+# author can draw.
+const FACING_UP: String = "up"
+const FACING_DOWN: String = "down"
+const FACING_LEFT: String = "left"
+const FACING_RIGHT: String = "right"
+const FACINGS: Array = [FACING_UP, FACING_DOWN, FACING_LEFT, FACING_RIGHT]
+const DEFAULT_FACING: String = FACING_UP
+
+# A part may be flagged as the entity's FIRING part (the piece that visually
+# shoots -- e.g. a tank's barrel). Its `firing_mount` says whether that piece is
+# rigidly attached to the hull (FIXED, always points where the unit faces) or is
+# a rotating TURRET that tracks the target independently (MC14.5 render). An
+# authored single/multi graphic may declare AT MOST ONE firing part; combining
+# units in-game can raise that to two (MC14.4).
+const MOUNT_FIXED: String = "fixed"
+const MOUNT_TURRET: String = "turret"
+const MOUNTS: Array = [MOUNT_FIXED, MOUNT_TURRET]
+const DEFAULT_MOUNT: String = MOUNT_FIXED
+# The authored-graphic cap on firing parts (combination logic in MC14.4 raises
+# the in-game cap to MAX_COMBINED_FIRING_PARTS).
+const MAX_FIRING_PARTS: int = 1
+
 # Allowed pixel-resolution bounds (cosmetic only). Configurable per project; the
 # editor shows these under the upload box.
 const MIN_PX: int = 16
