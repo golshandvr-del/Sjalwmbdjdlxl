@@ -154,6 +154,308 @@ func _build_move_mode_widget() -> void:
 	_update_move_mode_button()
 
 
+# MC11.2/11.3/11.4 (request 11): build the "Messages" button + hidden panel,
+# mirrored from the mobile HUD. Controls only issue authoritative diplomatic
+# Commands via the diplomacy module, keeping the simulation deterministic.
+func _build_message_panel() -> void:
+	_msg_button = Button.new()
+	_msg_button.name = "MessagesButton"
+	_msg_button.text = _loc.t("ui.msg.title")
+	_msg_button.pressed.connect(_on_messages_pressed)
+	var row: Node = get_node_or_null("BottomBar/Margin/Row")
+	if row != null:
+		row.add_child(_msg_button)
+	else:
+		add_child(_msg_button)
+
+	_msg_panel = PanelContainer.new()
+	_msg_panel.name = "MessagesPanel"
+	_msg_panel.visible = false
+	_msg_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_msg_panel.custom_minimum_size = Vector2(380, 420)
+	add_child(_msg_panel)
+
+	var tabs: TabContainer = TabContainer.new()
+	tabs.name = "MessageTabs"
+	_msg_panel.add_child(tabs)
+
+	var chat_tab: Control = _build_chat_tab()
+	chat_tab.name = _loc.t("ui.msg.tab_chat")
+	tabs.add_child(chat_tab)
+
+	var strat_tab: Control = _build_strategic_tab()
+	strat_tab.name = _loc.t("ui.msg.strategic_tab")
+	tabs.add_child(strat_tab)
+
+	var mission_tab: Control = _build_mission_tab()
+	mission_tab.name = _loc.t("ui.msg.mission_tab")
+	tabs.add_child(mission_tab)
+
+
+func _build_chat_tab() -> Control:
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+
+	var row: HBoxContainer = HBoxContainer.new()
+	var to_label: Label = Label.new()
+	to_label.text = _loc.t("ui.msg.recipient")
+	row.add_child(to_label)
+	_msg_recipient = OptionButton.new()
+	_populate_recipient_options(_msg_recipient)
+	_msg_recipient.item_selected.connect(func(_i: int) -> void: _refresh_chat_history())
+	row.add_child(_msg_recipient)
+	box.add_child(row)
+
+	_msg_history = RichTextLabel.new()
+	_msg_history.custom_minimum_size = Vector2(360, 280)
+	_msg_history.bbcode_enabled = false
+	box.add_child(_msg_history)
+
+	var send_row: HBoxContainer = HBoxContainer.new()
+	_msg_text_edit = LineEdit.new()
+	_msg_text_edit.placeholder_text = _loc.t("ui.msg.text_hint")
+	_msg_text_edit.custom_minimum_size = Vector2(280, 0)
+	send_row.add_child(_msg_text_edit)
+	var send_btn: Button = Button.new()
+	send_btn.text = _loc.t("ui.msg.send")
+	send_btn.pressed.connect(_on_chat_send_pressed)
+	send_row.add_child(send_btn)
+	box.add_child(send_row)
+
+	_refresh_chat_history()
+	return box
+
+
+func _build_strategic_tab() -> Control:
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+
+	var type_row: HBoxContainer = HBoxContainer.new()
+	var t_label: Label = Label.new()
+	t_label.text = _loc.t("ui.msg.treaty_type")
+	type_row.add_child(t_label)
+	_treaty_type_opt = OptionButton.new()
+	for type_id in TreatyUtil.TYPES:
+		_treaty_type_opt.add_item(str(type_id))
+	type_row.add_child(_treaty_type_opt)
+	box.add_child(type_row)
+
+	var target_row: HBoxContainer = HBoxContainer.new()
+	var tg_label: Label = Label.new()
+	tg_label.text = _loc.t("ui.msg.recipient")
+	target_row.add_child(tg_label)
+	_treaty_target_opt = OptionButton.new()
+	_populate_owner_options(_treaty_target_opt)
+	target_row.add_child(_treaty_target_opt)
+	box.add_child(target_row)
+
+	var dur_row: HBoxContainer = HBoxContainer.new()
+	var d_label: Label = Label.new()
+	d_label.text = _loc.t("ui.msg.treaty_duration")
+	dur_row.add_child(d_label)
+	_treaty_duration = SpinBox.new()
+	_treaty_duration.min_value = 0
+	_treaty_duration.max_value = 100000
+	_treaty_duration.value = 0
+	dur_row.add_child(_treaty_duration)
+	box.add_child(dur_row)
+
+	var propose_btn: Button = Button.new()
+	propose_btn.text = _loc.t("ui.msg.treaty_propose")
+	propose_btn.pressed.connect(_on_propose_treaty_pressed)
+	box.add_child(propose_btn)
+	return box
+
+
+func _build_mission_tab() -> Control:
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+
+	var mtype_row: HBoxContainer = HBoxContainer.new()
+	var mt_label: Label = Label.new()
+	mt_label.text = _loc.t("ui.msg.mission_tab")
+	mtype_row.add_child(mt_label)
+	_mission_type_opt = OptionButton.new()
+	for m in MissionRequestUtil.TYPES:
+		_mission_type_opt.add_item(_loc.t("ui.msg.mission_" + str(m)))
+	mtype_row.add_child(_mission_type_opt)
+	box.add_child(mtype_row)
+
+	var mtarget_row: HBoxContainer = HBoxContainer.new()
+	var mtg_label: Label = Label.new()
+	mtg_label.text = _loc.t("ui.msg.recipient")
+	mtarget_row.add_child(mtg_label)
+	_mission_target_opt = OptionButton.new()
+	_populate_owner_options(_mission_target_opt)
+	mtarget_row.add_child(_mission_target_opt)
+	box.add_child(mtarget_row)
+
+	var cell_row: HBoxContainer = HBoxContainer.new()
+	var c_label: Label = Label.new()
+	c_label.text = _loc.t("ui.msg.mission_cell")
+	cell_row.add_child(c_label)
+	_mission_cell_x = SpinBox.new()
+	_mission_cell_x.min_value = 0
+	_mission_cell_x.max_value = 100000
+	cell_row.add_child(_mission_cell_x)
+	_mission_cell_y = SpinBox.new()
+	_mission_cell_y.min_value = 0
+	_mission_cell_y.max_value = 100000
+	cell_row.add_child(_mission_cell_y)
+	box.add_child(cell_row)
+
+	var commit_row: HBoxContainer = HBoxContainer.new()
+	var cm_label: Label = Label.new()
+	cm_label.text = _loc.t("ui.msg.commitment")
+	commit_row.add_child(cm_label)
+	_mission_commit = HSlider.new()
+	_mission_commit.min_value = MissionRequestUtil.COMMIT_MIN
+	_mission_commit.max_value = MissionRequestUtil.COMMIT_MAX
+	_mission_commit.value = MissionRequestUtil.COMMIT_DEFAULT
+	_mission_commit.custom_minimum_size = Vector2(220, 0)
+	commit_row.add_child(_mission_commit)
+	box.add_child(commit_row)
+
+	var send_btn: Button = Button.new()
+	send_btn.text = _loc.t("ui.msg.mission_send")
+	send_btn.pressed.connect(_on_mission_send_pressed)
+	box.add_child(send_btn)
+	return box
+
+
+func _populate_recipient_options(opt: OptionButton) -> void:
+	opt.clear()
+	var choices: Array = MessageLogUtil.recipient_choices(_owner_count(), LOCAL_PLAYER)
+	for owner in choices:
+		var oid: int = int(owner)
+		opt.add_item(_owner_label(oid))
+		opt.set_item_metadata(opt.item_count - 1, oid)
+
+
+func _populate_owner_options(opt: OptionButton) -> void:
+	opt.clear()
+	for o in range(_owner_count()):
+		if o == LOCAL_PLAYER:
+			continue
+		opt.add_item(_owner_label(o))
+		opt.set_item_metadata(opt.item_count - 1, o)
+
+
+func _owner_label(owner: int) -> String:
+	if owner == MessageLogUtil.BROADCAST:
+		return _loc.t("ui.msg.broadcast")
+	return _loc.t("ui.msg.player").replace("{id}", str(owner))
+
+
+func _owner_count() -> int:
+	var teams: Dictionary = Nexus.world_state.get_section("match").get("teams", {})
+	var maxo: int = LOCAL_PLAYER
+	for k in teams.keys():
+		maxo = max(maxo, int(str(k)))
+	return max(2, maxo + 1)
+
+
+func _selected_owner(opt: OptionButton, fallback: int) -> int:
+	if opt == null or opt.selected < 0:
+		return fallback
+	var meta = opt.get_item_metadata(opt.selected)
+	return int(meta) if meta != null else fallback
+
+
+func _on_messages_pressed() -> void:
+	if _msg_panel == null:
+		return
+	_msg_panel.visible = not _msg_panel.visible
+	if _msg_panel.visible:
+		_refresh_chat_history()
+
+
+func _on_chat_send_pressed() -> void:
+	if _msg_text_edit == null:
+		return
+	var text: String = _msg_text_edit.text.strip_edges()
+	if text == "":
+		return
+	var recipient: int = _selected_owner(_msg_recipient, MessageLogUtil.BROADCAST)
+	MessageLogUtil.append_message(_msg_log, MessageLogUtil.make_message(
+		LOCAL_PLAYER, recipient, text, int(Nexus.world_state.current_tick)))
+	_msg_text_edit.text = ""
+	_refresh_chat_history()
+
+
+func _refresh_chat_history() -> void:
+	if _msg_history == null:
+		return
+	var recipient: int = _selected_owner(_msg_recipient, MessageLogUtil.BROADCAST)
+	var shown: Array
+	if recipient == MessageLogUtil.BROADCAST:
+		shown = MessageLogUtil.filter_for_owner(_msg_log, LOCAL_PLAYER)
+	else:
+		shown = MessageLogUtil.conversation(_msg_log, LOCAL_PLAYER, recipient)
+	if shown.is_empty():
+		_msg_history.text = _loc.t("ui.msg.no_messages")
+		return
+	var lines: Array = []
+	for m in shown:
+		var md: Dictionary = m as Dictionary
+		lines.append("[%d] %s -> %s: %s" % [
+			int(md.get("tick", 0)),
+			_owner_label(int(md.get("sender", 0))),
+			_owner_label(int(md.get("recipient", MessageLogUtil.BROADCAST))),
+			str(md.get("text", "")),
+		])
+	_msg_history.text = "\n".join(lines)
+
+
+func _on_propose_treaty_pressed() -> void:
+	var diplomacy: Object = Nexus.get_module("diplomacy")
+	if diplomacy == null:
+		return
+	var type_id: String = str(TreatyUtil.TYPES[max(0, _treaty_type_opt.selected)])
+	var target: int = _selected_owner(_treaty_target_opt, LOCAL_PLAYER)
+	if target == LOCAL_PLAYER:
+		return
+	var treaty: Dictionary = TreatyUtil.make_treaty(
+		type_id, LOCAL_PLAYER, target, {}, {}, int(_treaty_duration.value),
+		int(Nexus.world_state.current_tick))
+	if not TreatyUtil.is_valid(treaty):
+		return
+	diplomacy.issue_propose(LOCAL_PLAYER, treaty)
+	MessageLogUtil.append_message(_msg_log, MessageLogUtil.make_message(
+		LOCAL_PLAYER, target,
+		_loc.t("ui.msg.treaty_propose") + ": " + type_id,
+		int(Nexus.world_state.current_tick),
+		MessageLogUtil.CHANNEL_STRATEGIC, { "treaty": treaty }))
+
+
+func _on_mission_send_pressed() -> void:
+	var diplomacy: Object = Nexus.get_module("diplomacy")
+	if diplomacy == null:
+		return
+	var target: int = _selected_owner(_mission_target_opt, LOCAL_PLAYER)
+	if target == LOCAL_PLAYER:
+		return
+	var mtype: String = str(MissionRequestUtil.TYPES[max(0, _mission_type_opt.selected)])
+	var mission: Dictionary = MissionRequestUtil.make_mission(
+		LOCAL_PLAYER, target, mtype,
+		int(_mission_cell_x.value), int(_mission_cell_y.value),
+		int(_mission_commit.value))
+	if not MissionRequestUtil.is_valid(mission):
+		return
+	var treaty_type: String = TreatyUtil.REQUEST_DEFENSE if mtype == MissionRequestUtil.DEFEND else TreatyUtil.REQUEST_ATTACK
+	var treaty: Dictionary = TreatyUtil.make_treaty(
+		treaty_type, LOCAL_PLAYER, target, { "mission": mission }, {}, 0,
+		int(Nexus.world_state.current_tick))
+	if not TreatyUtil.is_valid(treaty):
+		return
+	diplomacy.issue_propose(LOCAL_PLAYER, treaty)
+	MessageLogUtil.append_message(_msg_log, MessageLogUtil.make_message(
+		LOCAL_PLAYER, target,
+		_loc.t("ui.msg.mission_send") + ": " + mtype,
+		int(Nexus.world_state.current_tick),
+		MessageLogUtil.CHANNEL_STRATEGIC, { "mission": mission }))
+
+
 func _process(delta: float) -> void:
 	_render_adapter.selected_unit_ids = _selected_unit_ids
 	_handle_camera_pan(delta)
