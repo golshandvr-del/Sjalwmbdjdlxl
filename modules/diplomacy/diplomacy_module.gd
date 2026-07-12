@@ -49,6 +49,10 @@ const _ALLIANCE_TEAM_BASE: int = 100
 # coarse cadence at which we even bother assembling the situation.
 const AI_DIPLOMACY_INTERVAL: int = 45
 
+# MC13.5: default validity (ticks) of a treaty an AI proposes. A finite term so
+# alliances/ceasefires lapse and get re-evaluated rather than lasting forever.
+const AI_TREATY_DURATION: int = 600
+
 
 func module_id() -> String:
 	return "diplomacy"
@@ -285,6 +289,168 @@ func on_tick(_delta_tick: int) -> void:
 			nexus.emit_event(EVENT_TREATY_EXPIRED, { "treaty_id": int(str(key)) })
 	if expired_any:
 		_sync_alliance_teams()
+	# MC13.5: drive AI diplomacy on a coarse cadence (planner phase-shifts per
+	# owner internally). Deterministic: derived from world state + tick + seed.
+	if now % AI_DIPLOMACY_INTERVAL == 0:
+		_plan_ai_diplomacy(now)
+
+
+# --- MC13.5: AI diplomacy brain integration ---------------------------------
+
+# Cache of loaded AiProfile objects keyed by profile id, so we do not re-read
+# JSON every planning pass. Cosmetic to determinism (same id -> same profile).
+var _profile_cache: Dictionary = {}
+
+# Assemble the situation dictionary from world state, run the pure planner, and
+# enqueue the returned diplomacy commands. All inputs are deterministic, so all
+# peers enqueue the identical commands. Safe no-op when there is no AI or no
+# strategic module.
+func _plan_ai_diplomacy(now: int) -> void:
+	var strategic: IModule = nexus.get_module("strategic_ai")
+	if strategic == null:
+		return
+	var controlled: Dictionary = nexus.world_state.get_section("strategic_ai").get("controlled", {})
+	if controlled.is_empty():
+		return
+	var owners: Array = controlled.keys()
+	owners.sort()
+	# Gather the full owner set once so we can estimate strengths + relations.
+	var owner_ids: Array = []
+	for k in owners:
+		owner_ids.append(int(k))
+	var strengths: Dictionary = _owner_strengths()
+	var actors: Array = []
+	for owner_key in owners:
+		var owner: int = int(owner_key)
+		var pid: String = str(strategic.profile_id(owner))
+		var profile = _profile_for(pid)
+		var targets: Array = []
+		for other in owner_ids:
+			if other == owner:
+				continue
+			targets.append(_build_target(owner, other, strengths))
+		# Also allow diplomacy toward human/other owners appearing in relations.
+		actors.append({ "owner": owner, "profile": profile, "targets": targets })
+	var situation: Dictionary = {
+		"match_seed": int(nexus.world_state.random_seed),
+		"tick": now,
+		"actors": actors,
+	}
+	var commands: Array = AiDiplomacyPlanner.plan(situation)
+	_dispatch_ai_commands(commands)
+
+
+# Turn each planner command into a real issue_* call (deterministic queue).
+func _dispatch_ai_commands(commands: Array) -> void:
+	for cmd in commands:
+		var kind: String = str(cmd.get("cmd", ""))
+		var issuer: int = int(cmd.get("issuer", 0))
+		match kind:
+			AiDiplomacyPlanner.CMD_PROPOSE:
+				var ttype: String = str(cmd.get("treaty_type", "ceasefire"))
+				var target: int = int(cmd.get("target", -1))
+				if target < 0:
+					continue
+				# A default, short-lived proposal with no resource terms; the
+				# recipient's brain decides accept/reject next pass.
+				var treaty: Dictionary = TreatyUtil.make_treaty(
+					ttype, issuer, target, {}, {}, AI_TREATY_DURATION, _current_tick())
+				issue_propose(issuer, treaty)
+			AiDiplomacyPlanner.CMD_RESPOND:
+				issue_respond(issuer, int(cmd.get("treaty_id", -1)), bool(cmd.get("accept", false)))
+			AiDiplomacyPlanner.CMD_DECLARE_WAR:
+				issue_declare_war(issuer, int(cmd.get("target", -1)))
+			AiDiplomacyPlanner.CMD_BREAK_TREATY:
+				var tid: int = _alliance_treaty_between(issuer, int(cmd.get("target", -1)))
+				if tid >= 0:
+					issue_break_treaty(issuer, tid)
+
+
+# Build one target descriptor for the planner from world state.
+func _build_target(owner: int, other: int, strengths: Dictionary) -> Dictionary:
+	var mine: float = float(strengths.get(owner, 1.0))
+	var theirs: float = float(strengths.get(other, 1.0))
+	# Threat: how much stronger they are than me, normalised into 0..1.
+	var threat: float = clampf((theirs - mine) / maxf(1.0, theirs), 0.0, 1.0)
+	var incoming: String = ""
+	var incoming_id: int = -1
+	var pending: Dictionary = _pending_offer_to(owner, other)
+	if not pending.is_empty():
+		incoming = str(pending.get("type", ""))
+		incoming_id = int(pending.get("id", -1))
+	return {
+		"owner": other,
+		"relationship": get_relationship(owner, other),
+		"trust": 50.0,
+		"reputation": 0.0,
+		"my_strength": mine,
+		"their_strength": theirs,
+		"threat": threat,
+		"shared_enemy": false,
+		"current_allies": 0,
+		"at_war_count": 0,
+		"incoming_offer": incoming,
+		"incoming_treaty_id": incoming_id,
+	}
+
+
+# Find a proposed (unanswered) treaty whose target is `owner` and proposer is
+# `other`, so the AI can respond to it. Returns { "type", "id" } or {}.
+func _pending_offer_to(owner: int, other: int) -> Dictionary:
+	var treaties: Dictionary = _treaties()
+	var keys: Array = treaties.keys()
+	keys.sort()
+	for key in keys:
+		var t: Dictionary = treaties[key]
+		if str(t.get("status", "")) != TreatyUtil.STATUS_PROPOSED:
+			continue
+		if int(t.get("target", -1)) == owner and int(t.get("proposer", -1)) == other:
+			return { "type": str(t.get("type", "")), "id": int(str(key)) }
+	return {}
+
+
+# The id of an accepted alliance treaty between two owners, or -1.
+func _alliance_treaty_between(a: int, b: int) -> int:
+	var treaties: Dictionary = _treaties()
+	var keys: Array = treaties.keys()
+	keys.sort()
+	for key in keys:
+		var t: Dictionary = treaties[key]
+		if str(t.get("status", "")) != TreatyUtil.STATUS_ACCEPTED:
+			continue
+		if not TreatyUtil.makes_allies(str(t.get("type", ""))):
+			continue
+		var p: int = int(t.get("proposer", -1))
+		var q: int = int(t.get("target", -1))
+		if (p == a and q == b) or (p == b and q == a):
+			return int(str(key))
+	return -1
+
+
+# A crude per-owner strength index from live combat unit counts (cosmetic input
+# to the brain; does not affect the deterministic hash). Missing owner -> 1.0.
+func _owner_strengths() -> Dictionary:
+	var out: Dictionary = {}
+	var units: Dictionary = nexus.world_state.get_section("units").get("list", {})
+	for uid in units.keys():
+		var u: Dictionary = units[uid]
+		var owner: int = int(u.get("owner", -1))
+		if owner < 0:
+			continue
+		out[owner] = float(out.get(owner, 0.0)) + 1.0
+	return out
+
+
+# Load (and cache) an AiProfile by id, or null for a legacy/unknown id.
+func _profile_for(pid: String):
+	if pid.is_empty():
+		return null
+	if _profile_cache.has(pid):
+		return _profile_cache[pid]
+	var reader: DataLoader = DataLoader.new()
+	var profile = AiProfileCatalog.load_profile(pid, reader)
+	_profile_cache[pid] = profile
+	return profile
 
 
 # --- Alliance -> match.teams mapping (request 17) ---------------------------
