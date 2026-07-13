@@ -184,10 +184,13 @@ static func affects(id: String) -> Dictionary:
 
 
 static func value_type(id: String) -> String:
-	# Fall back to inferring from needs_value when a legacy def lacks value_type.
+	# Accept both `value_type` (built-in) and `type` (data-file field, MD1.1).
+	# Fall back to inferring from needs_value when a legacy def lacks both.
 	var rec: Dictionary = _record(id)
 	if rec.has("value_type"):
 		return str(rec["value_type"])
+	if rec.has("type"):
+		return str(rec["type"])
 	return "int" if bool(rec.get("needs_value", true)) else "bool"
 
 
@@ -238,16 +241,18 @@ static func validate_definition(def: Variant) -> Array:
 		problems.append("missing id")
 	# Unknown top-level keys (typo guard for mod authors).
 	var known: Array = [
-		"id", "value_type", "category", "min", "max", "default",
+		"id", "value_type", "type", "category", "min", "max", "default",
 		"higher_is_better", "ai_importance", "affects", "core",
 		"display_name_key", "needs_value", "applies_to", "group",
 	]
 	for k in d.keys():
 		if not (str(k) in known):
 			problems.append("unknown key: %s" % str(k))
-	# value_type must be one of the allowed set (when present).
+	# value_type / type must be one of the allowed set (when present).
 	if d.has("value_type") and not (str(d["value_type"]) in VALID_VALUE_TYPES):
 		problems.append("invalid value_type: %s" % str(d["value_type"]))
+	if d.has("type") and not (str(d["type"]) in VALID_VALUE_TYPES):
+		problems.append("invalid type: %s" % str(d["type"]))
 	# min/max sanity.
 	if d.has("min") and d.has("max"):
 		if float(d["min"]) > float(d["max"]):

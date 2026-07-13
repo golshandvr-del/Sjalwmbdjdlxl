@@ -542,6 +542,7 @@ func _init() -> void:
 	test_md1_is_core_and_is_free_classification()
 	test_md1_validate_definition_accepts_and_rejects()
 	test_md1_all_definition_ids_sorted_and_stable()
+	test_md1_stats_catalog_loads_from_disk()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2139,6 +2140,27 @@ func test_md1_all_definition_ids_sorted_and_stable() -> void:
 	# Deterministic: same merge order -> same result set.
 	var again: Array = StatRegistry.all_definition_ids()
 	_check(ids == again, "all_definition_ids() is stable across calls")
+	StatRegistry.reset_definitions()
+
+
+# MD1.5: the on-disk data/stats/*.json catalog loads through DataLoader and every
+# Core Stat definition round-trips into the registry with its metadata intact.
+func test_md1_stats_catalog_loads_from_disk() -> void:
+	print("test_md1_stats_catalog_loads_from_disk")
+	var loader: DataLoader = DataLoader.new()
+	var n: int = loader.load_catalog("stats", "res://data/stats")
+	_check(n >= 13, "loaded at least the 13 core stat files")
+	var catalog: Dictionary = loader.get_catalog("stats")
+	_check(catalog.has("health"), "catalog has health.json")
+	_check(catalog.has("attack_damage"), "catalog has attack_damage.json")
+	# Every loaded definition must pass validation.
+	for id in catalog.keys():
+		_check(StatRegistry.validate_definition(catalog[id]).is_empty(), "disk stat %s validates" % str(id))
+	# Merge into a fresh registry and confirm the getters read disk values.
+	StatRegistry.reset_definitions()
+	StatRegistry.load_definitions(catalog)
+	_check(StatRegistry.affects("health").has("survivability"), "disk health affects survivability")
+	_check(StatRegistry.is_core("health"), "disk health classified core")
 	StatRegistry.reset_definitions()
 
 
