@@ -385,7 +385,7 @@ stat/affects می‌آیند. این تضمین می‌کند AI با هر مو�
 
 ---
 
-## فاز MD4 — Role Inference: نقشِ مشتق‌شده از Capability (متخصص: بند ۵) 🔴
+## فاز MD4 — Role Inference: نقشِ مشتق‌شده از Capability (متخصص: بند ۵) ✅ (انجام شد)
 
 **هدف:** از بردارِ Capability یک یا چند **نقش** (`frontline_tank`, `glass_cannon`,
 `ranged_dps`, `siege_unit`, `scout`, `support`, `anti_air`, `builder`, `harasser`,
