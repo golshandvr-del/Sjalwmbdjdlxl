@@ -609,6 +609,11 @@ func _init() -> void:
 	test_md9_site_security_resource_vulnerability()
 	test_md9_fold_quality_and_determinism()
 	test_md9_site_scoring_source_is_ascii_and_pure()
+	# Phase MD9.3 (item 8): map-grid topology (choke/path/candidates).
+	test_md9_topology_find_chokes()
+	test_md9_topology_attack_path_and_path_chokes()
+	test_md9_topology_candidate_tiles()
+	test_md9_topology_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10278,3 +10283,90 @@ func test_md9_site_scoring_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("WorldState"), "site_scoring_util does not touch the world model type")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "site_scoring_util does not touch the sim hasher")
 	_check(not src.contains("SceneTree"), "site_scoring_util does not touch the scene tree type")
+
+
+# --- Phase MD9.3 (item 8): map-grid topology (choke/path/candidates) --------
+
+# A 7x7 map split into two rooms by a full wall at x=3, pierced by a single
+# 1-wide doorway (a choke) at (3,3). 0 = ground, 1 = wall.
+func _md9_two_room_world() -> Dictionary:
+	var w: int = 7
+	var h: int = 7
+	var tiles: Array = []
+	tiles.resize(w * h)
+	for i in range(tiles.size()):
+		tiles[i] = 0
+	for y in range(h):
+		tiles[y * w + 3] = 1
+	# Open the doorway at (3,3).
+	tiles[3 * w + 3] = 0
+	return {
+		"width": w, "height": h, "tiles": tiles,
+		"hq": { "x": 0, "y": 3 },
+		"enemies": [ { "x": 6, "y": 3 } ],
+		"occupied": [ { "x": 0, "y": 3 } ],
+	}
+
+
+func test_md9_topology_find_chokes() -> void:
+	print("test_md9_topology_find_chokes")
+	var world: Dictionary = _md9_two_room_world()
+	var chokes: Array = SiteTopologyUtil.find_chokes(int(world["width"]), int(world["height"]), world["tiles"])
+	# The doorway (3,3) is a horizontal 1-wide pinch (left+right open, up/down wall).
+	_check(chokes.has(Vector2i(3, 3)), "doorway (3,3) detected as a choke")
+	# is_choke matches for the doorway and not for an open-field tile.
+	_check(SiteTopologyUtil.is_choke(7, 7, world["tiles"], 3, 3) == true, "is_choke true at doorway")
+	_check(SiteTopologyUtil.is_choke(7, 7, world["tiles"], 1, 1) == false, "is_choke false in open field")
+
+
+func test_md9_topology_attack_path_and_path_chokes() -> void:
+	print("test_md9_topology_attack_path_and_path_chokes")
+	var world: Dictionary = _md9_two_room_world()
+	var path: Array = SiteTopologyUtil.estimate_attack_path(7, 7, world["tiles"], Vector2i(6, 3), Vector2i(0, 3))
+	_check(path.size() > 0, "enemy has a path to HQ through the doorway")
+	# Any route between the rooms MUST pass through the single doorway (3,3).
+	_check(path.has(Vector2i(3, 3)), "attack path passes through the doorway")
+	var on_path: Array = SiteTopologyUtil.chokes_on_path(7, 7, world["tiles"], path)
+	_check(on_path.has(Vector2i(3, 3)), "doorway choke is flagged as on the attack path")
+
+
+func test_md9_topology_candidate_tiles() -> void:
+	print("test_md9_topology_candidate_tiles")
+	var world: Dictionary = _md9_two_room_world()
+	var cands: Array = SiteTopologyUtil.candidate_tiles(world, 3)
+	_check(cands.size() > 0, "candidate tiles enumerated")
+	# HQ cell and occupied cells are excluded.
+	_check(not cands.has(Vector2i(0, 3)), "HQ cell excluded from candidates")
+	# Candidates are stably sorted by (x, y).
+	var sorted_copy: Array = cands.duplicate()
+	sorted_copy.sort_custom(func(a, b):
+		var av: Vector2i = a as Vector2i
+		var bv: Vector2i = b as Vector2i
+		if av.x != bv.x:
+			return av.x < bv.x
+		return av.y < bv.y)
+	_check(cands == sorted_copy, "candidate list is stably sorted by (x,y)")
+	# The doorway choke on the attack path is offered as a defensive candidate.
+	_check(cands.has(Vector2i(3, 3)), "doorway choke offered as a candidate")
+	# Determinism: same world -> identical candidate list.
+	var again: Array = SiteTopologyUtil.candidate_tiles(world, 3)
+	_check(cands == again, "candidate enumeration is deterministic")
+	# Empty world is handled gracefully.
+	_check(SiteTopologyUtil.candidate_tiles({}, 3).is_empty(), "empty world -> no candidates")
+
+
+func test_md9_topology_source_is_ascii_and_pure() -> void:
+	print("test_md9_topology_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/site_topology_util.gd")
+	_check(src.length() > 0, "site_topology_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "site_topology_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "site_topology_util extends RefCounted")
+	_check(src.contains("PathService"), "site_topology_util reuses PathService")
+	_check(not src.contains("WorldState"), "site_topology_util does not touch the world model type")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "site_topology_util does not touch the sim hasher")
+	_check(not src.contains("SceneTree"), "site_topology_util does not touch the scene tree type")
