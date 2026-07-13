@@ -68,8 +68,46 @@ mods/<your_mod>/
   mod.json                       # manifest (see below)
   data/units/<id>.json           # added/overridden units
   data/buildings/<id>.json       # added/overridden buildings
+  data/stats/<id>.json           # NEW (MD1): added/overridden stat definitions
   textures/<name>.png            # mod-supplied art (referenced by visual.texture)
 ```
+
+### Defining a stat as data (MD1)
+
+Stats are no longer hard-coded: each one is a small data record the engine merges
+on top of its built-in Core stats. A mod can override a Core stat's metadata or
+add a brand-new "Free" stat that the AI understands automatically (via `affects`,
+see MD2) without any code change. A stat definition file looks like:
+
+```json
+{
+  "id": "armor",
+  "type": "int",
+  "category": "defense",
+  "min": 0,
+  "max": 1000,
+  "default": 0,
+  "higher_is_better": true,
+  "ai_importance": 0.7,
+  "display_name_key": "stat.armor.name",
+  "affects": { "survivability": 0.8, "holding_power": 0.5 }
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `id` | unique stat id (matches the key used in a unit/building `stats` dict) |
+| `type` | `int` or `float` (floats are allowed on disk; the AI path uses fixed-point) |
+| `category` | grouping label: `combat` / `defense` / `mobility` / `economy` / … |
+| `min` / `max` / `default` | value bounds + fallback when a unit omits the stat |
+| `higher_is_better` | direction of "good" (used by the AI valuation) |
+| `ai_importance` | 0..1 hint of how much the AI should weigh this stat |
+| `affects` | map `capability_id -> weight` binding the raw stat to AI capabilities |
+
+The registry validates each definition (`validate_definition`) and rejects
+unknown keys, `min > max`, a bad `type`, or a malformed `affects` map with a
+human-readable reason for the mod editor. Core stats keep working even if you
+ship no `data/stats/` folder at all.
 
 `mod.json`:
 
