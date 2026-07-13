@@ -549,6 +549,7 @@ func _init() -> void:
 	test_md2_capability_i18n_keys_present_in_all_locales()
 	test_md2_stat_affects_builtin_map_fixed_point_and_known()
 	test_md2_stat_affects_deterministic_and_defensive()
+	test_md2_resolve_affects_merges_mod_and_builtin()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2285,6 +2286,36 @@ func test_md2_stat_affects_deterministic_and_defensive() -> void:
 	_check(not second.has("injected"), "mutation did not inject key into table")
 	# builtin_map() is deterministic across calls.
 	_check(StatAffectsUtil.builtin_map() == StatAffectsUtil.builtin_map(), "builtin_map deterministic")
+
+
+# MD2.3: resolve_affects merges a stat registry's data-defined affects on top of
+# the built-in fixed-point map -- a Free Stat gets wired to a Capability with no
+# engine code, an override replaces a built-in weight, and unknown capability
+# ids are dropped. null registry falls back to the built-in map.
+func test_md2_resolve_affects_merges_mod_and_builtin() -> void:
+	print("test_md2_resolve_affects_merges_mod_and_builtin")
+	StatRegistry.reset_definitions()
+	# null registry -> pure built-in map.
+	_check(StatAffectsUtil.resolve_affects(null) == StatAffectsUtil.builtin_map(), "null registry -> builtin map")
+	# A brand-new Free Stat wired only by data affects, plus an override of a
+	# built-in Core Stat weight, plus an unknown capability that must be dropped.
+	StatRegistry.load_definitions({
+		"morale": { "value_type": "int", "affects": { "holding_power": 0.6, "not_a_capability": 0.9 } },
+		"armor":  { "affects": { "survivability": 0.9 } },
+	})
+	var resolved: Dictionary = StatAffectsUtil.resolve_affects(StatRegistry)
+	# Free stat is now present and fixed-point.
+	_check(resolved.has("morale"), "free stat morale resolved into affects")
+	_check((resolved["morale"] as Dictionary).get("holding_power", 0) == 600, "morale -> holding_power quantised to 600")
+	_check(not (resolved["morale"] as Dictionary).has("not_a_capability"), "unknown capability dropped")
+	# Override replaced the built-in armor->survivability (was 800, now 900) but
+	# kept the built-in armor->holding_power (500) the mod did not mention.
+	var armor: Dictionary = resolved["armor"] as Dictionary
+	_check(armor.get("survivability", 0) == 900, "armor->survivability overridden to 900")
+	_check(armor.get("holding_power", 0) == 500, "armor->holding_power kept from built-in")
+	# Deterministic across calls.
+	_check(StatAffectsUtil.resolve_affects(StatRegistry) == StatAffectsUtil.resolve_affects(StatRegistry), "resolve_affects deterministic")
+	StatRegistry.reset_definitions()
 
 
 # --- E2: graphic model + image validation -----------------------------------
