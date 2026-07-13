@@ -210,6 +210,109 @@ func _find_hq(owner: int) -> Dictionary:
 	return {}
 
 
+# --- MD7.2: world summary for the deterministic Context Vector --------------
+
+# Build the PLAIN, owner-relative world summary that AiContextUtil.build_context
+# consumes. This lives in the MODULE (not the pure util) so the util stays free
+# of any world-model dependency and remains headlessly testable: the module
+# reads the live world model here and hands the util a flat snapshot.
+#
+# The summary is deterministic (every list is folded from id-sorted section
+# keys) and contains only the fields the context vector documents. Returns a
+# plain Dictionary suitable to pass straight to AiContextUtil.build_context.
+func summarize(owner: int) -> Dictionary:
+	var hq: Dictionary = _find_hq(owner)
+	var own_units: Array = []
+	var enemy_units: Array = []
+	var enemy_buildings: Array = []
+	var own_army: int = 0
+	var enemy_army: int = 0
+
+	var units: Dictionary = _units()
+	var ukeys: Array = units.keys()
+	ukeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in ukeys:
+		var u: Dictionary = units[key]
+		if int(u.get("health", 0)) <= 0:
+			continue
+		var entry: Dictionary = {
+			"id": int(u.get("id", 0)),
+			"x": int(u.get("x", 0)),
+			"y": int(u.get("y", 0)),
+			"health": int(u.get("health", 0)),
+		}
+		if int(u.get("owner", -1)) == owner:
+			own_units.append(entry)
+			own_army += 1
+		else:
+			enemy_units.append(entry)
+			enemy_army += 1
+
+	var buildings: Dictionary = _buildings()
+	var bkeys: Array = buildings.keys()
+	bkeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in bkeys:
+		var b: Dictionary = buildings[key]
+		if int(b.get("health", 0)) <= 0:
+			continue
+		if int(b.get("owner", -1)) != owner:
+			enemy_buildings.append({
+				"id": int(b.get("id", 0)),
+				"x": int(b.get("x", 0)),
+				"y": int(b.get("y", 0)),
+				"health": int(b.get("health", 0)),
+			})
+
+	var econ: Dictionary = nexus.world_state.get_section("economy")
+	var own_economy: int = int(_economy_for(econ, owner))
+	var enemy_economy: int = int(_enemy_economy(econ, owner))
+
+	return {
+		"hq": hq if hq.is_empty() else { "x": int(hq.get("x", 0)), "y": int(hq.get("y", 0)) },
+		"own_units": own_units,
+		"enemy_units": enemy_units,
+		"enemy_buildings": enemy_buildings,
+		"own_economy": own_economy,
+		"enemy_economy": enemy_economy,
+		"own_army": own_army,
+		"enemy_army": enemy_army,
+		"has_ally": false,
+		"in_active_war": enemy_army > 0 or enemy_buildings.size() > 0,
+	}
+
+
+# The stored economy score for one owner (resilient: 0 when absent). The economy
+# section stores per-owner balances under "players"/"balances"; fall back to a
+# flat "gold" reading if the richer shape is not present.
+func _economy_for(econ: Dictionary, owner: int) -> int:
+	var players: Variant = econ.get("players", econ.get("balances", {}))
+	if players is Dictionary and (players as Dictionary).has(str(owner)):
+		var rec: Variant = (players as Dictionary)[str(owner)]
+		if rec is Dictionary:
+			return int((rec as Dictionary).get("gold", (rec as Dictionary).get("stored", 0)))
+		return int(rec)
+	return int(econ.get("gold", 0))
+
+
+# Summed economy score of every non-owner player (0 when none / absent).
+func _enemy_economy(econ: Dictionary, owner: int) -> int:
+	var players: Variant = econ.get("players", econ.get("balances", {}))
+	if not (players is Dictionary):
+		return 0
+	var total: int = 0
+	var keys: Array = (players as Dictionary).keys()
+	keys.sort()
+	for key in keys:
+		if int(key) == owner:
+			continue
+		var rec: Variant = (players as Dictionary)[key]
+		if rec is Dictionary:
+			total += int((rec as Dictionary).get("gold", (rec as Dictionary).get("stored", 0)))
+		else:
+			total += int(rec)
+	return total
+
+
 func _units() -> Dictionary:
 	return nexus.world_state.get_section("units").get("list", {})
 
