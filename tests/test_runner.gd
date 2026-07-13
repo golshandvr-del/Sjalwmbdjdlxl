@@ -603,6 +603,12 @@ func _init() -> void:
 	test_md9_score_building_value_and_site()
 	test_md9_score_building_deterministic()
 	test_md9_building_util_source_is_ascii_and_pure()
+	# Phase MD9.2 (item 8): site quality scoring.
+	test_md9_site_quality_keys_closed_and_sorted()
+	test_md9_site_choke_and_path_blocking()
+	test_md9_site_security_resource_vulnerability()
+	test_md9_fold_quality_and_determinism()
+	test_md9_site_scoring_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10168,3 +10174,107 @@ func test_md9_building_util_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("WorldState"), "building_utility_util does not touch the world model type")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "building_utility_util does not touch the sim hasher")
 	_check(not src.contains("SceneTree"), "building_utility_util does not touch the scene tree type")
+
+
+# --- Phase MD9.2 (item 8): site quality scoring -----------------------------
+
+# A small map with a vertical corridor at x=2 (walls at x=1 and x=3 on the
+# corridor rows). Grid is 5 wide x 5 tall; 0 = ground, 1 = blocked.
+func _md9_corridor_world() -> Dictionary:
+	var w: int = 5
+	var h: int = 5
+	var tiles: Array = []
+	tiles.resize(w * h)
+	for i in range(tiles.size()):
+		tiles[i] = 0
+	# Build walls flanking a 1-wide vertical corridor at column x=2, rows y=1..3.
+	for y in range(1, 4):
+		tiles[y * w + 1] = 1
+		tiles[y * w + 3] = 1
+	return {
+		"width": w, "height": h, "tiles": tiles,
+		"hq": { "x": 0, "y": 4 },
+		"enemies": [ { "x": 4, "y": 0 } ],
+		"resources": [ { "x": 1, "y": 4 } ],
+		"existing": [ { "x": 0, "y": 4 } ],
+	}
+
+
+func test_md9_site_quality_keys_closed_and_sorted() -> void:
+	print("test_md9_site_quality_keys_closed_and_sorted")
+	var keys: Array = SiteScoringUtil.QUALITY_KEYS
+	var sorted_copy: Array = keys.duplicate()
+	sorted_copy.sort()
+	_check(keys == sorted_copy, "QUALITY_KEYS is stably sorted")
+	var world: Dictionary = _md9_corridor_world()
+	var q: Dictionary = SiteScoringUtil.score_site(2, 2, world)
+	for k in keys:
+		_check(q.has(k), "score_site emits key %s" % k)
+	_check(q.size() == keys.size(), "score_site emits exactly the closed key set")
+
+
+func test_md9_site_choke_and_path_blocking() -> void:
+	print("test_md9_site_choke_and_path_blocking")
+	var world: Dictionary = _md9_corridor_world()
+	# Tile (2,2) sits in the 1-wide vertical corridor: up/down open, sides walls.
+	var choke: Dictionary = SiteScoringUtil.score_site(2, 2, world)
+	# An open-field tile away from any wall (e.g. bottom-left ground).
+	var open: Dictionary = SiteScoringUtil.score_site(0, 0, world)
+	_check(int(choke["path_blocking"]) == 1000, "corridor tile fully blocks a path")
+	_check(int(choke["choke_point_control"]) > int(open["choke_point_control"]), "corridor tile has stronger choke control")
+	_check(int(open["path_blocking"]) <= int(choke["path_blocking"]), "open tile blocks no more than corridor")
+
+
+func test_md9_site_security_resource_vulnerability() -> void:
+	print("test_md9_site_security_resource_vulnerability")
+	var world: Dictionary = _md9_corridor_world()
+	# HQ is at (0,4); the enemy at (4,0). A tile next to HQ is more secure and
+	# less vulnerable than a tile next to the enemy.
+	var near_hq: Dictionary = SiteScoringUtil.score_site(0, 3, world)
+	var near_enemy: Dictionary = SiteScoringUtil.score_site(4, 1, world)
+	_check(int(near_hq["site_security"]) > int(near_enemy["site_security"]), "tile near HQ is more secure")
+	_check(int(near_enemy["vulnerability"]) > int(near_hq["vulnerability"]), "tile near enemy is more vulnerable")
+	# Resource node is at (1,4); a tile next to it has strong resource access.
+	var near_res: Dictionary = SiteScoringUtil.score_site(0, 4, world)
+	_check(int(near_res["resource_access"]) > int(near_enemy["resource_access"]), "tile near resource has better access")
+
+
+func test_md9_fold_quality_and_determinism() -> void:
+	print("test_md9_fold_quality_and_determinism")
+	var world: Dictionary = _md9_corridor_world()
+	var q1: Dictionary = SiteScoringUtil.score_site(2, 2, world)
+	var q2: Dictionary = SiteScoringUtil.score_site(2, 2, world)
+	_check(q1 == q2, "score_site is byte-identical for the same inputs")
+	var folded: int = SiteScoringUtil.fold_quality(q1)
+	_check(folded >= 0 and folded <= SiteScoringUtil.SCALE, "folded quality stays within [0..SCALE]")
+	# A pure choke/secure tile should fold higher than a fully vulnerable one.
+	var high: int = SiteScoringUtil.fold_quality({
+		"site_security": 1000, "frontline_value": 500, "resource_access": 500,
+		"path_blocking": 1000, "choke_point_control": 1000, "coverage": 500,
+		"synergy_with_existing": 500, "vulnerability": 0,
+	})
+	var low: int = SiteScoringUtil.fold_quality({
+		"site_security": 0, "frontline_value": 0, "resource_access": 0,
+		"path_blocking": 0, "choke_point_control": 0, "coverage": 0,
+		"synergy_with_existing": 0, "vulnerability": 1000,
+	})
+	_check(high > low, "secure choke folds higher than exposed tile")
+	# Empty world must not crash and yields the full key set with safe defaults.
+	var empty: Dictionary = SiteScoringUtil.score_site(0, 0, {})
+	_check(empty.size() == SiteScoringUtil.QUALITY_KEYS.size(), "empty world still yields full key set")
+
+
+func test_md9_site_scoring_source_is_ascii_and_pure() -> void:
+	print("test_md9_site_scoring_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/site_scoring_util.gd")
+	_check(src.length() > 0, "site_scoring_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "site_scoring_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "site_scoring_util extends RefCounted")
+	_check(not src.contains("WorldState"), "site_scoring_util does not touch the world model type")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "site_scoring_util does not touch the sim hasher")
+	_check(not src.contains("SceneTree"), "site_scoring_util does not touch the scene tree type")
