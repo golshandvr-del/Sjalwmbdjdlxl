@@ -556,6 +556,12 @@ func _init() -> void:
 	test_md3_cost_efficiency_and_resource_pressure()
 	test_md3_cache_matches_uncached_and_key_stable()
 	test_md3_resilience_incomplete_unit_uses_defaults()
+	test_md4_infer_roles_ranked_fixed_point_and_deterministic()
+	test_md4_primary_role_alpha_tie_break()
+	test_md4_generic_fallback_never_empty()
+	test_md4_synthetic_archetypes_map_to_expected_roles()
+	test_md4_building_signatures_and_auto_target()
+	test_md4_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2455,6 +2461,150 @@ func test_md3_resilience_incomplete_unit_uses_defaults() -> void:
 	var junk: Dictionary = DerivedMetricsUtil.compute_capabilities("not a dict", StatRegistry, null)
 	_check(int(junk["survivability"]) == CapabilityRegistry.default_q("survivability"), "junk input -> defaults")
 	StatRegistry.reset_definitions()
+
+
+# --- MD4: Role Inference (capability vector -> role) -------------------------
+
+# MD4.1: infer_roles returns a ranked, fixed-point, deterministic list. Every
+# score is an int in [0..SCALE]; the list is sorted by score DESC then role ASC;
+# the same input yields byte-for-byte the same output.
+func test_md4_infer_roles_ranked_fixed_point_and_deterministic() -> void:
+	print("test_md4_infer_roles_ranked_fixed_point_and_deterministic")
+	StatRegistry.reset_definitions()
+	# A heavy tank: high survivability + holding power, low mobility.
+	var tank_caps: Dictionary = {
+		"survivability": 900, "holding_power": 800, "mobility": 100,
+		"damage_output": 300, "siege_power": 100, "scout_power": 50,
+	}
+	var roles: Array = RoleInferenceUtil.infer_roles(tank_caps, "unit")
+	_check(not roles.is_empty(), "infer_roles returns at least one role")
+	# Every entry is a well-formed fixed-point record.
+	for r in roles:
+		_check(r is Dictionary, "role entry is a dict")
+		_check((r as Dictionary).has("role") and (r as Dictionary).has("score_q"), "role entry has role+score_q")
+		var sc: Variant = (r as Dictionary)["score_q"]
+		_check(sc is int, "score_q is fixed-point int")
+		_check(int(sc) >= 0 and int(sc) <= RoleInferenceUtil.SCALE, "score_q in [0..SCALE]")
+	# Sorted by score DESC.
+	for i in range(1, roles.size()):
+		_check(int((roles[i - 1] as Dictionary)["score_q"]) >= int((roles[i] as Dictionary)["score_q"]), "roles sorted by score DESC")
+	# Deterministic: same input -> identical output.
+	_check(roles == RoleInferenceUtil.infer_roles(tank_caps, "unit"), "infer_roles deterministic")
+	# The tank's top role is frontline_tank.
+	_check(str((roles[0] as Dictionary)["role"]) == "frontline_tank", "heavy tank primary role is frontline_tank")
+
+
+# MD4.2: primary_role ties break ALPHABETICALLY so the choice stays stable and
+# deterministic. Construct a vector that scores two roles identically.
+func test_md4_primary_role_alpha_tie_break() -> void:
+	print("test_md4_primary_role_alpha_tie_break")
+	StatRegistry.reset_definitions()
+	# Build two 1-term signatures artificially tied: anti_air ({anti_air_power,
+	# damage_output}) vs a pure damage vector. To force a clean tie we craft a
+	# vector where the normalised scores of two roles are equal, then assert the
+	# alphabetically-first role wins. Easiest deterministic tie: feed a vector so
+	# that infer_roles yields >=2 entries with the same top score.
+	# damage_output only -> glass_cannon and ranged_dps both key off damage_output.
+	var caps: Dictionary = { "damage_output": 1000 }
+	var roles: Array = RoleInferenceUtil.infer_roles(caps, "unit")
+	# Find the max score and collect all roles at that score.
+	var top: int = int((roles[0] as Dictionary)["score_q"])
+	var tied: Array = []
+	for r in roles:
+		if int((r as Dictionary)["score_q"]) == top:
+			tied.append(str((r as Dictionary)["role"]))
+	if tied.size() >= 2:
+		# primary_role must be the alphabetically-first among the tied set.
+		var expected: String = tied.duplicate()
+		expected.sort()
+		_check(RoleInferenceUtil.primary_role(caps, "unit") == expected[0], "primary_role breaks ties alphabetically")
+	else:
+		# Even without a tie, primary_role must equal the single top role.
+		_check(RoleInferenceUtil.primary_role(caps, "unit") == str((roles[0] as Dictionary)["role"]), "primary_role is the top role")
+	# Direct comparator tie check: equal score -> alphabetical order preserved.
+	var a: Dictionary = { "role": "zzz", "score_q": 500 }
+	var b: Dictionary = { "role": "aaa", "score_q": 500 }
+	_check(RoleInferenceUtil._role_sort(b, a), "comparator puts alphabetically-first role ahead on a tie")
+
+
+# MD4.3: an empty / incomplete / malformed vector NEVER leaves without a role --
+# it yields exactly the generic role. No input can crash or produce empty list.
+func test_md4_generic_fallback_never_empty() -> void:
+	print("test_md4_generic_fallback_never_empty")
+	StatRegistry.reset_definitions()
+	# Empty vector.
+	var empty_roles: Array = RoleInferenceUtil.infer_roles({}, "unit")
+	_check(empty_roles.size() == 1, "empty vector -> exactly one role")
+	_check(str((empty_roles[0] as Dictionary)["role"]) == RoleInferenceUtil.GENERIC_ROLE, "empty vector -> generic role")
+	_check(RoleInferenceUtil.primary_role({}, "unit") == RoleInferenceUtil.GENERIC_ROLE, "empty vector primary_role is generic")
+	# All-zero / all-default vector -> generic (nothing clears the floor).
+	var zero: Dictionary = {}
+	for id in CapabilityRegistry.all_ids():
+		zero[id] = 0
+	_check(RoleInferenceUtil.primary_role(zero, "unit") == RoleInferenceUtil.GENERIC_ROLE, "all-zero vector -> generic")
+	# Malformed inputs must not crash and must still return generic.
+	_check(RoleInferenceUtil.primary_role(null, "unit") == RoleInferenceUtil.GENERIC_ROLE, "null input -> generic")
+	_check(RoleInferenceUtil.primary_role("not a dict", "unit") == RoleInferenceUtil.GENERIC_ROLE, "junk input -> generic")
+	_check(RoleInferenceUtil.primary_role(42, "unit") == RoleInferenceUtil.GENERIC_ROLE, "int input -> generic")
+
+
+# MD4.4: synthetic light archetypes map to the intuitively-correct role, going
+# through the REAL raw-stat -> capability -> role pipeline (preview of MD13).
+func test_md4_synthetic_archetypes_map_to_expected_roles() -> void:
+	print("test_md4_synthetic_archetypes_map_to_expected_roles")
+	StatRegistry.reset_definitions()
+	# Heavy tank: lots of health, slow, modest damage -> frontline_tank.
+	var tank: Dictionary = { "id": "heavy_tank", "stats": { "health": 600, "armor": 120, "move_speed": 1, "attack_damage": 22, "attack_range": 2 }, "cost": { "resource_basic": 200 } }
+	var tank_caps: Dictionary = DerivedMetricsUtil.compute_capabilities(tank, StatRegistry, null)
+	_check(RoleInferenceUtil.primary_role(tank_caps, "unit") == "frontline_tank", "heavy tank -> frontline_tank")
+	# Fragile sniper: high damage, long range, very low health -> glass_cannon or ranged_dps.
+	var sniper: Dictionary = { "id": "sniper", "stats": { "health": 40, "move_speed": 2, "attack_damage": 90, "attack_range": 9 }, "cost": { "resource_basic": 90 } }
+	var sniper_caps: Dictionary = DerivedMetricsUtil.compute_capabilities(sniper, StatRegistry, null)
+	var sniper_role: String = RoleInferenceUtil.primary_role(sniper_caps, "unit")
+	_check(sniper_role == "glass_cannon" or sniper_role == "ranged_dps", "fragile sniper -> glass_cannon/ranged_dps (got %s)" % sniper_role)
+	# Fast scout: high speed + vision, low health/damage -> scout or harasser.
+	var scout: Dictionary = { "id": "recon", "stats": { "health": 50, "move_speed": 6, "attack_damage": 5, "attack_range": 1, "vision_range": 12 }, "cost": { "resource_basic": 35 } }
+	var scout_caps: Dictionary = DerivedMetricsUtil.compute_capabilities(scout, StatRegistry, null)
+	var scout_role: String = RoleInferenceUtil.primary_role(scout_caps, "unit")
+	_check(scout_role == "scout" or scout_role == "harasser", "fast scout -> scout/harasser (got %s)" % scout_role)
+	StatRegistry.reset_definitions()
+
+
+# MD4.1/MD4.4: building signatures resolve, and "auto" target picks the building
+# table when building capabilities dominate the vector.
+func test_md4_building_signatures_and_auto_target() -> void:
+	print("test_md4_building_signatures_and_auto_target")
+	StatRegistry.reset_definitions()
+	# A pure defensive building capability vector.
+	var turret_caps: Dictionary = { "defense_value": 950, "frontline_value": 400 }
+	_check(RoleInferenceUtil.primary_role(turret_caps, "building") == "defensive", "defensive building -> defensive role")
+	# A production building.
+	var factory_caps: Dictionary = { "production_value": 900 }
+	_check(RoleInferenceUtil.primary_role(factory_caps, "building") == "production", "production building -> production role")
+	# auto target: building capabilities dominate -> building table chosen.
+	var eco_caps: Dictionary = { "economic_value": 900, "resource_pressure": 500, "damage_output": 0 }
+	var auto_role: String = RoleInferenceUtil.primary_role(eco_caps, "auto")
+	_check(auto_role == "economic", "auto target picks building role when building signal dominates (got %s)" % auto_role)
+
+
+# CODE_POLICY: the util source is ASCII-only and pure (RefCounted, no
+# SceneTree / WorldState / state_hasher dependency).
+func test_md4_source_is_ascii_and_pure() -> void:
+	print("test_md4_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://core/role_inference_util.gd")
+	_check(src.length() > 0, "role_inference_util.gd source readable")
+	# ASCII-only: every code byte < 128.
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "role_inference_util.gd is ASCII-only")
+	# Pure: RefCounted, no simulation dependencies.
+	_check(src.contains("extends RefCounted"), "role_inference_util extends RefCounted")
+	_check(not src.contains("WorldState"), "role_inference_util does not touch WorldState")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "role_inference_util does not touch state hasher")
+	_check(not src.contains("SceneTree"), "role_inference_util does not touch SceneTree")
 
 
 # --- E2: graphic model + image validation -----------------------------------
