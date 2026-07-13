@@ -547,6 +547,8 @@ func _init() -> void:
 	test_md2_capability_all_ids_sorted_and_stable()
 	test_md2_capability_defaults_and_applies_to()
 	test_md2_capability_i18n_keys_present_in_all_locales()
+	test_md2_stat_affects_builtin_map_fixed_point_and_known()
+	test_md2_stat_affects_deterministic_and_defensive()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2231,6 +2233,58 @@ func test_md2_capability_i18n_keys_present_in_all_locales() -> void:
 		_check(key != "", "capability %s has a name_key" % id)
 		_check(en.has(key), "en has %s" % key)
 		_check(fa.has(key), "fa has %s" % key)
+
+
+# MD2.2: the built-in Core-Stat -> Capability affects map is fixed-point (all
+# weights are ints), and every capability it points at is a KNOWN capability.
+func test_md2_stat_affects_builtin_map_fixed_point_and_known() -> void:
+	print("test_md2_stat_affects_builtin_map_fixed_point_and_known")
+	var m: Dictionary = StatAffectsUtil.builtin_map()
+	_check(not m.is_empty(), "builtin affects map is non-empty")
+	for stat_id in m.keys():
+		var caps: Dictionary = m[stat_id] as Dictionary
+		_check(not caps.is_empty(), "%s maps to at least one capability" % str(stat_id))
+		for cap_id in caps.keys():
+			_check(CapabilityRegistry.has_capability(str(cap_id)), "%s -> known capability %s" % [str(stat_id), str(cap_id)])
+			var w: Variant = caps[cap_id]
+			_check(w is int, "weight %s->%s is fixed-point int" % [str(stat_id), str(cap_id)])
+			_check(int(w) != 0, "weight %s->%s is non-zero" % [str(stat_id), str(cap_id)])
+	# Spot-check the section-2.3 examples (armor, move_speed, vision_range).
+	var armor: Dictionary = StatAffectsUtil.builtin_affects_for("armor")
+	_check(armor.get("survivability", 0) == 800, "armor -> survivability 0.8 fixed-point")
+	_check(armor.get("holding_power", 0) == 500, "armor -> holding_power 0.5 fixed-point")
+	var spd: Dictionary = StatAffectsUtil.builtin_affects_for("move_speed")
+	_check(spd.get("mobility", 0) == StatAffectsUtil.SCALE, "move_speed -> mobility 1.0 fixed-point")
+	var vis: Dictionary = StatAffectsUtil.builtin_affects_for("vision_range")
+	_check(vis.get("scout_power", 0) == 900, "vision_range -> scout_power 0.9 fixed-point")
+	# quantize_weight rounds deterministically (round-half-away-from-zero).
+	_check(StatAffectsUtil.quantize_weight(0.8) == 800, "quantize 0.8 -> 800")
+	_check(StatAffectsUtil.quantize_weight(1.0) == 1000, "quantize 1.0 -> 1000")
+	_check(StatAffectsUtil.quantize_weight(0.3) == 300, "quantize 0.3 -> 300")
+	_check(StatAffectsUtil.quantize_weight(0.0) == 0, "quantize 0.0 -> 0")
+
+
+# MD2.2: builtin_stat_ids() is stably sorted, builtin_affects_for returns a
+# defensive copy (mutating the result must not corrupt the table), and unknown
+# stats yield an empty map (resilience, never a crash).
+func test_md2_stat_affects_deterministic_and_defensive() -> void:
+	print("test_md2_stat_affects_deterministic_and_defensive")
+	var a: Array = StatAffectsUtil.builtin_stat_ids()
+	var b: Array = a.duplicate()
+	b.sort()
+	_check(a == b, "builtin_stat_ids is sorted/stable")
+	_check(StatAffectsUtil.has_builtin("armor"), "armor has a built-in mapping")
+	_check(not StatAffectsUtil.has_builtin("not_a_stat"), "unknown stat has no built-in mapping")
+	_check(StatAffectsUtil.builtin_affects_for("not_a_stat").is_empty(), "unknown stat -> empty affects")
+	# Defensive copy: mutating the returned dict must not change the table.
+	var first: Dictionary = StatAffectsUtil.builtin_affects_for("armor")
+	first["survivability"] = 1
+	first["injected"] = 999
+	var second: Dictionary = StatAffectsUtil.builtin_affects_for("armor")
+	_check(second.get("survivability", 0) == 800, "mutation did not corrupt table (survivability)")
+	_check(not second.has("injected"), "mutation did not inject key into table")
+	# builtin_map() is deterministic across calls.
+	_check(StatAffectsUtil.builtin_map() == StatAffectsUtil.builtin_map(), "builtin_map deterministic")
 
 
 # --- E2: graphic model + image validation -----------------------------------
