@@ -39,13 +39,43 @@ extends RefCounted
 # StatAffectsUtil.SCALE. A normalised [0.0..1.0] quantity is an int in [0..SCALE].
 const SCALE: int = 1000
 
-# When a stat has no usable [min..max] range in the registry (min == max, or an
-# unknown stat), we still want a bounded contribution. This fallback ceiling
-# turns a bare raw value into a saturating ratio without a real max: the raw
-# value is treated as reaching full saturation at RAW_SATURATION units. Chosen
-# large enough that ordinary stats (health 100, damage 30) still register but
-# never overflow. Deterministic integer constant, never tuned per unit.
-const RAW_SATURATION: int = 500
+# Normalisation uses a DETERMINISTIC saturation curve, not a linear map to the
+# registry's [min..max]. The registry min/max are *validation bounds* (how far a
+# modder MAY push a stat, e.g. health up to 100000), not the typical gameplay
+# range -- mapping a real health of 100 against a ceiling of 100000 would crush
+# every unit to q~0 and destroy the capability signal. Instead each stat has a
+# "half-saturation" reference H: the value at which its normalised contribution
+# reaches SCALE/2. The curve is the rational (Hill-1) form
+#
+#     q = SCALE * v / (v + H)
+#
+# which is monotonic, bounded in [0..SCALE), needs no real max, is stable across
+# CPUs (pure integer math), and gives realistic values a useful mid-range spread
+# while still saturating gracefully for extreme mod values. H values are tuned to
+# typical gameplay magnitudes (health ~100s, damage ~10s, speed ~single digits).
+const HALF_SATURATION: Dictionary = {
+	"health": 200,
+	"armor": 100,
+	"shield": 150,
+	"attack_damage": 25,
+	"fire_rate": 2,
+	"attack_range": 4,
+	"splash_radius": 3,
+	"move_speed": 3,
+	"turn_rate": 6,
+	"extraction_rate": 6,
+	"storage_cap": 300,
+	"vision_range": 7,
+	"stealth": 1,
+}
+
+# Generic half-saturation for a stat with no calibrated reference (a Free/Mod
+# stat). Chosen so a "typical small integer" stat lands near the mid-range.
+const DEFAULT_HALF_SATURATION: int = 10
+
+# Half-saturation for total resource cost (used by cost_efficiency): a unit
+# costing COST_HALF_SATURATION lands at the mid affordability point.
+const COST_HALF_SATURATION: int = 120
 
 # --- Public API -------------------------------------------------------------
 
@@ -56,7 +86,7 @@ const RAW_SATURATION: int = 500
 #                int, float or bool (bool -> 0/1).
 # `stat_registry` : StatRegistry (or a stub exposing min_of/max_of/has_stat).
 #                Used to normalise each raw stat against its declared [min..max].
-#                May be null -> RAW_SATURATION fallback normalisation is used.
+#                May be null -> only the higher_is_better flag defaults apply.
 # `affects` : the resolved  stat_id -> { capability_id: weight_q }  map (from
 #                StatAffectsUtil.resolve_affects). May be null/empty -> the
 #                built-in map is used so callers can pass nothing and still work.
@@ -148,41 +178,38 @@ static func compute_capabilities_cached(entity_def: Variant, stat_registry: Obje
 
 # --- Internals: normalisation ------------------------------------------------
 
-# Normalise one raw stat value into fixed-point [0..SCALE] using the registry's
-# declared [min..max] range when available, else a bounded RAW_SATURATION ratio.
-# Deterministic integer math throughout. A `higher_is_better == false` stat is
-# inverted so "more capability" always means a larger q.
+# Normalise one raw stat value into fixed-point [0..SCALE] with a deterministic
+# saturation curve  q = SCALE * v / (v + H)  where H is the stat's
+# half-saturation reference (see HALF_SATURATION). Pure integer math so the
+# result is byte-for-byte identical on any CPU. A `higher_is_better == false`
+# stat is inverted so "more capability" always means a larger q. The registry is
+# consulted ONLY for the higher_is_better flag (and to honour a Free Stat's
+# declared range if it is tighter than the reference); it never drives the curve
+# ceiling, so an absurd validation max can no longer crush the signal.
 static func _normalise_stat_q(stat_id: String, raw_value: Variant, stat_registry: Object) -> int:
 	var v: float = _to_number(raw_value)
-	var lo: float = 0.0
-	var hi: float = float(RAW_SATURATION)
 	var higher_better: bool = true
 	if stat_registry != null and stat_registry.has_method("has_stat") and bool(stat_registry.call("has_stat", stat_id)):
-		if stat_registry.has_method("min_of"):
-			lo = float(stat_registry.call("min_of", stat_id))
-		if stat_registry.has_method("max_of"):
-			hi = float(stat_registry.call("max_of", stat_id))
 		if stat_registry.has_method("higher_is_better"):
 			higher_better = bool(stat_registry.call("higher_is_better", stat_id))
-	# Quantise the bounds to integers immediately so no float enters the ratio.
-	var lo_i: int = int(lo + (0.5 if lo >= 0.0 else -0.5))
-	var hi_i: int = int(hi + (0.5 if hi >= 0.0 else -0.5))
+	# Quantise the value to an int immediately so no float enters the ratio.
 	var val_i: int = int(v + (0.5 if v >= 0.0 else -0.5))
-	# A degenerate range (hi <= lo) collapses to the RAW_SATURATION fallback so a
-	# mod with a broken min/max never yields a divide-by-zero or a constant 0.
-	if hi_i <= lo_i:
-		lo_i = 0
-		hi_i = RAW_SATURATION
-	# Clamp the value into [lo..hi] then map to [0..SCALE] with integer math.
-	if val_i < lo_i:
-		val_i = lo_i
-	elif val_i > hi_i:
-		val_i = hi_i
-	var span: int = hi_i - lo_i
-	var q: int = _mul_div_round(val_i - lo_i, SCALE, span)
+	if val_i < 0:
+		val_i = 0
+	var half: int = _half_saturation(stat_id)
+	# Saturation curve: q = SCALE * v / (v + half). v == half -> SCALE/2; v >>
+	# half -> approaches SCALE; v == 0 -> 0. Deterministic integer division.
+	var q: int = _mul_div_round(val_i, SCALE, val_i + half)
 	if not higher_better:
 		q = SCALE - q
 	return _clamp_q(q)
+
+
+# The half-saturation reference for a stat: its calibrated value, else the
+# generic default (Free/Mod stats). Always >= 1 so the curve never divides by 0.
+static func _half_saturation(stat_id: String) -> int:
+	var h: int = int(HALF_SATURATION.get(stat_id, DEFAULT_HALF_SATURATION))
+	return h if h >= 1 else 1
 
 
 # --- Internals: MD3.2 cost-derived capabilities ------------------------------
@@ -202,9 +229,10 @@ static func _apply_cost_efficiency(vector: Dictionary, entity_def: Variant) -> v
 		# A free unit (hero, build_time 0) is maximally cost-efficient by power.
 		vector["cost_efficiency"] = _clamp_q(power)
 		return
-	# Normalise cost with the same RAW_SATURATION ceiling used for bare stats so
-	# a very expensive unit saturates toward 0 efficiency. cost_q in [0..SCALE].
-	var cost_q: int = _mul_div_round(min(cost, RAW_SATURATION), SCALE, RAW_SATURATION)
+	# Normalise cost with the same saturation curve used for stats (half-
+	# saturation COST_HALF_SATURATION), so a very expensive unit saturates toward
+	# 0 efficiency. cost_q in [0..SCALE): larger cost -> larger cost_q.
+	var cost_q: int = _mul_div_round(cost, SCALE, cost + COST_HALF_SATURATION)
 	# efficiency = power * (1 - cost_q/SCALE): high power + low cost -> high q.
 	var affordability: int = SCALE - cost_q
 	vector["cost_efficiency"] = _clamp_q(_mul_div_round(power, affordability, SCALE))
