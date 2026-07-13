@@ -2349,6 +2349,114 @@ func test_md2_validate_affects_rejects_unknown_and_out_of_range() -> void:
 	_check(str(multi[0]).find("aaa_unknown") >= 0, "problems sorted by capability id")
 
 
+# --- MD3: derived metrics (raw stats -> capability vector) ------------------
+
+# MD3.1: compute_capabilities returns a FULL vector (every registry capability),
+# every value a fixed-point int in [0..SCALE], deterministic across calls.
+func test_md3_compute_capabilities_full_vector_and_fixed_point() -> void:
+	print("test_md3_compute_capabilities_full_vector_and_fixed_point")
+	StatRegistry.reset_definitions()
+	var tank: Dictionary = {
+		"id": "tank",
+		"stats": { "health": 280, "move_speed": 1, "attack_damage": 28, "attack_range": 2, "vision_range": 5 },
+		"cost": { "resource_basic": 160 },
+		"build_time_ticks": 140,
+	}
+	var caps: Dictionary = DerivedMetricsUtil.compute_capabilities(tank, StatRegistry, null)
+	# Full vector: one entry per capability, all present.
+	for id in CapabilityRegistry.all_ids():
+		_check(caps.has(id), "vector has capability %s" % id)
+		var q: Variant = caps[id]
+		_check(q is int, "capability %s is fixed-point int" % id)
+		_check(int(q) >= 0 and int(q) <= DerivedMetricsUtil.SCALE, "capability %s in [0..SCALE]" % id)
+	# Deterministic: same input -> byte-for-byte same output.
+	_check(caps == DerivedMetricsUtil.compute_capabilities(tank, StatRegistry, null), "compute_capabilities deterministic")
+	# A tank has meaningful survivability (high health feeds it strongly).
+	_check(int(caps.get("survivability", 0)) > 0, "tank has non-zero survivability")
+
+
+# MD3.1/MD4-preview: the derived vector RANKS archetypes the way an intuitive
+# reader expects -- a heavy tank out-survives a fragile scout; a fast scout
+# out-moves the tank. This proves raw stats -> capability produces sensible,
+# comparable numbers WITHOUT knowing the unit name.
+func test_md3_archetypes_rank_as_expected() -> void:
+	print("test_md3_archetypes_rank_as_expected")
+	StatRegistry.reset_definitions()
+	var tank: Dictionary = { "id": "tank", "stats": { "health": 280, "move_speed": 1, "attack_damage": 28, "attack_range": 2, "vision_range": 5 }, "cost": { "resource_basic": 160 } }
+	var scout: Dictionary = { "id": "scout", "stats": { "health": 60, "move_speed": 4, "attack_damage": 6, "attack_range": 1, "vision_range": 8 }, "cost": { "resource_basic": 40 } }
+	var t: Dictionary = DerivedMetricsUtil.compute_capabilities(tank, StatRegistry, null)
+	var s: Dictionary = DerivedMetricsUtil.compute_capabilities(scout, StatRegistry, null)
+	_check(int(t["survivability"]) > int(s["survivability"]), "tank out-survives scout")
+	_check(int(s["mobility"]) > int(t["mobility"]), "scout out-moves tank")
+	_check(int(s["scout_power"]) > int(t["scout_power"]), "scout out-scouts tank")
+	_check(int(t["damage_output"]) > int(s["damage_output"]), "tank out-damages scout")
+
+
+# MD3.2: cost_efficiency rewards cheap+strong units; resource_pressure surfaces
+# for economy units. A free unit (cost 0) is maximally cost-efficient by power.
+func test_md3_cost_efficiency_and_resource_pressure() -> void:
+	print("test_md3_cost_efficiency_and_resource_pressure")
+	StatRegistry.reset_definitions()
+	var cheap: Dictionary = { "id": "cheap", "stats": { "health": 200, "attack_damage": 20 }, "cost": { "resource_basic": 30 } }
+	var pricey: Dictionary = { "id": "pricey", "stats": { "health": 200, "attack_damage": 20 }, "cost": { "resource_basic": 400 } }
+	var c: Dictionary = DerivedMetricsUtil.compute_capabilities(cheap, StatRegistry, null)
+	var p: Dictionary = DerivedMetricsUtil.compute_capabilities(pricey, StatRegistry, null)
+	_check(int(c["cost_efficiency"]) > int(p["cost_efficiency"]), "cheaper unit is more cost-efficient")
+	# A free unit is maximally cost-efficient by power (no cost divisor).
+	var free_u: Dictionary = { "id": "free", "stats": { "health": 200, "attack_damage": 20 }, "cost": {} }
+	var f: Dictionary = DerivedMetricsUtil.compute_capabilities(free_u, StatRegistry, null)
+	_check(int(f["cost_efficiency"]) >= int(c["cost_efficiency"]), "free unit at least as cost-efficient as cheap")
+	# An economy building drives resource_pressure.
+	var extractor: Dictionary = { "id": "extractor", "stats": { "extraction_rate": 8, "storage_cap": 500 }, "cost": { "resource_basic": 100 } }
+	var e: Dictionary = DerivedMetricsUtil.compute_capabilities(extractor, StatRegistry, null)
+	_check(int(e["resource_pressure"]) > 0, "extractor has resource_pressure")
+	_check(int(e["economic_value"]) > 0, "extractor has economic_value")
+
+
+# MD3.3: the cached wrapper returns byte-for-byte the same vector as the uncached
+# path, and cache_key is stable for identical defs and distinct for different ones.
+func test_md3_cache_matches_uncached_and_key_stable() -> void:
+	print("test_md3_cache_matches_uncached_and_key_stable")
+	StatRegistry.reset_definitions()
+	var unit: Dictionary = { "id": "soldier", "stats": { "health": 100, "attack_damage": 10, "move_speed": 2 }, "cost": { "resource_basic": 50 }, "build_time_ticks": 60 }
+	var affects: Dictionary = StatAffectsUtil.resolve_affects(StatRegistry)
+	var cache: Dictionary = {}
+	var uncached: Dictionary = DerivedMetricsUtil.compute_capabilities(unit, StatRegistry, affects)
+	var cached_first: Dictionary = DerivedMetricsUtil.compute_capabilities_cached(unit, StatRegistry, affects, cache)
+	var cached_second: Dictionary = DerivedMetricsUtil.compute_capabilities_cached(unit, StatRegistry, affects, cache)
+	_check(cached_first == uncached, "cached first call matches uncached")
+	_check(cached_second == uncached, "cached second call (hit) matches uncached")
+	_check(cache.size() == 1, "cache stored exactly one entry")
+	# Key stability + distinctness.
+	var same: Dictionary = { "id": "soldier", "stats": { "health": 100, "attack_damage": 10, "move_speed": 2 }, "cost": { "resource_basic": 50 }, "build_time_ticks": 60 }
+	_check(DerivedMetricsUtil.cache_key(unit) == DerivedMetricsUtil.cache_key(same), "identical defs share cache key")
+	var diff: Dictionary = same.duplicate(true)
+	(diff["stats"] as Dictionary)["health"] = 101
+	_check(DerivedMetricsUtil.cache_key(unit) != DerivedMetricsUtil.cache_key(diff), "changed stat busts cache key")
+
+
+# MD3.4: an incomplete unit (missing the stats a capability needs) yields that
+# capability's safe default_q -- never a crash, never a random value. A totally
+# malformed def yields an all-default vector.
+func test_md3_resilience_incomplete_unit_uses_defaults() -> void:
+	print("test_md3_resilience_incomplete_unit_uses_defaults")
+	StatRegistry.reset_definitions()
+	# A unit with only health: capabilities with no feeding stat fall to default.
+	var partial: Dictionary = { "id": "partial", "stats": { "health": 100 } }
+	var caps: Dictionary = DerivedMetricsUtil.compute_capabilities(partial, StatRegistry, null)
+	_check(int(caps["survivability"]) > 0, "health still feeds survivability")
+	# siege_power has no feeding stat here -> its registry default.
+	_check(int(caps["siege_power"]) == CapabilityRegistry.default_q("siege_power"), "unfed capability uses default_q")
+	# A malformed def (no stats) yields an all-default vector, no crash.
+	var empty: Dictionary = DerivedMetricsUtil.compute_capabilities({ "id": "x" }, StatRegistry, null)
+	for id in CapabilityRegistry.all_ids():
+		_check(int(empty[id]) == CapabilityRegistry.default_q(id), "empty def -> default for %s" % id)
+	# A non-dictionary input must not crash and yields defaults too.
+	var junk: Dictionary = DerivedMetricsUtil.compute_capabilities("not a dict", StatRegistry, null)
+	_check(int(junk["survivability"]) == CapabilityRegistry.default_q("survivability"), "junk input -> defaults")
+	StatRegistry.reset_definitions()
+
+
 # --- E2: graphic model + image validation -----------------------------------
 
 func test_phase_e2_graphic_layer_rule() -> void:
