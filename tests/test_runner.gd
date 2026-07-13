@@ -579,6 +579,14 @@ func _init() -> void:
 	test_md7_safe_defaults_when_empty()
 	test_md7_deterministic_and_stable_order()
 	test_md7_source_is_ascii_and_pure()
+	test_md6_closed_condition_and_flag_sets()
+	test_md6_empty_policy_is_baseline()
+	test_md6_rule_fires_and_overrides()
+	test_md6_all_operators()
+	test_md6_validate_rejects_malformed()
+	test_md6_archetype_presets_contrast()
+	test_md6_derive_from_profile()
+	test_md6_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -9474,6 +9482,109 @@ func test_md7_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("WorldState"), "ai_context_util does not touch WorldState")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "ai_context_util does not touch state hasher")
 	_check(not src.contains("SceneTree"), "ai_context_util does not touch SceneTree")
+
+
+# --- Phase MD6 (plan v4): AI Policy Profile (hard behaviour rules) -----------
+func test_md6_closed_condition_and_flag_sets() -> void:
+	print("test_md6_closed_condition_and_flag_sets")
+	# Every policy condition key must be a key the context vector emits (MD6.2).
+	for key in AiPolicyUtil.condition_keys():
+		_check(AiContextUtil.has_context_key(key), "condition key '%s' exists in context vector" % key)
+	# Action-flag set present and covered by the baseline.
+	_check(AiPolicyUtil.action_flags().size() == 6, "six action flags defined")
+	var baseline: Dictionary = AiPolicyUtil.baseline_flags()
+	for flag in AiPolicyUtil.action_flags():
+		_check(baseline.has(flag), "baseline covers flag '%s'" % flag)
+
+
+func test_md6_empty_policy_is_baseline() -> void:
+	print("test_md6_empty_policy_is_baseline")
+	# MD6.4: an empty / missing policy reproduces baseline behaviour exactly.
+	var ctx: Dictionary = AiContextUtil.safe_default_context()
+	_check(AiPolicyUtil.evaluate([], ctx) == AiPolicyUtil.baseline_flags(), "empty policy == baseline")
+	_check(AiPolicyUtil.evaluate(null, ctx) == AiPolicyUtil.baseline_flags(), "null policy == baseline")
+	_check(AiPolicyUtil.validate_policy([]).is_empty(), "empty policy validates")
+	# Baseline: attack allowed, all biases off.
+	_check(bool(AiPolicyUtil.baseline_flags()["allow_attack"]), "baseline allows attack")
+	_check(not bool(AiPolicyUtil.baseline_flags()["prefer_static_defense"]), "baseline no static-defense bias")
+
+
+func test_md6_rule_fires_and_overrides() -> void:
+	print("test_md6_rule_fires_and_overrides")
+	# A single rule fires when its condition holds and stays off otherwise.
+	var ctx_unsafe: Dictionary = { "base_security": 500, "army_ratio": 500, "economy_gap": 500, "enemy_distance": 1000, "frontline_pressure": 0 }
+	var flags: Dictionary = AiPolicyUtil.evaluate([AiPolicyUtil.make_rule("base_security", "lt", 700, "prefer_static_defense")], ctx_unsafe)
+	_check(bool(flags["prefer_static_defense"]), "rule fires when base_security < 700")
+	# Same rule does NOT fire when the base is safe.
+	var ctx_safe: Dictionary = { "base_security": 900, "army_ratio": 500, "economy_gap": 500, "enemy_distance": 1000, "frontline_pressure": 0 }
+	var flags2: Dictionary = AiPolicyUtil.evaluate([AiPolicyUtil.make_rule("base_security", "lt", 700, "prefer_static_defense")], ctx_safe)
+	_check(not bool(flags2["prefer_static_defense"]), "rule does not fire when base is safe")
+
+
+func test_md6_all_operators() -> void:
+	print("test_md6_all_operators")
+	var ctx: Dictionary = { "army_ratio": 500, "base_security": 1000, "economy_gap": 500, "enemy_distance": 1000, "frontline_pressure": 0 }
+	_check(bool(AiPolicyUtil.evaluate([AiPolicyUtil.make_rule("army_ratio", "lt", 600, "allow_attack")], ctx)["allow_attack"]), "lt true")
+	_check(bool(AiPolicyUtil.evaluate([AiPolicyUtil.make_rule("army_ratio", "le", 500, "prefer_economy")], ctx)["prefer_economy"]), "le true at equality")
+	_check(bool(AiPolicyUtil.evaluate([AiPolicyUtil.make_rule("army_ratio", "gt", 400, "prefer_harass_when_exposed")], ctx)["prefer_harass_when_exposed"]), "gt true")
+	_check(bool(AiPolicyUtil.evaluate([AiPolicyUtil.make_rule("army_ratio", "ge", 500, "avoid_risky_units")], ctx)["avoid_risky_units"]), "ge true at equality")
+
+
+func test_md6_validate_rejects_malformed() -> void:
+	print("test_md6_validate_rejects_malformed")
+	_check(not AiPolicyUtil.is_valid_rule({ "when": "bogus_key", "op": "lt", "value_q": 100, "then": "allow_attack" }), "unknown condition key rejected")
+	_check(not AiPolicyUtil.is_valid_rule({ "when": "army_ratio", "op": "xx", "value_q": 100, "then": "allow_attack" }), "unknown op rejected")
+	_check(not AiPolicyUtil.is_valid_rule({ "when": "army_ratio", "op": "lt", "value_q": 100, "then": "bogus_flag" }), "unknown flag rejected")
+	_check(not AiPolicyUtil.is_valid_rule({ "when": "army_ratio", "op": "lt", "value_q": 9999, "then": "allow_attack" }), "out-of-range value_q rejected")
+	var problems: Array = AiPolicyUtil.validate_policy([{ "when": "nope", "op": "lt", "value_q": 0, "then": "allow_attack" }])
+	_check(problems.size() == 1, "one problem reported for one bad rule")
+	# An invalid rule inside a policy is skipped, not crashing.
+	var flags: Dictionary = AiPolicyUtil.evaluate([{ "bad": true }], AiContextUtil.safe_default_context())
+	_check(flags == AiPolicyUtil.baseline_flags(), "malformed rule skipped -> baseline")
+
+
+func test_md6_archetype_presets_contrast() -> void:
+	print("test_md6_archetype_presets_contrast")
+	# A pressured, unsafe context: defensive vs aggressive must diverge.
+	var ctx: Dictionary = { "base_security": 500, "enemy_distance": 400, "economy_gap": 500, "army_ratio": 500, "frontline_pressure": 700 }
+	var defen: Dictionary = AiPolicyUtil.evaluate(AiPolicyUtil.preset_for_archetype("defensive"), ctx)
+	var aggro: Dictionary = AiPolicyUtil.evaluate(AiPolicyUtil.preset_for_archetype("aggressive"), ctx)
+	_check(bool(defen["prefer_static_defense"]), "defensive prefers static defense when unsafe")
+	_check(bool(defen["prefer_tank_when_pressured"]), "defensive brings tanks under pressure")
+	_check(bool(aggro["prefer_harass_when_exposed"]), "aggressive harasses exposed enemy")
+	_check(defen["prefer_static_defense"] != aggro["prefer_static_defense"], "two archetypes play differently")
+	_check(AiPolicyUtil.preset_for_archetype("unknown_xyz").is_empty(), "unknown archetype -> empty policy")
+
+
+func test_md6_derive_from_profile() -> void:
+	print("test_md6_derive_from_profile")
+	var p: AiProfile = AiProfile.new()
+	p.init_new("md6_test")
+	p.set_value("personality", "caution", 0.9)
+	p.set_value("personality", "aggression", 0.1)
+	var rules: Array = AiPolicyUtil.derive_from_profile(p)
+	_check(AiPolicyUtil.validate_policy(rules).is_empty(), "derived policy is valid")
+	# A very cautious, non-aggressive profile prefers static defense in danger.
+	var ctx: Dictionary = { "base_security": 500, "enemy_distance": 400, "economy_gap": 500, "army_ratio": 500, "frontline_pressure": 200 }
+	var flags: Dictionary = AiPolicyUtil.evaluate(rules, ctx)
+	_check(bool(flags["prefer_static_defense"]), "cautious profile defends when unsafe")
+	_check(AiPolicyUtil.derive_from_profile(null).is_empty(), "null profile -> empty policy")
+
+
+func test_md6_source_is_ascii_and_pure() -> void:
+	print("test_md6_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/ai_policy_util.gd")
+	_check(src.length() > 0, "ai_policy_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "ai_policy_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "ai_policy_util extends RefCounted")
+	_check(not src.contains("WorldState"), "ai_policy_util does not touch the world model type")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "ai_policy_util does not touch the sim hasher")
+	_check(not src.contains("SceneTree"), "ai_policy_util does not touch the scene tree type")
 
 
 # Identity screen->tile adapter for headless SelectionUtil tests.
