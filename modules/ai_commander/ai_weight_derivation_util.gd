@@ -18,8 +18,8 @@
 # These weights feed MD8 (unit utility) and MD9 (building utility) as the
 # `profile_weights` argument.
 #
-# Design rules (Definition of Done, plan section 2 + "اصولِ ثابت"):
-#   - PURE INFRASTRUCTURE: RefCounted, no WorldState / SceneTree / RNG / sim-hash.
+# Design rules (Definition of Done, plan section 2 constant principles):
+#   - PURE INFRASTRUCTURE: RefCounted, no world state / scene tree / RNG / sim-hash.
 #     Given a profile it returns a plain dictionary. Same profile -> byte-
 #     identical output. Headlessly unit-testable.
 #   - FIXED-POINT DETERMINISM (section 2.1 golden rule): the profile's [0..1]
@@ -31,7 +31,7 @@
 #     AiStrategyDerivationUtil, which is untouched. Existing tests keep passing.
 #   - COSMETIC vs SIMULATION (section 2.2): weights may feed a deterministic
 #     Command decision (so they MUST be deterministic, which they are) but this
-#     util never writes WorldState and never touches state_hasher.
+#     util never writes the world model and never touches the sim hasher.
 #   - English-only identifiers/comments (CODE_POLICY, pure ASCII).
 # ----------------------------------------------------------------------------
 class_name AiWeightDerivationUtil
