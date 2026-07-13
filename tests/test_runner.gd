@@ -543,6 +543,10 @@ func _init() -> void:
 	test_md1_validate_definition_accepts_and_rejects()
 	test_md1_all_definition_ids_sorted_and_stable()
 	test_md1_stats_catalog_loads_from_disk()
+	test_md2_capability_registry_closed_set_complete()
+	test_md2_capability_all_ids_sorted_and_stable()
+	test_md2_capability_defaults_and_applies_to()
+	test_md2_capability_i18n_keys_present_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2162,6 +2166,71 @@ func test_md1_stats_catalog_loads_from_disk() -> void:
 	_check(StatRegistry.affects("health").has("survivability"), "disk health affects survivability")
 	_check(StatRegistry.is_core("health"), "disk health classified core")
 	StatRegistry.reset_definitions()
+
+
+# --- MD2: Capability layer (closed, versioned engine contract) ---------------
+
+# MD2.1: the closed capability set is complete -- it contains exactly the unit
+# and building capabilities the plan (section 2.3) mandates, no more, no less.
+func test_md2_capability_registry_closed_set_complete() -> void:
+	print("test_md2_capability_registry_closed_set_complete")
+	var expected: Array = [
+		# unit
+		"survivability", "damage_output", "mobility", "holding_power",
+		"siege_power", "scout_power", "support_power", "cost_efficiency",
+		"anti_air_power", "resource_pressure",
+		# building
+		"defense_value", "production_value", "tech_value", "economic_value",
+		"frontline_value", "repair_value", "control_value",
+	]
+	expected.sort()
+	_check(CapabilityRegistry.all_ids() == expected, "capability set matches section 2.3 exactly")
+	_check(CapabilityRegistry.VERSION >= 1, "capability contract is versioned")
+	for id in expected:
+		_check(CapabilityRegistry.has_capability(id), "has_capability(%s)" % id)
+	_check(not CapabilityRegistry.has_capability("not_a_capability"), "unknown id rejected")
+
+
+# MD2.1: all_ids() is stably sorted and deterministic across repeated calls.
+func test_md2_capability_all_ids_sorted_and_stable() -> void:
+	print("test_md2_capability_all_ids_sorted_and_stable")
+	var a: Array = CapabilityRegistry.all_ids()
+	var sorted_copy: Array = a.duplicate()
+	sorted_copy.sort()
+	_check(a == sorted_copy, "all_ids() is sorted")
+	_check(a == CapabilityRegistry.all_ids(), "all_ids() is stable across calls")
+	# ids_for filters by applies_to; a "both" capability shows for either target.
+	var unit_ids: Array = CapabilityRegistry.ids_for("unit")
+	var bld_ids: Array = CapabilityRegistry.ids_for("building")
+	_check(unit_ids.has("mobility"), "ids_for(unit) includes unit-only mobility")
+	_check(not unit_ids.has("defense_value"), "ids_for(unit) excludes building-only defense_value")
+	_check(bld_ids.has("defense_value"), "ids_for(building) includes defense_value")
+	_check(unit_ids.has("resource_pressure") and bld_ids.has("resource_pressure"), "both-capability appears for unit and building")
+
+
+# MD2.1: safe fixed-point defaults (section 2.5) and applies_to contract.
+func test_md2_capability_defaults_and_applies_to() -> void:
+	print("test_md2_capability_defaults_and_applies_to")
+	for id in CapabilityRegistry.all_ids():
+		var dq: int = CapabilityRegistry.default_q(id)
+		_check(dq >= 0 and dq <= CapabilityRegistry.SCALE, "default_q(%s) in [0..SCALE]" % id)
+		var a: String = CapabilityRegistry.applies_to(id)
+		_check(a == "unit" or a == "building" or a == "both", "applies_to(%s) valid" % id)
+	# Unknown id yields safe zero, never a crash.
+	_check(CapabilityRegistry.default_q("nope") == 0, "unknown default_q is 0")
+	_check(CapabilityRegistry.applies_to("nope") == "", "unknown applies_to is empty")
+
+
+# MD2.1: every capability's i18n display key exists in en AND fa (parity).
+func test_md2_capability_i18n_keys_present_in_all_locales() -> void:
+	print("test_md2_capability_i18n_keys_present_in_all_locales")
+	var en: Dictionary = _load_locale_strings("res://localization/en.json")
+	var fa: Dictionary = _load_locale_strings("res://localization/fa.json")
+	for id in CapabilityRegistry.all_ids():
+		var key: String = CapabilityRegistry.name_key(id)
+		_check(key != "", "capability %s has a name_key" % id)
+		_check(en.has(key), "en has %s" % key)
+		_check(fa.has(key), "fa has %s" % key)
 
 
 # --- E2: graphic model + image validation -----------------------------------
