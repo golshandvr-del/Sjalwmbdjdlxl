@@ -1,0 +1,16 @@
+{
+  "id": "extraction_rate",
+  "type": "int",
+  "category": "economy",
+  "min": 0,
+  "max": 10000,
+  "default": 2,
+  "higher_is_better": true,
+  "ai_importance": 0.6,
+  "core": true,
+  "display_name_key": "stat.extraction_rate.name",
+  "affects": {
+    "economic_value": 1.0,
+    "resource_pressure": 0.6
+  }
+}

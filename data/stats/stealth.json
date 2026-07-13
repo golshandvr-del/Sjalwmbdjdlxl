@@ -1,0 +1,16 @@
+{
+  "id": "stealth",
+  "type": "bool",
+  "category": "vision",
+  "min": 0,
+  "max": 1,
+  "default": false,
+  "higher_is_better": true,
+  "ai_importance": 0.4,
+  "core": true,
+  "display_name_key": "stat.stealth.name",
+  "affects": {
+    "scout_power": 0.3,
+    "survivability": 0.2
+  }
+}

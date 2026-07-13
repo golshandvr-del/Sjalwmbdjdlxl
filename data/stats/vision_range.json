@@ -1,0 +1,16 @@
+{
+  "id": "vision_range",
+  "type": "int",
+  "category": "vision",
+  "min": 0,
+  "max": 1000,
+  "default": 5,
+  "higher_is_better": true,
+  "ai_importance": 0.5,
+  "core": true,
+  "display_name_key": "stat.vision_range.name",
+  "affects": {
+    "scout_power": 0.9,
+    "control_value": 0.2
+  }
+}

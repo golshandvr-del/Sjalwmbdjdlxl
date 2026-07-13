@@ -1,0 +1,17 @@
+{
+  "id": "attack_range",
+  "type": "int",
+  "category": "combat",
+  "min": 0,
+  "max": 1000,
+  "default": 1,
+  "higher_is_better": true,
+  "ai_importance": 0.6,
+  "core": true,
+  "display_name_key": "stat.attack_range.name",
+  "affects": {
+    "damage_output": 0.3,
+    "siege_power": 0.5,
+    "survivability": 0.2
+  }
+}

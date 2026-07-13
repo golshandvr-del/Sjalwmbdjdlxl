@@ -1,0 +1,15 @@
+{
+  "id": "fire_rate",
+  "type": "float",
+  "category": "combat",
+  "min": 0.01,
+  "max": 100.0,
+  "default": 1.0,
+  "higher_is_better": true,
+  "ai_importance": 0.7,
+  "core": true,
+  "display_name_key": "stat.fire_rate.name",
+  "affects": {
+    "damage_output": 0.6
+  }
+}

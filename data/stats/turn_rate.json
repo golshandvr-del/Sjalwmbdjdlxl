@@ -1,0 +1,15 @@
+{
+  "id": "turn_rate",
+  "type": "int",
+  "category": "mobility",
+  "min": 0,
+  "max": 1000,
+  "default": 4,
+  "higher_is_better": true,
+  "ai_importance": 0.3,
+  "core": true,
+  "display_name_key": "stat.turn_rate.name",
+  "affects": {
+    "mobility": 0.4
+  }
+}

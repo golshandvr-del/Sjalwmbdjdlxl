@@ -1,0 +1,16 @@
+{
+  "id": "splash_radius",
+  "type": "int",
+  "category": "combat",
+  "min": 0,
+  "max": 100,
+  "default": 0,
+  "higher_is_better": true,
+  "ai_importance": 0.4,
+  "core": true,
+  "display_name_key": "stat.splash_radius.name",
+  "affects": {
+    "siege_power": 0.7,
+    "damage_output": 0.2
+  }
+}

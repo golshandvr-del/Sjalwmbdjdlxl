@@ -1,0 +1,16 @@
+{
+  "id": "attack_damage",
+  "type": "int",
+  "category": "combat",
+  "min": 0,
+  "max": 100000,
+  "default": 10,
+  "higher_is_better": true,
+  "ai_importance": 0.9,
+  "core": true,
+  "display_name_key": "stat.attack_damage.name",
+  "affects": {
+    "damage_output": 1.0,
+    "siege_power": 0.3
+  }
+}

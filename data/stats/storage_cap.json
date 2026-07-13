@@ -1,0 +1,15 @@
+{
+  "id": "storage_cap",
+  "type": "int",
+  "category": "economy",
+  "min": 0,
+  "max": 1000000,
+  "default": 100,
+  "higher_is_better": true,
+  "ai_importance": 0.3,
+  "core": true,
+  "display_name_key": "stat.storage_cap.name",
+  "affects": {
+    "economic_value": 0.4
+  }
+}

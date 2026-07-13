@@ -1,0 +1,16 @@
+{
+  "id": "health",
+  "type": "int",
+  "category": "defense",
+  "min": 1,
+  "max": 100000,
+  "default": 100,
+  "higher_is_better": true,
+  "ai_importance": 0.9,
+  "core": true,
+  "display_name_key": "stat.health.name",
+  "affects": {
+    "survivability": 1.0,
+    "holding_power": 0.4
+  }
+}

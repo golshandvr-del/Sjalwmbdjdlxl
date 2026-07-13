@@ -1,0 +1,16 @@
+{
+  "id": "armor",
+  "type": "int",
+  "category": "defense",
+  "min": 0,
+  "max": 1000,
+  "default": 0,
+  "higher_is_better": true,
+  "ai_importance": 0.7,
+  "core": true,
+  "display_name_key": "stat.armor.name",
+  "affects": {
+    "survivability": 0.8,
+    "holding_power": 0.5
+  }
+}
