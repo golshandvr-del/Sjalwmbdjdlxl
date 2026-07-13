@@ -177,6 +177,82 @@ static func evaluate(policy: Variant, context: Variant) -> Dictionary:
 	return flags
 
 
+# --- MD6.3: archetype presets -----------------------------------------------
+# Recognised archetype tags (mirror the AiProfile archetype tags used by the 9
+# default profiles). Unknown tags fall back to an empty (baseline) policy.
+const ARCHETYPE_DEFENSIVE: String = "defensive"
+const ARCHETYPE_AGGRESSIVE: String = "aggressive"
+const ARCHETYPE_ECONOMIC: String = "economic"
+const ARCHETYPE_DECEPTIVE: String = "deceptive"
+
+
+# A ready-made policy for a named archetype, per the expert examples. Returns a
+# fresh Array of rule dictionaries; an unknown archetype yields an empty policy
+# (baseline behaviour, MD6.4).
+static func preset_for_archetype(archetype: String) -> Array:
+	match archetype:
+		ARCHETYPE_DEFENSIVE:
+			# Hold ground: do not attack while the base is unsafe; fortify and
+			# bring out tanks when pressured.
+			return [
+				make_rule(COND_BASE_SECURITY, "lt", 700, FLAG_PREFER_STATIC_DEFENSE),
+				make_rule(COND_FRONTLINE_PRESSURE, "ge", 500, FLAG_PREFER_TANK_WHEN_PRESSURED),
+			]
+		ARCHETYPE_AGGRESSIVE:
+			# Press hard: attack whenever the army is not clearly losing; do not
+			# hoard economy.
+			return [
+				make_rule(COND_ARMY_RATIO, "ge", 400, FLAG_ALLOW_ATTACK),
+				make_rule(COND_ENEMY_DISTANCE, "le", 600, FLAG_PREFER_HARASS_WHEN_EXPOSED),
+			]
+		ARCHETYPE_ECONOMIC:
+			# Grow first: prefer economy while safe, avoid risky units.
+			return [
+				make_rule(COND_BASE_SECURITY, "ge", 600, FLAG_PREFER_ECONOMY),
+				make_rule(COND_ARMY_RATIO, "lt", 500, FLAG_AVOID_RISKY_UNITS),
+			]
+		ARCHETYPE_DECEPTIVE:
+			# Harass and pick fights on favourable terms; avoid risky commitments
+			# when behind.
+			return [
+				make_rule(COND_ENEMY_DISTANCE, "le", 500, FLAG_PREFER_HARASS_WHEN_EXPOSED),
+				make_rule(COND_ARMY_RATIO, "lt", 450, FLAG_AVOID_RISKY_UNITS),
+			]
+		_:
+			return []
+
+
+# Derive a policy from an AiProfile's knob vectors for a BESPOKE AI (no preset).
+# `profile` is any object exposing get_value(category, knob) -> float in [0,1]
+# (the AiProfile model). High/low knob values enable the matching hard rules.
+# Deterministic: knob thresholds are fixed, comparisons fixed-point.
+static func derive_from_profile(profile: Object) -> Array:
+	if profile == null or not profile.has_method("get_value"):
+		return []
+	var rules: Array = []
+	var caution: float = float(profile.get_value("personality", "caution"))
+	var aggression: float = float(profile.get_value("personality", "aggression"))
+	var economy: float = float(profile.get_value("strategy_bias", "economy"))
+	var defense: float = float(profile.get_value("strategy_bias", "defense"))
+	var harassment: float = float(profile.get_value("strategy_bias", "harassment"))
+	# Cautious AIs refuse to attack from a weak base.
+	if caution >= 0.6:
+		rules.append(make_rule(COND_BASE_SECURITY, "lt", 700, FLAG_PREFER_STATIC_DEFENSE))
+	# Aggressive AIs attack once the army is roughly even or better.
+	if aggression >= 0.6:
+		rules.append(make_rule(COND_ARMY_RATIO, "ge", 400, FLAG_ALLOW_ATTACK))
+	# Economy-focused AIs prefer economy while the base is safe.
+	if economy >= 0.6:
+		rules.append(make_rule(COND_BASE_SECURITY, "ge", 600, FLAG_PREFER_ECONOMY))
+	# Defensive AIs bring tanks out under pressure.
+	if defense >= 0.6:
+		rules.append(make_rule(COND_FRONTLINE_PRESSURE, "ge", 500, FLAG_PREFER_TANK_WHEN_PRESSURED))
+	# Harass-oriented AIs strike exposed enemies.
+	if harassment >= 0.6:
+		rules.append(make_rule(COND_ENEMY_DISTANCE, "le", 500, FLAG_PREFER_HARASS_WHEN_EXPOSED))
+	return rules
+
+
 # --- Internals --------------------------------------------------------------
 
 static func _compare(lhs: int, op: String, rhs: int) -> bool:
