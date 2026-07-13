@@ -587,6 +587,14 @@ func _init() -> void:
 	test_md6_archetype_presets_contrast()
 	test_md6_derive_from_profile()
 	test_md6_source_is_ascii_and_pure()
+	# Phase MD8 (item 7): unit production utility scoring.
+	test_md8_capability_component_neutral_and_weighted()
+	test_md8_role_fit_and_current_need()
+	test_md8_difficulty_noise_deterministic()
+	test_md8_select_best_stable_tiebreak()
+	test_md8_defensive_vs_aggressive_pick_contrast()
+	test_md8_single_candidate_backward_compatible()
+	test_md8_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
