@@ -598,6 +598,11 @@ func _init() -> void:
 	test_md8_candidate_build_from_catalog()
 	test_md8_candidate_choose_and_fallback()
 	test_md8_candidate_source_is_ascii_and_pure()
+	# Phase MD9 (item 8): building placement utility scoring.
+	test_md9_derive_needs_from_context()
+	test_md9_score_building_value_and_site()
+	test_md9_score_building_deterministic()
+	test_md9_building_util_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10068,3 +10073,98 @@ class RealJsonReader extends RefCounted:
 class NullJsonReader extends RefCounted:
 	func load_json_file(_path: String) -> Variant:
 		return null
+
+
+# --- Phase MD9 (item 8): building placement utility scoring -----------------
+
+# A defensive-tower capability card: high defense, some frontline/control.
+func _md9_tower_caps() -> Dictionary:
+	return {
+		"defense_value": 900, "frontline_value": 700, "control_value": 500,
+		"economic_value": 0, "tech_value": 0, "production_value": 100, "repair_value": 0,
+	}
+
+# An economic-building capability card: high economy, no defense.
+func _md9_farm_caps() -> Dictionary:
+	return {
+		"defense_value": 0, "frontline_value": 0, "control_value": 100,
+		"economic_value": 900, "tech_value": 0, "production_value": 300, "repair_value": 0,
+	}
+
+
+func test_md9_derive_needs_from_context() -> void:
+	print("test_md9_derive_needs_from_context")
+	# Safe, wealthy, dominant context -> low defense/economy need, high tech need.
+	var safe_ctx: Dictionary = {
+		"base_security": 1000, "under_threat": 0, "frontline_pressure": 0,
+		"economy_gap": 1000, "army_ratio": 1000,
+	}
+	var safe: Dictionary = BuildingUtilityUtil.derive_needs(safe_ctx)
+	_check(int(safe["defense_need"]) == 0, "totally safe -> zero defense need")
+	_check(int(safe["economy_need"]) == 0, "far ahead -> zero economy need")
+	_check(int(safe["tech_need"]) == 1000, "safe + dominant -> full tech need")
+	# Threatened, poor, pressured context -> high defense/economy/frontline need.
+	var siege_ctx: Dictionary = {
+		"base_security": 0, "under_threat": 1000, "frontline_pressure": 1000,
+		"economy_gap": 0, "army_ratio": 0,
+	}
+	var siege: Dictionary = BuildingUtilityUtil.derive_needs(siege_ctx)
+	_check(int(siege["defense_need"]) == 1000, "unsafe + threatened -> full defense need")
+	_check(int(siege["economy_need"]) == 1000, "far behind -> full economy need")
+	_check(int(siege["frontline_need"]) == 1000, "heavy pressure -> full frontline need")
+	_check(int(siege["tech_need"]) == 0, "unsafe + losing -> zero tech need")
+
+
+func test_md9_score_building_value_and_site() -> void:
+	print("test_md9_score_building_value_and_site")
+	# Under siege the tower out-values the farm; when safe+rich the farm wins.
+	var siege_ctx: Dictionary = {
+		"base_security": 0, "under_threat": 1000, "frontline_pressure": 800,
+		"economy_gap": 0, "army_ratio": 0,
+	}
+	var tower: int = BuildingUtilityUtil.score_building(_md9_tower_caps(), siege_ctx, 0, 0)
+	var farm: int = BuildingUtilityUtil.score_building(_md9_farm_caps(), siege_ctx, 0, 0)
+	_check(tower > farm, "under siege, defensive tower out-values farm")
+	var calm_ctx: Dictionary = {
+		"base_security": 1000, "under_threat": 0, "frontline_pressure": 0,
+		"economy_gap": 0, "army_ratio": 1000,
+	}
+	var tower2: int = BuildingUtilityUtil.score_building(_md9_tower_caps(), calm_ctx, 0, 0)
+	var farm2: int = BuildingUtilityUtil.score_building(_md9_farm_caps(), calm_ctx, 0, 0)
+	_check(farm2 > tower2, "calm + poor, farm out-values tower")
+	# Site quality lifts the score in proportion to placement_fit.
+	var no_site: int = BuildingUtilityUtil.score_building(_md9_tower_caps(), siege_ctx, 0, 1000)
+	var good_site: int = BuildingUtilityUtil.score_building(_md9_tower_caps(), siege_ctx, 1000, 1000)
+	_check(good_site - no_site == 1000, "full site quality x full fit adds SCALE")
+	var ignore_site: int = BuildingUtilityUtil.score_building(_md9_tower_caps(), siege_ctx, 1000, 0)
+	_check(ignore_site == no_site, "placement_fit 0 ignores the site entirely")
+
+
+func test_md9_score_building_deterministic() -> void:
+	print("test_md9_score_building_deterministic")
+	var ctx: Dictionary = {
+		"base_security": 400, "under_threat": 1, "frontline_pressure": 600,
+		"economy_gap": 300, "army_ratio": 700,
+	}
+	var a: int = BuildingUtilityUtil.score_building(_md9_tower_caps(), ctx, 550, 800)
+	var b: int = BuildingUtilityUtil.score_building(_md9_tower_caps(), ctx, 550, 800)
+	_check(a == b, "same inputs -> byte-identical score")
+	# Missing context keys must not crash and yield the safe defaults.
+	var safe: int = BuildingUtilityUtil.score_building(_md9_farm_caps(), {}, 0, 0)
+	_check(safe >= 0, "empty context is handled without crashing")
+
+
+func test_md9_building_util_source_is_ascii_and_pure() -> void:
+	print("test_md9_building_util_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/building_utility_util.gd")
+	_check(src.length() > 0, "building_utility_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "building_utility_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "building_utility_util extends RefCounted")
+	_check(not src.contains("WorldState"), "building_utility_util does not touch the world model type")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "building_utility_util does not touch the sim hasher")
+	_check(not src.contains("SceneTree"), "building_utility_util does not touch the scene tree type")
