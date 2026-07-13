@@ -571,6 +571,14 @@ func _init() -> void:
 	test_md5_preferred_roles_summary_sorted()
 	test_md5_legacy_strategy_derivation_untouched()
 	test_md5_source_is_ascii_and_pure()
+	test_md7_context_keys_closed_and_sorted()
+	test_md7_build_context_full_keys_and_fixed_point()
+	test_md7_base_security_and_enemy_distance()
+	test_md7_economy_and_army_gap_ratios()
+	test_md7_frontline_pressure_and_under_threat()
+	test_md7_safe_defaults_when_empty()
+	test_md7_deterministic_and_stable_order()
+	test_md7_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -9282,6 +9290,190 @@ func test_mb1_box_select_excludes_ai_teammate() -> void:
 	_check(got == [11], "box-select only sweeps local units, not AI teammates")
 	var closed: Array = SelectionUtil.units_in_screen_rect_owned_by(adapter, units, Vector2(0, 0), Vector2(20, 20), [])
 	_check(closed == [], "empty owner set box-select fails closed")
+
+
+# --- MD7: AI Context Vector -------------------------------------------------
+
+func test_md7_context_keys_closed_and_sorted() -> void:
+	print("test_md7_context_keys_closed_and_sorted")
+	var keys: Array = AiContextUtil.context_keys()
+	_check(keys.size() == 8, "context has 8 closed keys")
+	# Sorted / stable order.
+	var sorted_copy: Array = keys.duplicate()
+	sorted_copy.sort()
+	_check(keys == sorted_copy, "context keys are in stable sorted order")
+	# Every documented key is present and recognised.
+	for k in ["base_security", "enemy_distance", "economy_gap", "army_ratio",
+			"frontline_pressure", "under_threat", "has_ally", "in_active_war"]:
+		_check(keys.has(k), "context includes key " + k)
+		_check(AiContextUtil.has_context_key(k), "has_context_key true for " + k)
+	_check(not AiContextUtil.has_context_key("no_such_key"), "unknown key rejected")
+
+
+func test_md7_build_context_full_keys_and_fixed_point() -> void:
+	print("test_md7_build_context_full_keys_and_fixed_point")
+	var summary: Dictionary = {
+		"hq": { "x": 10, "y": 10 },
+		"own_units": [ { "id": 1, "x": 10, "y": 11, "health": 5 } ],
+		"enemy_units": [ { "id": 2, "x": 20, "y": 20, "health": 5 } ],
+		"enemy_buildings": [],
+		"own_economy": 100, "enemy_economy": 100,
+		"own_army": 3, "enemy_army": 3,
+		"has_ally": true, "in_active_war": false,
+	}
+	var ctx: Dictionary = AiContextUtil.build_context(summary, 0)
+	# Every closed key present.
+	for k in AiContextUtil.context_keys():
+		_check(ctx.has(k), "build_context emits key " + k)
+	# Every value is an int (no float survives).
+	var all_int: bool = true
+	for k in ctx.keys():
+		if not (ctx[k] is int):
+			all_int = false
+	_check(all_int, "all context values are ints (fixed-point)")
+	# Normalised keys in [0..SCALE].
+	for k in ["base_security", "enemy_distance", "economy_gap", "army_ratio", "frontline_pressure"]:
+		_check(int(ctx[k]) >= 0 and int(ctx[k]) <= AiContextUtil.SCALE, k + " within [0..SCALE]")
+	# Flags are 0/1.
+	_check(int(ctx["has_ally"]) == 1, "has_ally flag set")
+	_check(int(ctx["in_active_war"]) == 0, "in_active_war flag clear")
+
+
+func test_md7_base_security_and_enemy_distance() -> void:
+	print("test_md7_base_security_and_enemy_distance")
+	var hq: Dictionary = { "x": 0, "y": 0 }
+	# Enemy right on top of base -> zero security, low distance.
+	var close: Dictionary = AiContextUtil.build_context({
+		"hq": hq, "enemy_units": [ { "id": 1, "x": 2, "y": 0, "health": 1 } ],
+	}, 0)
+	# Enemy far away -> full security, high distance.
+	var far: Dictionary = AiContextUtil.build_context({
+		"hq": hq, "enemy_units": [ { "id": 1, "x": 100, "y": 0, "health": 1 } ],
+	}, 0)
+	_check(int(close["base_security"]) < int(far["base_security"]), "closer enemy => lower security")
+	_check(int(close["enemy_distance"]) < int(far["enemy_distance"]), "closer enemy => lower enemy_distance")
+	_check(int(far["base_security"]) == AiContextUtil.SCALE, "distant enemy => full security")
+	# Dead enemies are ignored.
+	var dead: Dictionary = AiContextUtil.build_context({
+		"hq": hq, "enemy_units": [ { "id": 1, "x": 2, "y": 0, "health": 0 } ],
+	}, 0)
+	_check(int(dead["base_security"]) == AiContextUtil.SCALE, "dead enemy ignored for security")
+
+
+func test_md7_economy_and_army_gap_ratios() -> void:
+	print("test_md7_economy_and_army_gap_ratios")
+	var half: int = AiContextUtil.SCALE / 2
+	# Parity -> 500.
+	var parity: Dictionary = AiContextUtil.build_context({
+		"own_economy": 50, "enemy_economy": 50, "own_army": 4, "enemy_army": 4,
+	}, 0)
+	_check(int(parity["economy_gap"]) == half, "equal economy => parity 500")
+	_check(int(parity["army_ratio"]) == half, "equal army => parity 500")
+	# We dominate economy.
+	var ahead: Dictionary = AiContextUtil.build_context({
+		"own_economy": 300, "enemy_economy": 0, "own_army": 10, "enemy_army": 0,
+	}, 0)
+	_check(int(ahead["economy_gap"]) == AiContextUtil.SCALE, "enemy zero economy => full gap")
+	_check(int(ahead["army_ratio"]) == AiContextUtil.SCALE, "enemy zero army => full ratio")
+	# Enemy dominates.
+	var behind: Dictionary = AiContextUtil.build_context({
+		"own_economy": 0, "enemy_economy": 300, "own_army": 0, "enemy_army": 10,
+	}, 0)
+	_check(int(behind["economy_gap"]) == 0, "we have zero economy => zero gap")
+	_check(int(behind["army_ratio"]) == 0, "we have zero army => zero ratio")
+	# Both zero -> parity (safe default), no divide-by-zero.
+	var empty: Dictionary = AiContextUtil.build_context({}, 0)
+	_check(int(empty["economy_gap"]) == half, "no economy data => parity")
+	_check(int(empty["army_ratio"]) == half, "no army data => parity")
+
+
+func test_md7_frontline_pressure_and_under_threat() -> void:
+	print("test_md7_frontline_pressure_and_under_threat")
+	var hq: Dictionary = { "x": 0, "y": 0 }
+	# No enemies near -> zero pressure, not under threat.
+	var calm: Dictionary = AiContextUtil.build_context({ "hq": hq, "enemy_units": [] }, 0)
+	_check(int(calm["frontline_pressure"]) == 0, "no enemies => zero pressure")
+	_check(int(calm["under_threat"]) == 0, "no enemies => not under threat")
+	# Several enemies close -> pressure rises, under threat.
+	var swarm: Dictionary = AiContextUtil.build_context({
+		"hq": hq,
+		"enemy_units": [
+			{ "id": 1, "x": 1, "y": 0, "health": 1 },
+			{ "id": 2, "x": 0, "y": 2, "health": 1 },
+			{ "id": 3, "x": 2, "y": 1, "health": 1 },
+		],
+	}, 0)
+	_check(int(swarm["frontline_pressure"]) > 0, "nearby enemies => positive pressure")
+	_check(int(swarm["under_threat"]) == 1, "nearby enemies => under threat")
+	# More enemies => not less pressure (monotonic).
+	var bigger: Dictionary = AiContextUtil.build_context({
+		"hq": hq,
+		"enemy_units": [
+			{ "id": 1, "x": 1, "y": 0, "health": 1 },
+			{ "id": 2, "x": 0, "y": 2, "health": 1 },
+			{ "id": 3, "x": 2, "y": 1, "health": 1 },
+			{ "id": 4, "x": 1, "y": 2, "health": 1 },
+			{ "id": 5, "x": 2, "y": 2, "health": 1 },
+		],
+	}, 0)
+	_check(int(bigger["frontline_pressure"]) >= int(swarm["frontline_pressure"]), "more enemies => >= pressure")
+
+
+func test_md7_safe_defaults_when_empty() -> void:
+	print("test_md7_safe_defaults_when_empty")
+	# Fully empty / malformed input never crashes and yields safe defaults.
+	var ctx: Dictionary = AiContextUtil.build_context(null, -1)
+	for k in AiContextUtil.context_keys():
+		_check(ctx.has(k), "safe default emits key " + k)
+	# No HQ => treated as nothing to defend: full security, enemy far.
+	_check(int(ctx["base_security"]) == AiContextUtil.SCALE, "no HQ => full security")
+	_check(int(ctx["enemy_distance"]) == AiContextUtil.SCALE, "no HQ => enemy far")
+	_check(int(ctx["under_threat"]) == 0, "no HQ => not under threat")
+	_check(int(ctx["frontline_pressure"]) == 0, "no HQ => no pressure")
+	# safe_default_context matches build_context({}).
+	_check(AiContextUtil.safe_default_context() == AiContextUtil.build_context({}, -1), "safe_default_context consistent")
+
+
+func test_md7_deterministic_and_stable_order() -> void:
+	print("test_md7_deterministic_and_stable_order")
+	# Same input -> byte-identical output over repeated calls.
+	var summary: Dictionary = {
+		"hq": { "x": 5, "y": 5 },
+		"enemy_units": [
+			{ "id": 9, "x": 6, "y": 5, "health": 1 },
+			{ "id": 2, "x": 6, "y": 5, "health": 1 },
+			{ "id": 5, "x": 6, "y": 5, "health": 1 },
+		],
+		"own_economy": 42, "enemy_economy": 17,
+	}
+	var a: Dictionary = AiContextUtil.build_context(summary, 3)
+	var b: Dictionary = AiContextUtil.build_context(summary, 3)
+	var c: Dictionary = AiContextUtil.build_context(summary, 3)
+	_check(a == b and b == c, "same summary => identical context (determinism)")
+	# Reordering enemy list must NOT change the result (stable by id).
+	var reordered: Dictionary = summary.duplicate(true)
+	reordered["enemy_units"] = [
+		{ "id": 2, "x": 6, "y": 5, "health": 1 },
+		{ "id": 9, "x": 6, "y": 5, "health": 1 },
+		{ "id": 5, "x": 6, "y": 5, "health": 1 },
+	]
+	_check(AiContextUtil.build_context(reordered, 3) == a, "enemy list order does not affect context")
+
+
+func test_md7_source_is_ascii_and_pure() -> void:
+	print("test_md7_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/ai_context_util.gd")
+	_check(src.length() > 0, "ai_context_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "ai_context_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "ai_context_util extends RefCounted")
+	_check(not src.contains("WorldState"), "ai_context_util does not touch WorldState")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "ai_context_util does not touch state hasher")
+	_check(not src.contains("SceneTree"), "ai_context_util does not touch SceneTree")
 
 
 # Identity screen->tile adapter for headless SelectionUtil tests.
