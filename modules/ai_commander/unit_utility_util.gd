@@ -15,8 +15,8 @@
 # every peer/replay -- utility scoring feeds unit production, which is part of
 # the lockstep simulation, so it MUST be deterministic.
 #
-# Logic/Render Separation: nothing here touches WorldState or the scene tree;
-# it consumes plain Dictionaries (caps / weights / context) produced elsewhere.
+# Logic/Render Separation: nothing here touches the world model or the scene
+# tree; it consumes plain Dictionaries (caps / weights / context) built elsewhere.
 #
 # CODE LANGUAGE POLICY: English-only identifiers/comments.
 # ----------------------------------------------------------------------------
