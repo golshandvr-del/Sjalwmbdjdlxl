@@ -300,7 +300,7 @@
 
 ---
 
-## فاز MD1 — بازتعریفِ Stat به‌عنوان Data Asset (متخصص: بخشِ دوم، بندهای ۱ و متادیتا) 🔴
+## فاز MD1 — بازتعریفِ Stat به‌عنوان Data Asset (متخصص: بخشِ دوم، بندهای ۱ و متادیتا) ✅ (انجام شد)
 
 **هدف:** خروج از `const STATS`ِ ثابت؛ هر stat یک رکوردِ داده با متادیتای کامل
 (`type`, `category`, `min`, `max`, `default`, `higher_is_better`, `ai_importance`,
