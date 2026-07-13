@@ -17,8 +17,8 @@
 # the decision-making role is DERIVED here from the capability vector, so a
 # brand-new modded unit gets a meaningful role with ZERO engine code.
 #
-# Design rules (Definition of Done, plan section 2 + "اصولِ ثابت"):
-#   - PURE INFRASTRUCTURE: RefCounted, no SceneTree / WorldState / sim-hash
+# Design rules (Definition of Done, plan section 2 constant principles):
+#   - PURE INFRASTRUCTURE: RefCounted, no scene tree / world state / sim-hash
 #     dependency. Headlessly unit-testable. Plain dictionaries in, plain
 #     arrays/strings out.
 #   - FIXED-POINT DETERMINISM (section 2.1 golden rule): every score is an int
@@ -30,7 +30,7 @@
 #     No input can crash it and no input can produce an empty role list.
 #   - COSMETIC vs SIMULATION (section 2.2): a role may feed a deterministic
 #     Command decision (so it MUST be deterministic, which it is) but this util
-#     never writes WorldState and never touches state_hasher.
+#     never writes the world model and never touches the sim hasher.
 #   - English-only identifiers/comments (CODE_POLICY).
 # ----------------------------------------------------------------------------
 class_name RoleInferenceUtil
