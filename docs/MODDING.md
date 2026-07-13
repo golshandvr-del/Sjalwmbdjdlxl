@@ -109,6 +109,37 @@ unknown keys, `min > max`, a bad `type`, or a malformed `affects` map with a
 human-readable reason for the mod editor. Core stats keep working even if you
 ship no `data/stats/` folder at all.
 
+### Wiring a stat to a capability (MD2)
+
+The AI never reads a raw stat directly. It works with a **closed, versioned set
+of Capabilities** (survivability, damage_output, mobility, scout_power, … for
+units; defense_value, production_value, economic_value, … for buildings). The
+`affects` map on a stat is what feeds those capabilities:
+
+```json
+"affects": { "survivability": 0.9, "holding_power": 0.5 }
+```
+
+- The **engine never grows or shrinks the capability list** — a mod only changes
+  capability *values* by pointing its stats at existing capability ids. This is
+  what lets the AI understand a brand-new mod stat with zero code.
+- Each weight is a human-friendly float (`0.9`), but the deterministic AI path
+  quantises it to **fixed-point** (`0.9 -> 900`, scale `1000`) before use, so the
+  simulation stays byte-for-byte reproducible across machines.
+- **Overriding a built-in link:** giving `armor` an `affects.survivability` of
+  `0.9` replaces the engine default (`0.8`) but leaves capabilities you did *not*
+  list (e.g. `armor -> holding_power`) at their built-in weight.
+- **A brand-new Free stat** (e.g. `morale`) is wired purely by its `affects` —
+  no code, no engine change. Add `"affects": { "holding_power": 0.6 }` and the
+  AI immediately values units with high morale as better holders.
+- **Validation:** an unknown `capability_id`, a non-numeric weight, or a weight
+  outside `[-10 .. 10]` is rejected with a human-readable reason. Because
+  `affects` is one-directional (stat -> capability) a cycle is impossible.
+
+Engine reference: `core/capability_registry.gd` (the closed capability
+contract) and `core/stat_affects_util.gd` (`resolve_affects` merges your mod's
+`affects` on top of the built-in fixed-point map; `validate_affects` guards it).
+
 `mod.json`:
 
 ```json
