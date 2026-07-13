@@ -14,7 +14,7 @@
 # per-mod `affects` table, a brand-new modded unit produces a meaningful
 # Capability card with ZERO engine code (the plan's core goal).
 #
-# Design rules (Definition of Done, plan section 2 + section "اصولِ ثابت"):
+# Design rules (Definition of Done, plan section 2 constant principles):
 #   - PURE INFRASTRUCTURE: RefCounted, no SceneTree / WorldState / sim-hash
 #     dependency. Headlessly unit-testable. Takes plain dictionaries in, returns
 #     a plain dictionary out.
