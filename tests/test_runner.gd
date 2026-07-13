@@ -562,6 +562,15 @@ func _init() -> void:
 	test_md4_synthetic_archetypes_map_to_expected_roles()
 	test_md4_building_signatures_and_auto_target()
 	test_md4_source_is_ascii_and_pure()
+	test_md5_neutral_profile_all_weights_neutral()
+	test_md5_defensive_vs_aggressive_role_weights()
+	test_md5_capability_weights_cover_registry()
+	test_md5_weights_fixed_point_and_bounded()
+	test_md5_deterministic_and_null_safe()
+	test_md5_knob_sensitivity_directions()
+	test_md5_preferred_roles_summary_sorted()
+	test_md5_legacy_strategy_derivation_untouched()
+	test_md5_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2605,6 +2614,181 @@ func test_md4_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("WorldState"), "role_inference_util does not touch WorldState")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "role_inference_util does not touch state hasher")
 	_check(not src.contains("SceneTree"), "role_inference_util does not touch SceneTree")
+
+
+# --- MD5: AI role/metric weight derivation ----------------------------------
+
+# MD5.1/5.2: a neutral (balanced default) profile derives every role and every
+# capability weight at exactly the neutral weight, and a null profile is safe.
+func test_md5_neutral_profile_all_weights_neutral() -> void:
+	print("test_md5_neutral_profile_all_weights_neutral")
+	var profile: AiProfile = AiProfile.default_profile()
+	var w: Dictionary = AiWeightDerivationUtil.derive_weights(profile)
+	_check(w.has("roles") and w.has("capabilities"), "derive_weights returns roles + capabilities")
+	var roles: Dictionary = w["roles"]
+	# Every unit + building role is present.
+	for r in AiWeightDerivationUtil.UNIT_ROLES:
+		_check(roles.has(r), "role weight present: %s" % r)
+	for r in AiWeightDerivationUtil.BUILDING_ROLES:
+		_check(roles.has(r), "building role weight present: %s" % r)
+	# A balanced profile with all knobs at 0.5 yields exactly neutral weights.
+	for r in roles.keys():
+		_check(int(roles[r]) == AiWeightDerivationUtil.NEUTRAL_WEIGHT_Q, "neutral role weight for %s (got %d)" % [str(r), int(roles[r])])
+	var caps: Dictionary = w["capabilities"]
+	for cid in CapabilityRegistry.all_ids():
+		_check(caps.has(cid), "capability weight present: %s" % cid)
+		_check(int(caps[cid]) == AiWeightDerivationUtil.NEUTRAL_WEIGHT_Q, "neutral capability weight for %s" % cid)
+
+
+# MD5.1/5.3: two opposite archetypes tilt the SAME roles in opposite directions.
+# A defensive general values frontline_tank > glass_cannon; an aggressive one
+# the opposite. Personality acts on the ROLE, never on a unit name.
+func test_md5_defensive_vs_aggressive_role_weights() -> void:
+	print("test_md5_defensive_vs_aggressive_role_weights")
+	# Defensive: high defense/caution/patience, low aggression/offense.
+	var def_p: AiProfile = AiProfile.default_profile()
+	def_p.set_value("personality", "aggression", 0.1)
+	def_p.set_value("personality", "caution", 0.9)
+	def_p.set_value("personality", "patience", 0.9)
+	def_p.set_value("strategy_bias", "defense", 0.9)
+	def_p.set_value("strategy_bias", "offense", 0.1)
+	def_p.set_value("strategy_bias", "harassment", 0.1)
+	def_p.set_value("strategy_bias", "focus_fire", 0.1)
+	# Aggressive: mirror image.
+	var agg_p: AiProfile = AiProfile.default_profile()
+	agg_p.set_value("personality", "aggression", 0.9)
+	agg_p.set_value("personality", "caution", 0.1)
+	agg_p.set_value("personality", "patience", 0.1)
+	agg_p.set_value("strategy_bias", "defense", 0.1)
+	agg_p.set_value("strategy_bias", "offense", 0.9)
+	agg_p.set_value("strategy_bias", "harassment", 0.9)
+	agg_p.set_value("strategy_bias", "focus_fire", 0.9)
+	var def_w: Dictionary = AiWeightDerivationUtil.derive_role_weights(def_p)
+	var agg_w: Dictionary = AiWeightDerivationUtil.derive_role_weights(agg_p)
+	# Defensive values the tank more than the glass cannon.
+	_check(int(def_w["frontline_tank"]) > int(def_w["glass_cannon"]), "defensive: tank > glass_cannon")
+	# Aggressive is the opposite.
+	_check(int(agg_w["glass_cannon"]) > int(agg_w["frontline_tank"]), "aggressive: glass_cannon > tank")
+	# Cross-archetype: defensive weights the tank higher than aggressive does.
+	_check(int(def_w["frontline_tank"]) > int(agg_w["frontline_tank"]), "defensive tank weight > aggressive tank weight")
+	# And aggressive weights the harasser higher than defensive does.
+	_check(int(agg_w["harasser"]) > int(def_w["harasser"]), "aggressive harasser weight > defensive harasser weight")
+
+
+# MD5.1: capability weights cover exactly the closed CapabilityRegistry set.
+func test_md5_capability_weights_cover_registry() -> void:
+	print("test_md5_capability_weights_cover_registry")
+	var profile: AiProfile = AiProfile.default_profile()
+	var caps: Dictionary = AiWeightDerivationUtil.derive_capability_weights(profile)
+	var ids: Array = CapabilityRegistry.all_ids()
+	_check(caps.size() == ids.size(), "one weight per capability (%d == %d)" % [caps.size(), ids.size()])
+	for cid in ids:
+		_check(caps.has(cid), "capability covered: %s" % cid)
+
+
+# MD5 / section 2.1: every derived weight is a fixed-point int within bounds.
+func test_md5_weights_fixed_point_and_bounded() -> void:
+	print("test_md5_weights_fixed_point_and_bounded")
+	# An extreme profile (all knobs maxed) must not blow past the bounds.
+	var extreme: AiProfile = AiProfile.default_profile()
+	for knob in AiProfile.keys_for("personality"):
+		extreme.set_value("personality", knob, 1.0)
+	for knob in AiProfile.keys_for("strategy_bias"):
+		extreme.set_value("strategy_bias", knob, 1.0)
+	var w: Dictionary = AiWeightDerivationUtil.derive_weights(extreme)
+	for r in (w["roles"] as Dictionary).keys():
+		var wv = (w["roles"] as Dictionary)[r]
+		_check(wv is int, "role weight is int: %s" % str(r))
+		_check(int(wv) >= AiWeightDerivationUtil.WEIGHT_MIN_Q and int(wv) <= AiWeightDerivationUtil.WEIGHT_MAX_Q, "role weight in bounds: %s (%d)" % [str(r), int(wv)])
+	for cid in (w["capabilities"] as Dictionary).keys():
+		var cv = (w["capabilities"] as Dictionary)[cid]
+		_check(cv is int, "capability weight is int: %s" % str(cid))
+		_check(int(cv) >= AiWeightDerivationUtil.WEIGHT_MIN_Q and int(cv) <= AiWeightDerivationUtil.WEIGHT_MAX_Q, "capability weight in bounds: %s" % str(cid))
+
+
+# MD5 / section 2.1: same profile -> byte-identical output; null is safe.
+func test_md5_deterministic_and_null_safe() -> void:
+	print("test_md5_deterministic_and_null_safe")
+	var profile: AiProfile = AiProfile.default_profile()
+	profile.set_value("personality", "aggression", 0.73)
+	profile.set_value("strategy_bias", "offense", 0.42)
+	var a: Dictionary = AiWeightDerivationUtil.derive_weights(profile)
+	var b: Dictionary = AiWeightDerivationUtil.derive_weights(profile)
+	_check(StateHasher.hash_variant(a) == StateHasher.hash_variant(b), "same profile -> identical weights")
+	# Null profile -> all-neutral, no crash.
+	var n: Dictionary = AiWeightDerivationUtil.derive_weights(null)
+	for r in (n["roles"] as Dictionary).values():
+		_check(int(r) == AiWeightDerivationUtil.NEUTRAL_WEIGHT_Q, "null profile role weight neutral")
+
+
+# MD5.3: raising a single knob moves the mapped weights in the documented
+# direction (sensitivity), and the opposite for negatively-signed roles.
+func test_md5_knob_sensitivity_directions() -> void:
+	print("test_md5_knob_sensitivity_directions")
+	var base: AiProfile = AiProfile.default_profile()
+	var base_w: Dictionary = AiWeightDerivationUtil.derive_role_weights(base)
+	# Raise defense only.
+	var more_def: AiProfile = AiProfile.default_profile()
+	more_def.set_value("strategy_bias", "defense", 1.0)
+	var def_w: Dictionary = AiWeightDerivationUtil.derive_role_weights(more_def)
+	# defense +1 raises frontline_tank (positive) and lowers glass_cannon (negative).
+	_check(int(def_w["frontline_tank"]) > int(base_w["frontline_tank"]), "more defense raises tank weight")
+	_check(int(def_w["glass_cannon"]) < int(base_w["glass_cannon"]), "more defense lowers glass_cannon weight")
+	# Raise harassment only -> harasser up.
+	var more_har: AiProfile = AiProfile.default_profile()
+	more_har.set_value("strategy_bias", "harassment", 1.0)
+	var har_w: Dictionary = AiWeightDerivationUtil.derive_role_weights(more_har)
+	_check(int(har_w["harasser"]) > int(base_w["harasser"]), "more harassment raises harasser weight")
+
+
+# MD5.4: the cosmetic preferred_roles summary is sorted (weight DESC, role ASC)
+# and never includes the generic fallback.
+func test_md5_preferred_roles_summary_sorted() -> void:
+	print("test_md5_preferred_roles_summary_sorted")
+	var agg_p: AiProfile = AiProfile.default_profile()
+	agg_p.set_value("personality", "aggression", 0.95)
+	agg_p.set_value("strategy_bias", "offense", 0.95)
+	agg_p.set_value("strategy_bias", "harassment", 0.95)
+	var top: Array = AiWeightDerivationUtil.preferred_roles(agg_p, 3)
+	_check(top.size() == 3, "preferred_roles honours count")
+	# Sorted descending by weight, ties by role ASC.
+	for i in range(top.size() - 1):
+		var a: Dictionary = top[i]
+		var b: Dictionary = top[i + 1]
+		var ok: bool = int(a["weight_q"]) > int(b["weight_q"]) or (int(a["weight_q"]) == int(b["weight_q"]) and str(a["role"]) < str(b["role"]))
+		_check(ok, "preferred_roles sorted at %d" % i)
+	for item in top:
+		_check(str(item["role"]) != "generic", "preferred_roles excludes generic")
+	# count == 0 -> empty.
+	_check(AiWeightDerivationUtil.preferred_roles(agg_p, 0).is_empty(), "count 0 -> empty list")
+
+
+# MD5.2: the legacy 4-macro strategy derivation is untouched and still coexists.
+func test_md5_legacy_strategy_derivation_untouched() -> void:
+	print("test_md5_legacy_strategy_derivation_untouched")
+	var profile: AiProfile = AiProfile.default_profile()
+	var macro: Dictionary = AiStrategyDerivationUtil.derive_from_profile(profile)
+	_check(macro.has("attack_army_size") and macro.has("expansion_cap") and macro.has("upgrade_reserve") and macro.has("research_first"), "legacy macro dict intact")
+	# New layer produces a DIFFERENT shape (roles/capabilities) alongside it.
+	var w: Dictionary = AiWeightDerivationUtil.derive_weights(profile)
+	_check(not w.has("attack_army_size"), "new weight layer is separate from legacy macro")
+
+
+# CODE_POLICY: the util source is ASCII-only and pure.
+func test_md5_source_is_ascii_and_pure() -> void:
+	print("test_md5_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/ai_weight_derivation_util.gd")
+	_check(src.length() > 0, "ai_weight_derivation_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "ai_weight_derivation_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "ai_weight_derivation_util extends RefCounted")
+	_check(not src.contains("WorldState"), "ai_weight_derivation_util does not touch WorldState")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "ai_weight_derivation_util does not touch state hasher")
+	_check(not src.contains("SceneTree"), "ai_weight_derivation_util does not touch SceneTree")
 
 
 # --- E2: graphic model + image validation -----------------------------------
