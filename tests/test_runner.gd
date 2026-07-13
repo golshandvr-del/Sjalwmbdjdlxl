@@ -595,6 +595,9 @@ func _init() -> void:
 	test_md8_defensive_vs_aggressive_pick_contrast()
 	test_md8_single_candidate_backward_compatible()
 	test_md8_source_is_ascii_and_pure()
+	test_md8_candidate_build_from_catalog()
+	test_md8_candidate_choose_and_fallback()
+	test_md8_candidate_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -9737,6 +9740,63 @@ func test_md8_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("WorldState"), "unit_utility_util does not touch the world model type")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "ai_policy_util does not touch the sim hasher")
 	_check(not src.contains("SceneTree"), "ai_policy_util does not touch the scene tree type")
+
+
+func test_md8_candidate_build_from_catalog() -> void:
+	print("test_md8_candidate_build_from_catalog")
+	# A synthetic 2-unit catalog (raw stat defs). build_candidates must emit one
+	# candidate per unit, in id-sorted order, each carrying a capability card and
+	# an inferred primary role (never crashing on the raw defs).
+	var catalog: Dictionary = {
+		"tank": { "id": "tank", "stats": { "health": 400, "armor": 30, "attack_damage": 20, "move_speed": 1 }, "cost": { "resource_basic": 200 } },
+		"scout": { "id": "scout", "stats": { "health": 40, "move_speed": 6, "vision_range": 9, "attack_damage": 5 }, "cost": { "resource_basic": 60 } },
+	}
+	var cands: Array = UnitCandidateUtil.build_candidates(catalog, null, null, [])
+	_check(cands.size() == 2, "one candidate per catalog unit")
+	# id-sorted: "scout" < "tank".
+	_check(str((cands[0] as Dictionary)["id"]) == "scout", "candidates id-sorted (scout first)")
+	_check(str((cands[1] as Dictionary)["id"]) == "tank", "candidates id-sorted (tank second)")
+	for c in cands:
+		var cd: Dictionary = c as Dictionary
+		_check((cd.get("caps", {}) as Dictionary).size() > 0, "candidate carries a capability card")
+		_check(str(cd.get("primary_role", "")) != "", "candidate carries a primary role")
+	# allow-list restricts the set.
+	var only_tank: Array = UnitCandidateUtil.build_candidates(catalog, null, null, ["tank"])
+	_check(only_tank.size() == 1 and str((only_tank[0] as Dictionary)["id"]) == "tank", "allow-list restricts candidates")
+
+
+func test_md8_candidate_choose_and_fallback() -> void:
+	print("test_md8_candidate_choose_and_fallback")
+	var w: Dictionary = _md8_neutral_weights()
+	# Empty catalog -> fallback id (backward compatibility: always something).
+	_check(UnitCandidateUtil.choose_unit({}, w, {}, 1, 0, 0, 30, null, null, [], "soldier") == "soldier",
+		"empty catalog returns the fallback id")
+	# A single-unit catalog always returns that unit regardless of weights.
+	var one: Dictionary = { "soldier": { "id": "soldier", "stats": { "health": 100, "attack_damage": 10, "move_speed": 3 }, "cost": { "resource_basic": 50 } } }
+	_check(UnitCandidateUtil.choose_unit(one, w, {}, 1, 0, 0, 30, null, null, [], "soldier") == "soldier",
+		"sole catalog unit is chosen")
+	# Determinism: identical inputs -> identical pick across repeated calls.
+	var two: Dictionary = {
+		"tank": { "id": "tank", "stats": { "health": 400, "armor": 30, "attack_damage": 20, "move_speed": 1 }, "cost": { "resource_basic": 200 } },
+		"scout": { "id": "scout", "stats": { "health": 40, "move_speed": 6, "vision_range": 9, "attack_damage": 5 }, "cost": { "resource_basic": 60 } },
+	}
+	var pick_a: String = UnitCandidateUtil.choose_unit(two, w, {}, 7, 12, 3, 30, null, null, [], "soldier")
+	var pick_b: String = UnitCandidateUtil.choose_unit(two, w, {}, 7, 12, 3, 30, null, null, [], "soldier")
+	_check(pick_a == pick_b and pick_a != "", "choose_unit is deterministic for identical inputs")
+
+
+func test_md8_candidate_source_is_ascii_and_pure() -> void:
+	print("test_md8_candidate_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/unit_candidate_util.gd")
+	_check(src.length() > 0, "unit_candidate_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "unit_candidate_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "unit_candidate_util extends RefCounted")
+	_check(not src.contains("SceneTree"), "unit_candidate_util does not touch the scene tree type")
 
 
 # Identity screen->tile adapter for headless SelectionUtil tests.
