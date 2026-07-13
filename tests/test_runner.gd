@@ -534,6 +534,14 @@ func _init() -> void:
 	test_mc14_facing_edit_set_and_read_facing()
 	test_mc14_facing_edit_firing_part_single_and_toggle()
 	test_mc14_facing_edit_mount_change_and_choices()
+	# Phase MD1 (plan v4): Stat as data asset + metadata getters + core/free + validate.
+	test_md1_core_stats_have_full_metadata()
+	test_md1_metadata_getters_read_builtins()
+	test_md1_load_definitions_merges_free_stat()
+	test_md1_load_definitions_partial_overlay_keeps_core()
+	test_md1_is_core_and_is_free_classification()
+	test_md1_validate_definition_accepts_and_rejects()
+	test_md1_all_definition_ids_sorted_and_stable()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2013,6 +2021,125 @@ func test_phase_e2_stat_registry_groups_and_compat() -> void:
 	_check(not StatRegistry.compatible(armor_a, armor_b, false), "shared defense disallowed for units")
 	var c: Array = StatRegistry.conflicts(weapon, weapon2)
 	_check(c.has(StatRegistry.GROUP_COMBAT), "conflicts() reports the combat group")
+
+
+# ============================================================================
+# Phase MD1 (plan v4): Stat as a data asset. Full metadata on Core Stats, a
+# data-driven merge layer, core/free classification, and definition validation.
+# All pure / headless; StatRegistry is static so tests reset the merged store.
+# ============================================================================
+
+func test_md1_core_stats_have_full_metadata() -> void:
+	print("test_md1_core_stats_have_full_metadata")
+	StatRegistry.reset_definitions()
+	# Every built-in Core Stat must now carry the full data-asset metadata set.
+	var required: Array = [
+		"value_type", "category", "min", "max", "default",
+		"higher_is_better", "ai_importance", "affects",
+	]
+	for id in StatRegistry.all_ids():
+		var def: Dictionary = StatRegistry.definition(id)
+		for key in required:
+			_check(def.has(key), "core stat %s has metadata %s" % [id, key])
+	# Spot-check a couple of specific values.
+	_check(StatRegistry.value_type("fire_rate") == "float", "fire_rate is a float stat")
+	_check(StatRegistry.value_type("stealth") == "bool", "stealth is a bool stat")
+	_check(StatRegistry.category("health") == "defense", "health category is defense")
+
+
+func test_md1_metadata_getters_read_builtins() -> void:
+	print("test_md1_metadata_getters_read_builtins")
+	StatRegistry.reset_definitions()
+	_check(StatRegistry.higher_is_better("health"), "health higher_is_better")
+	_check(StatRegistry.ai_importance("health") > 0.0, "health has ai_importance")
+	_check(StatRegistry.min_of("health") >= 1.0, "health min is at least 1")
+	_check(StatRegistry.max_of("health") > StatRegistry.min_of("health"), "health max > min")
+	var aff: Dictionary = StatRegistry.affects("armor")
+	_check(aff.has("survivability"), "armor affects survivability")
+	_check(aff.has("holding_power"), "armor affects holding_power")
+	# Mutating the returned affects must not corrupt the registry (deep copy).
+	aff["survivability"] = -99
+	_check(StatRegistry.affects("armor").get("survivability", 0) > 0, "affects() returns a copy")
+
+
+func test_md1_load_definitions_merges_free_stat() -> void:
+	print("test_md1_load_definitions_merges_free_stat")
+	StatRegistry.reset_definitions()
+	var catalog: Dictionary = {
+		"morale": {
+			"value_type": "int", "category": "special", "min": 0, "max": 100,
+			"default": 50, "higher_is_better": true, "ai_importance": 0.5,
+			"affects": { "holding_power": 0.6 },
+		},
+	}
+	var n: int = StatRegistry.load_definitions(catalog)
+	_check(n == 1, "one free stat merged")
+	_check(StatRegistry.all_definition_ids().has("morale"), "morale is now a known definition")
+	_check(StatRegistry.all_definition_ids().has("health"), "core stats survive the merge")
+	_check(StatRegistry.value_type("morale") == "int", "free stat value_type readable")
+	_check(StatRegistry.affects("morale").get("holding_power", 0) > 0, "free stat affects readable")
+	StatRegistry.reset_definitions()
+	_check(not StatRegistry.all_definition_ids().has("morale"), "reset drops the free stat")
+
+
+func test_md1_load_definitions_partial_overlay_keeps_core() -> void:
+	print("test_md1_load_definitions_partial_overlay_keeps_core")
+	StatRegistry.reset_definitions()
+	# A data file that only tweaks ai_importance must keep the rest of health.
+	StatRegistry.load_definitions({ "health": { "ai_importance": 0.99 } })
+	_check(abs(StatRegistry.ai_importance("health") - 0.99) < 0.001, "overlay updated ai_importance")
+	_check(StatRegistry.category("health") == "defense", "overlay kept category")
+	_check(StatRegistry.affects("health").has("survivability"), "overlay kept affects")
+	_check(StatRegistry.is_core("health"), "health remains core after overlay")
+	StatRegistry.reset_definitions()
+
+
+func test_md1_is_core_and_is_free_classification() -> void:
+	print("test_md1_is_core_and_is_free_classification")
+	StatRegistry.reset_definitions()
+	_check(StatRegistry.is_core("health"), "health is core")
+	_check(not StatRegistry.is_free("health"), "health is not free")
+	StatRegistry.load_definitions({ "morale": { "value_type": "int" } })
+	_check(StatRegistry.is_free("morale"), "morale is free")
+	_check(not StatRegistry.is_core("morale"), "morale is not core")
+	_check(StatRegistry.is_core("health"), "health still core after free merge")
+	StatRegistry.reset_definitions()
+
+
+func test_md1_validate_definition_accepts_and_rejects() -> void:
+	print("test_md1_validate_definition_accepts_and_rejects")
+	var good: Dictionary = {
+		"id": "morale", "value_type": "int", "category": "special",
+		"min": 0, "max": 100, "default": 50, "higher_is_better": true,
+		"ai_importance": 0.5, "affects": { "holding_power": 0.6 },
+	}
+	_check(StatRegistry.validate_definition(good).is_empty(), "valid definition passes")
+	_check(not StatRegistry.validate_definition("not a dict").is_empty(), "non-dict rejected")
+	_check(not StatRegistry.validate_definition({ "value_type": "int" }).is_empty(), "missing id rejected")
+	var bad_type: Dictionary = { "id": "x", "value_type": "matrix" }
+	_check(not StatRegistry.validate_definition(bad_type).is_empty(), "bad value_type rejected")
+	var bad_range: Dictionary = { "id": "x", "min": 10, "max": 2 }
+	_check(not StatRegistry.validate_definition(bad_range).is_empty(), "min>max rejected")
+	var bad_imp: Dictionary = { "id": "x", "ai_importance": 5.0 }
+	_check(not StatRegistry.validate_definition(bad_imp).is_empty(), "ai_importance out of range rejected")
+	var bad_aff: Dictionary = { "id": "x", "affects": { "survivability": "lots" } }
+	_check(not StatRegistry.validate_definition(bad_aff).is_empty(), "non-numeric affect rejected")
+	var unknown_key: Dictionary = { "id": "x", "wat": 1 }
+	_check(not StatRegistry.validate_definition(unknown_key).is_empty(), "unknown key rejected")
+
+
+func test_md1_all_definition_ids_sorted_and_stable() -> void:
+	print("test_md1_all_definition_ids_sorted_and_stable")
+	StatRegistry.reset_definitions()
+	StatRegistry.load_definitions({ "zeta": { "value_type": "int" }, "alpha": { "value_type": "int" } })
+	var ids: Array = StatRegistry.all_definition_ids()
+	var sorted_copy: Array = ids.duplicate()
+	sorted_copy.sort()
+	_check(ids == sorted_copy, "all_definition_ids() is sorted")
+	# Deterministic: same merge order -> same result set.
+	var again: Array = StatRegistry.all_definition_ids()
+	_check(ids == again, "all_definition_ids() is stable across calls")
+	StatRegistry.reset_definitions()
 
 
 # --- E2: graphic model + image validation -----------------------------------
