@@ -50,6 +50,12 @@ const DIFFICULTY: Dictionary = {
 # behaviour for any custom/legacy difficulty that does not specify it).
 const DEFAULT_MAX_QUEUE: int = 2
 
+# MD8.5: default seeded difficulty-noise band (q, SCALE=1000) applied to unit
+# utility scores when a difficulty preset omits its own "noise_q". Kept small so
+# it only breaks near-ties, and always > 0 so even the hardest AI is imperfect
+# (expert item / MC13.4). A per-difficulty "noise_q" can override this.
+const DEFAULT_NOISE_Q: int = 40
+
 
 func module_id() -> String:
 	return "ai_commander"
@@ -120,11 +126,42 @@ func _manage_economy(owner: int, diff: Dictionary) -> void:
 	var max_queue: int = int(diff.get("max_queue", DEFAULT_MAX_QUEUE))
 	if queue.size() >= max_queue:
 		return
+	# MD8.5: pick the best-fit unit via the utility pipeline instead of the old
+	# hard-coded "soldier". Backward compatible: with a single-unit catalog (or
+	# no profile) the selector returns that unit / the same defensive default.
+	var unit_type: String = _choose_unit_type(owner, diff)
 	nexus.issue_command("build_unit", owner, {
 		"owner": owner,
 		"building_id": int(hq["id"]),
-		"unit_type": "soldier",
+		"unit_type": unit_type,
 	}, 1)
+
+
+# MD8.5: run the data-driven unit-selection pipeline for `owner`. Reads the live
+# unit catalog + derives the AI's profile weights + the deterministic context
+# vector, then delegates the pure scoring to UnitCandidateUtil. Deterministic:
+# every input (catalog, seed, tick, owner, context) is stable, so all peers pick
+# the same unit. Falls back to "soldier" on any missing data (resilience).
+func _choose_unit_type(owner: int, diff: Dictionary) -> String:
+	var catalog: Dictionary = nexus.data_loader.get_catalog("units")
+	if catalog.is_empty():
+		return "soldier"
+	var weights: Dictionary = AiWeightDerivationUtil.derive_weights(_profile_for(owner))
+	var context: Dictionary = AiContextUtil.build_context(summarize(owner), owner)
+	var seed_value: int = int(nexus.world_state.random_seed)
+	var tick: int = int(nexus.world_state.current_tick)
+	var noise_q: int = int(diff.get("noise_q", DEFAULT_NOISE_Q))
+	return UnitCandidateUtil.choose_unit(
+		catalog, weights, context, seed_value, tick, owner, noise_q,
+		null, null, [], "soldier")
+
+
+# The AiProfile object backing `owner`, or null for a legacy named AI (in which
+# case the neutral weights preserve the prior behaviour). The strategic module
+# owns profile registration; the profile object is not stored in world state, so
+# a legacy AI simply scores by base capabilities (backward compatible).
+func _profile_for(_owner: int) -> Object:
+	return null
 
 
 # --- Offense: march idle units toward the nearest enemy ---------------------
