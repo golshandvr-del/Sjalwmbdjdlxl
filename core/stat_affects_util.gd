@@ -119,3 +119,56 @@ static func builtin_map() -> Dictionary:
 		if not kept.is_empty():
 			out[stat_id] = kept
 	return out
+
+
+# ---------------------------------------------------------------------------
+# MD2.3: resolve the EFFECTIVE affects map for a StatRegistry (or any object
+# exposing the same static getters -- passed by name via `stat_registry`, which
+# we accept as a Script/Object so tests can inject a stub).
+#
+# Semantics (deterministic, section 2):
+#   1. Start from the built-in fixed-point map (Core Stats).
+#   2. For every stat the registry knows, read its data-defined `affects` (the
+#      human-authored float map from a stat's JSON / mod definition), quantise it
+#      to fixed-point, keep only KNOWN capability ids, and OVERLAY it on top of
+#      the built-in entry for that stat. Overlay = per-capability override: a mod
+#      that sets `armor.affects.survivability = 0.9` replaces the built-in 0.8,
+#      but capabilities the mod does NOT mention keep their built-in weight.
+#   3. A brand-new Free Stat (no built-in entry) is wired to Capabilities purely
+#      by its data-defined `affects` -- ZERO engine code, the plan's core goal.
+#
+# The result is  stat_id -> { capability_id: weight_q }  with every weight an
+# int, every capability id known, and both id levels stably sorted on emit.
+#
+# `stat_registry` must expose:  all_definition_ids() -> Array,  affects(id) ->
+# Dictionary. StatRegistry (tools/stat_registry.gd) satisfies this. When null,
+# only the built-in map is returned.
+# ---------------------------------------------------------------------------
+static func resolve_affects(stat_registry: Object) -> Dictionary:
+	var out: Dictionary = builtin_map()
+	if stat_registry == null:
+		return out
+	if not (stat_registry.has_method("all_definition_ids") and stat_registry.has_method("affects")):
+		return out
+	var ids: Array = stat_registry.call("all_definition_ids")
+	ids.sort()
+	for raw_id in ids:
+		var stat_id: String = str(raw_id)
+		var declared: Variant = stat_registry.call("affects", stat_id)
+		if not (declared is Dictionary):
+			continue
+		var caps: Dictionary = declared as Dictionary
+		if caps.is_empty():
+			continue
+		# Overlay quantised, known-only weights on top of any built-in entry.
+		var merged: Dictionary = (out.get(stat_id, {}) as Dictionary).duplicate(true)
+		var cap_ids: Array = caps.keys()
+		cap_ids.sort()
+		for cap_id in cap_ids:
+			var cid: String = str(cap_id)
+			if not CapabilityRegistry.has_capability(cid):
+				continue
+			merged[cid] = quantize_weight(caps[cap_id])
+		if not merged.is_empty():
+			out[stat_id] = merged
+	return out
