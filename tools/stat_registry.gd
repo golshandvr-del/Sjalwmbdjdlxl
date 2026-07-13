@@ -34,28 +34,36 @@ const GROUP_MOBILITY: String = "mobility"
 const GROUP_ECONOMY: String = "economy"
 const GROUP_VISION: String = "vision"
 
-# The single source of truth: id -> { needs_value, applies_to, group, default }.
+# The single source of truth for CORE stats: id -> full metadata record.
 # `needs_value` = the editor must collect a numeric value for it; a few stats are
 # pure flags (needs_value=false). `default` seeds the field when first enabled.
+#
+# MD1 (plan v4): every core stat now carries the full data-asset metadata the AI
+# pipeline needs (`value_type`, `category`, `min`, `max`, `higher_is_better`,
+# `ai_importance`, `affects`). These built-ins are the backward-compatible
+# fallback: the same values also live in `data/stats/*.json`, and
+# `load_definitions()` merges the data catalog (and mods) ON TOP of these, so
+# removing a data file never breaks a Core Stat (section 2.4). All core stats
+# have `core=true`; merged-in definitions that are not built-in are `free`.
 const STATS: Dictionary = {
 	# combat
-	"attack_damage":   { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 10 },
-	"fire_rate":       { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 1 },
-	"attack_range":    { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 1 },
-	"splash_radius":   { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 0 },
+	"attack_damage":   { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 10,  "value_type": "int",   "category": "combat",   "min": 0,    "max": 100000, "higher_is_better": true, "ai_importance": 0.9, "affects": { "damage_output": 1.0, "siege_power": 0.3 } },
+	"fire_rate":       { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 1,   "value_type": "float", "category": "combat",   "min": 0.01, "max": 100.0,  "higher_is_better": true, "ai_importance": 0.7, "affects": { "damage_output": 0.6 } },
+	"attack_range":    { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 1,   "value_type": "int",   "category": "combat",   "min": 0,    "max": 1000,   "higher_is_better": true, "ai_importance": 0.6, "affects": { "damage_output": 0.3, "siege_power": 0.5, "survivability": 0.2 } },
+	"splash_radius":   { "needs_value": true,  "applies_to": "both",     "group": "combat",   "default": 0,   "value_type": "int",   "category": "combat",   "min": 0,    "max": 100,    "higher_is_better": true, "ai_importance": 0.4, "affects": { "siege_power": 0.7, "damage_output": 0.2 } },
 	# defense
-	"health":          { "needs_value": true,  "applies_to": "both",     "group": "defense",  "default": 100 },
-	"armor":           { "needs_value": true,  "applies_to": "both",     "group": "defense",  "default": 0 },
-	"shield":          { "needs_value": true,  "applies_to": "both",     "group": "defense",  "default": 0 },
+	"health":          { "needs_value": true,  "applies_to": "both",     "group": "defense",  "default": 100, "value_type": "int",   "category": "defense",  "min": 1,    "max": 100000, "higher_is_better": true, "ai_importance": 0.9, "affects": { "survivability": 1.0, "holding_power": 0.4 } },
+	"armor":           { "needs_value": true,  "applies_to": "both",     "group": "defense",  "default": 0,   "value_type": "int",   "category": "defense",  "min": 0,    "max": 1000,   "higher_is_better": true, "ai_importance": 0.7, "affects": { "survivability": 0.8, "holding_power": 0.5 } },
+	"shield":          { "needs_value": true,  "applies_to": "both",     "group": "defense",  "default": 0,   "value_type": "int",   "category": "defense",  "min": 0,    "max": 100000, "higher_is_better": true, "ai_importance": 0.6, "affects": { "survivability": 0.7 } },
 	# mobility (units only)
-	"move_speed":      { "needs_value": true,  "applies_to": "unit",     "group": "mobility", "default": 2 },
-	"turn_rate":       { "needs_value": true,  "applies_to": "unit",     "group": "mobility", "default": 4 },
+	"move_speed":      { "needs_value": true,  "applies_to": "unit",     "group": "mobility", "default": 2,   "value_type": "int",   "category": "mobility", "min": 0,    "max": 1000,   "higher_is_better": true, "ai_importance": 0.6, "affects": { "mobility": 1.0, "scout_power": 0.4 } },
+	"turn_rate":       { "needs_value": true,  "applies_to": "unit",     "group": "mobility", "default": 4,   "value_type": "int",   "category": "mobility", "min": 0,    "max": 1000,   "higher_is_better": true, "ai_importance": 0.3, "affects": { "mobility": 0.4 } },
 	# economy (buildings + extractable parts)
-	"extraction_rate": { "needs_value": true,  "applies_to": "building", "group": "economy",  "default": 2 },
-	"storage_cap":     { "needs_value": true,  "applies_to": "building", "group": "economy",  "default": 100 },
+	"extraction_rate": { "needs_value": true,  "applies_to": "building", "group": "economy",  "default": 2,   "value_type": "int",   "category": "economy",  "min": 0,    "max": 10000,  "higher_is_better": true, "ai_importance": 0.6, "affects": { "economic_value": 1.0, "resource_pressure": 0.6 } },
+	"storage_cap":     { "needs_value": true,  "applies_to": "building", "group": "economy",  "default": 100, "value_type": "int",   "category": "economy",  "min": 0,    "max": 1000000,"higher_is_better": true, "ai_importance": 0.3, "affects": { "economic_value": 0.4 } },
 	# vision
-	"vision_range":    { "needs_value": true,  "applies_to": "both",     "group": "vision",   "default": 5 },
-	"stealth":         { "needs_value": false, "applies_to": "unit",     "group": "vision",   "default": true },
+	"vision_range":    { "needs_value": true,  "applies_to": "both",     "group": "vision",   "default": 5,   "value_type": "int",   "category": "vision",   "min": 0,    "max": 1000,   "higher_is_better": true, "ai_importance": 0.5, "affects": { "scout_power": 0.9, "control_value": 0.2 } },
+	"stealth":         { "needs_value": false, "applies_to": "unit",     "group": "vision",   "default": true,"value_type": "bool",  "category": "vision",   "min": 0,    "max": 1,      "higher_is_better": true, "ai_importance": 0.4, "affects": { "scout_power": 0.3, "survivability": 0.2 } },
 }
 
 
