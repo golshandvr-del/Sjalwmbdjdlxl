@@ -360,7 +360,7 @@ stat/affects می‌آیند. این تضمین می‌کند AI با هر مو�
 
 ---
 
-## فاز MD3 — Derived Metrics: از statِ خام به بردارِ Capability (متخصص: بند ۲، ۳) 🔴
+## فاز MD3 — Derived Metrics: از statِ خام به بردارِ Capability (متخصص: بند ۲، ۳) ✅ (انجام شد)
 
 **هدف:** برای هر «تعریفِ واحد/ساختمان» یک **بردارِ Capabilityِ نرمال‌شده‌ی fixed-point**
 تولید کن که خروجیِ کلِ زنجیره‌ی `raw stats -> affects -> capability` است.
