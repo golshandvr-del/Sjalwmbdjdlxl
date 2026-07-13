@@ -89,8 +89,17 @@ static func load_catalogs(nexus: Object) -> void:
 	# can list both shipped scenarios AND any authored ones a mod/.nexpack adds
 	# (Custom Games). This is data-only; the deterministic core is untouched.
 	nexus.data_loader.load_catalog("scenarios", "res://data/scenarios")
+	# MD1.5 (plan v4): load the data-driven Stat catalog so every stat is a data
+	# asset (metadata + affects) rather than a hard-coded constant. The built-in
+	# Core Stats remain the backward-compatible fallback; these definitions merge
+	# on top. Loaded BEFORE mods so a mod's Free Stats can still override/extend.
+	nexus.data_loader.load_catalog("stats", "res://data/stats")
+	StatRegistry.reset_definitions()
+	StatRegistry.load_definitions(nexus.data_loader.get_catalog("stats"))
 	# Apply mods AFTER the base catalogs so mod entries override base ones.
 	load_mods(nexus)
+	# Re-merge any Stat definitions a mod contributed on top of the base catalog.
+	StatRegistry.load_definitions(nexus.data_loader.get_catalog("stats"))
 
 
 # Discover + apply every enabled mod under mods/ onto the catalogs, then layer
