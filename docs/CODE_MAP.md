@@ -105,7 +105,8 @@ scenes/       صحنه‌های Godot (.tscn)
 | فایل | چه چیزی آماده است |
 |---|---|
 | `tools/mod_project.gd` | کل مدل مود: کاتالوگ‌های units/buildings/objects/scenarios/tech؛ درخت (`add_child`/`add_sibling`/`rename_node`/`build_tree`/`set_parent`)؛ کارخانه‌ها (`default_unit`/`default_building`/`default_object`/`default_multipart_unit`/`default_multipart_building`)؛ اعتبارسنجی (`validate_unit`/`validate_building`/`validate_object`/`validate`)؛ تصویر (`add_texture_validated`/`unique_texture_name`)؛ manifest (`build_manifest`/`save_pack`/`open_pack`) |
-| `tools/stat_registry.gd` | تعریف همه‌ی statها (`needs_value`/`applies_to`/`group`) + `compatible`/`conflicts` (جدول سازگاری چندبخشی) |
+| `tools/stat_registry.gd` | تعریف همه‌ی statها (`needs_value`/`applies_to`/`group`) + `compatible`/`conflicts` (جدول سازگاری چندبخشی)؛ **MD1: Stat به‌عنوان Data** — `load_definitions(catalog)` merge می‌کند، getterهای متادیتا (`value_type`/`category`/`min_of`/`max_of`/`higher_is_better`/`ai_importance`/`affects`)، پرچمِ `is_core`/`is_free`، و `validate_definition` |
+| `data/stats/*.json` | **MD1.1:** کاتالوگِ داده‌ی هر Core Stat با متادیتای کامل (`type`/`category`/`min`/`max`/`default`/`higher_is_better`/`ai_importance`/`affects`)؛ در راه‌اندازی (game_bootstrap) قبل و بعدِ modها روی پیش‌فرضِ توکار merge می‌شود |
 | `tools/graphic_model.gd` | مدل `graphic{mode,logical_size,parts}` + `validate_layer_sizes` + `validate_image` (PNG، ۱۶..۵۱۲) |
 | `tools/scenario_project.gd` | مدل نقشه/سناریو: قلم land/sea/wall، `place_object`، resize، round-trip |
 | `tools/coast_autotile.gd` | `coast_bitmask(x,y)` — ساحل فقط‌رندری |
