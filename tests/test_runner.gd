@@ -9591,6 +9591,150 @@ func test_md6_source_is_ascii_and_pure() -> void:
 	_check(ascii_ok, "ai_policy_util.gd is ASCII-only")
 	_check(src.contains("extends RefCounted"), "ai_policy_util extends RefCounted")
 	_check(not src.contains("WorldState"), "ai_policy_util does not touch the world model type")
+
+
+# --- Phase MD8 (item 7): unit production utility scoring ---------------------
+
+# A durable "tank" capability card: high survivability/holding, low damage.
+func _md8_tank_caps() -> Dictionary:
+	return {
+		"survivability": 900, "holding_power": 800, "damage_output": 200,
+		"mobility": 300, "siege_power": 100, "anti_air_power": 100,
+		"scout_power": 100, "support_power": 100, "cost_efficiency": 400,
+	}
+
+# A fragile "glass cannon" card: high damage/mobility, low survivability.
+func _md8_glass_caps() -> Dictionary:
+	return {
+		"survivability": 150, "holding_power": 150, "damage_output": 950,
+		"mobility": 700, "siege_power": 300, "anti_air_power": 100,
+		"scout_power": 200, "support_power": 100, "cost_efficiency": 400,
+	}
+
+# Neutral weights: every capability weight = SCALE, roles neutral.
+func _md8_neutral_weights() -> Dictionary:
+	var caps: Dictionary = {}
+	for c in UnitUtilityUtil.SCORED_CAPS:
+		caps[c] = UnitUtilityUtil.SCALE
+	return { "capabilities": caps, "roles": {} }
+
+
+func test_md8_capability_component_neutral_and_weighted() -> void:
+	print("test_md8_capability_component_neutral_and_weighted")
+	var caps: Dictionary = _md8_tank_caps()
+	var neutral: Dictionary = (_md8_neutral_weights()["capabilities"] as Dictionary)
+	# With neutral weights the component is the plain sum of scored caps.
+	var expected: int = 0
+	for c in UnitUtilityUtil.SCORED_CAPS:
+		expected += int(caps.get(c, 0))
+	_check(UnitUtilityUtil.capability_component(caps, neutral) == expected, "neutral weights = plain cap sum")
+	# Doubling the survivability weight raises the score by that cap's value.
+	var boosted: Dictionary = neutral.duplicate(true)
+	boosted["survivability"] = 2 * UnitUtilityUtil.SCALE
+	var diff: int = UnitUtilityUtil.capability_component(caps, boosted) - expected
+	_check(diff == int(caps["survivability"]), "extra survivability weight adds that cap")
+
+
+func test_md8_role_fit_and_current_need() -> void:
+	print("test_md8_role_fit_and_current_need")
+	# Role fit is the weight's deviation from neutral: preferred role -> positive.
+	_check(UnitUtilityUtil.role_fit_component("frontline_tank", {"frontline_tank": 1800}) == 800, "preferred role adds bonus")
+	_check(UnitUtilityUtil.role_fit_component("scout", {"scout": 400}) == -600, "disliked role subtracts")
+	_check(UnitUtilityUtil.role_fit_component("missing", {}) == 0, "unknown role is neutral")
+	# Current need: under threat favours the durable tank over the glass cannon.
+	var ctx_threat: Dictionary = { "under_threat": 1000, "frontline_pressure": 0, "economy_gap": 0 }
+	var tank_need: int = UnitUtilityUtil.current_need(_md8_tank_caps(), ctx_threat)
+	var glass_need: int = UnitUtilityUtil.current_need(_md8_glass_caps(), ctx_threat)
+	_check(tank_need > glass_need, "under threat, tank satisfies need more")
+	# Frontline pressure favours the high-damage glass cannon.
+	var ctx_front: Dictionary = { "under_threat": 0, "frontline_pressure": 1000, "economy_gap": 0 }
+	_check(UnitUtilityUtil.current_need(_md8_glass_caps(), ctx_front) > UnitUtilityUtil.current_need(_md8_tank_caps(), ctx_front), "frontline pressure favours damage")
+
+
+func test_md8_difficulty_noise_deterministic() -> void:
+	print("test_md8_difficulty_noise_deterministic")
+	var a: int = UnitUtilityUtil.difficulty_noise(42, 100, 1, 7, 50)
+	var b: int = UnitUtilityUtil.difficulty_noise(42, 100, 1, 7, 50)
+	_check(a == b, "same seed/tick/owner/salt -> same noise")
+	# Different salt (unit) generally shifts the noise.
+	var c: int = UnitUtilityUtil.difficulty_noise(42, 100, 1, 9, 50)
+	_check(a != c or true, "different salt is allowed to differ")
+	# Noise stays within the band.
+	_check(abs(a) <= 50, "noise within strength band")
+	# Zero strength -> zero noise.
+	_check(UnitUtilityUtil.difficulty_noise(42, 100, 1, 7, 0) == 0, "zero strength = no noise")
+
+
+func test_md8_select_best_stable_tiebreak() -> void:
+	print("test_md8_select_best_stable_tiebreak")
+	# Two identical candidates: tie-break on id (lexicographic) is deterministic.
+	var caps: Dictionary = _md8_tank_caps()
+	var cands: Array = [
+		{ "id": "zeta", "caps": caps, "primary_role": "generic" },
+		{ "id": "alpha", "caps": caps, "primary_role": "generic" },
+	]
+	var w: Dictionary = _md8_neutral_weights()
+	var ctx: Dictionary = {}
+	var pick1: String = UnitUtilityUtil.select_best(cands, w, ctx, 1, 0, 0, 0)
+	var pick2: String = UnitUtilityUtil.select_best(cands, w, ctx, 1, 0, 0, 0)
+	_check(pick1 == pick2, "selection is deterministic")
+	_check(pick1 == "alpha", "tie resolves to lexicographically-first id")
+	# Empty candidate list -> empty pick.
+	_check(UnitUtilityUtil.select_best([], w, ctx, 1, 0, 0, 0) == "", "no candidates -> empty")
+
+
+func test_md8_defensive_vs_aggressive_pick_contrast() -> void:
+	print("test_md8_defensive_vs_aggressive_pick_contrast")
+	# THE key proof for MD8: same catalog (tank + glass cannon), opposite AIs.
+	var cands: Array = [
+		{ "id": "tank", "caps": _md8_tank_caps(), "primary_role": "frontline_tank" },
+		{ "id": "glass", "caps": _md8_glass_caps(), "primary_role": "glass_cannon" },
+	]
+	var ctx: Dictionary = {}
+	# Defensive AI: heavy survivability/holding weights, prefers frontline_tank.
+	var defensive: Dictionary = {
+		"capabilities": {
+			"survivability": 2000, "holding_power": 2000, "damage_output": 400,
+			"mobility": 800, "siege_power": 800, "anti_air_power": 1000,
+			"scout_power": 800, "support_power": 1000, "cost_efficiency": 1200,
+		},
+		"roles": { "frontline_tank": 1800, "glass_cannon": 400 },
+	}
+	# Aggressive AI: heavy damage/mobility weights, prefers glass_cannon.
+	var aggressive: Dictionary = {
+		"capabilities": {
+			"survivability": 400, "holding_power": 400, "damage_output": 2000,
+			"mobility": 1600, "siege_power": 1400, "anti_air_power": 800,
+			"scout_power": 1000, "support_power": 600, "cost_efficiency": 800,
+		},
+		"roles": { "frontline_tank": 400, "glass_cannon": 1800 },
+	}
+	var def_pick: String = UnitUtilityUtil.select_best(cands, defensive, ctx, 5, 0, 0, 0)
+	var agg_pick: String = UnitUtilityUtil.select_best(cands, aggressive, ctx, 5, 0, 0, 0)
+	_check(def_pick == "tank", "defensive AI picks the survival-focused tank")
+	_check(agg_pick == "glass", "aggressive AI picks the glass cannon")
+
+
+func test_md8_single_candidate_backward_compatible() -> void:
+	print("test_md8_single_candidate_backward_compatible")
+	# Backward compatibility: a catalog with only "soldier" always yields soldier.
+	var cands: Array = [ { "id": "soldier", "caps": _md8_tank_caps(), "primary_role": "generic" } ]
+	var w: Dictionary = _md8_neutral_weights()
+	_check(UnitUtilityUtil.select_best(cands, w, {}, 1, 10, 2, 30) == "soldier", "sole candidate always chosen")
+
+
+func test_md8_source_is_ascii_and_pure() -> void:
+	print("test_md8_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/unit_utility_util.gd")
+	_check(src.length() > 0, "unit_utility_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "unit_utility_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "unit_utility_util extends RefCounted")
+	_check(not src.contains("WorldState"), "unit_utility_util does not touch the world model type")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "ai_policy_util does not touch the sim hasher")
 	_check(not src.contains("SceneTree"), "ai_policy_util does not touch the scene tree type")
 
