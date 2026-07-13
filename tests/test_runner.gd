@@ -2524,7 +2524,7 @@ func test_md4_primary_role_alpha_tie_break() -> void:
 			tied.append(str((r as Dictionary)["role"]))
 	if tied.size() >= 2:
 		# primary_role must be the alphabetically-first among the tied set.
-		var expected: String = tied.duplicate()
+		var expected: Array = tied.duplicate()
 		expected.sort()
 		_check(RoleInferenceUtil.primary_role(caps, "unit") == expected[0], "primary_role breaks ties alphabetically")
 	else:
