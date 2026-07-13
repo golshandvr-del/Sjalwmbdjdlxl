@@ -550,6 +550,7 @@ func _init() -> void:
 	test_md2_stat_affects_builtin_map_fixed_point_and_known()
 	test_md2_stat_affects_deterministic_and_defensive()
 	test_md2_resolve_affects_merges_mod_and_builtin()
+	test_md2_validate_affects_rejects_unknown_and_out_of_range()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -2316,6 +2317,31 @@ func test_md2_resolve_affects_merges_mod_and_builtin() -> void:
 	# Deterministic across calls.
 	_check(StatAffectsUtil.resolve_affects(StatRegistry) == StatAffectsUtil.resolve_affects(StatRegistry), "resolve_affects deterministic")
 	StatRegistry.reset_definitions()
+
+
+# MD2.4: validate_affects accepts a well-formed affects dict and reports each
+# failure mode (unknown capability, non-numeric weight, out-of-range weight).
+func test_md2_validate_affects_rejects_unknown_and_out_of_range() -> void:
+	print("test_md2_validate_affects_rejects_unknown_and_out_of_range")
+	# Well-formed affects -> no problems.
+	_check(StatAffectsUtil.validate_affects({ "survivability": 0.8, "holding_power": 0.5 }).is_empty(), "valid affects accepted")
+	# Zero weight and negative (detracting) weight are allowed within bounds.
+	_check(StatAffectsUtil.validate_affects({ "mobility": 0, "scout_power": -1.5 }).is_empty(), "zero/negative in-bound accepted")
+	# Not a dictionary.
+	_check(not StatAffectsUtil.validate_affects("nope").is_empty(), "non-dictionary rejected")
+	# Unknown capability id.
+	var p_unknown: Array = StatAffectsUtil.validate_affects({ "not_a_capability": 0.5 })
+	_check(p_unknown.size() == 1 and str(p_unknown[0]).begins_with("unknown capability"), "unknown capability reported")
+	# Non-numeric weight.
+	var p_nan: Array = StatAffectsUtil.validate_affects({ "damage_output": "high" })
+	_check(p_nan.size() == 1 and str(p_nan[0]).find("not numeric") >= 0, "non-numeric weight reported")
+	# Out-of-range weight (beyond MAX_WEIGHT).
+	var p_range: Array = StatAffectsUtil.validate_affects({ "damage_output": 999.0 })
+	_check(p_range.size() == 1 and str(p_range[0]).find("out of") >= 0, "out-of-range weight reported")
+	# Problems are emitted in deterministic (sorted-key) order.
+	var multi: Array = StatAffectsUtil.validate_affects({ "zzz_unknown": 0.1, "aaa_unknown": 0.1 })
+	_check(multi.size() == 2, "two unknown capabilities reported")
+	_check(str(multi[0]).find("aaa_unknown") >= 0, "problems sorted by capability id")
 
 
 # --- E2: graphic model + image validation -----------------------------------
