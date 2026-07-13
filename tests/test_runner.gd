@@ -551,6 +551,11 @@ func _init() -> void:
 	test_md2_stat_affects_deterministic_and_defensive()
 	test_md2_resolve_affects_merges_mod_and_builtin()
 	test_md2_validate_affects_rejects_unknown_and_out_of_range()
+	test_md3_compute_capabilities_full_vector_and_fixed_point()
+	test_md3_archetypes_rank_as_expected()
+	test_md3_cost_efficiency_and_resource_pressure()
+	test_md3_cache_matches_uncached_and_key_stable()
+	test_md3_resilience_incomplete_unit_uses_defaults()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
