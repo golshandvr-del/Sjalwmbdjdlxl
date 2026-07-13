@@ -172,3 +172,49 @@ static func resolve_affects(stat_registry: Object) -> Dictionary:
 		if not merged.is_empty():
 			out[stat_id] = merged
 	return out
+
+
+# ---------------------------------------------------------------------------
+# MD2.4: validate a data-defined `affects` dictionary before it reaches the AI
+# pipeline. Returns an array of human-readable problem strings (empty => valid).
+#
+# Checks:
+#   - the value is a Dictionary at all;
+#   - every key is a KNOWN engine capability (unknown ids rejected -- the engine
+#     never grows its capability list from a mod, section 2 architecture note);
+#   - every weight is numeric (int or float, not a string / bool / dict);
+#   - every weight is within a sane bound. `affects` is one-directional
+#     (stat -> capability), so a cycle is structurally impossible; the only
+#     failure modes are unknown capability and out-of-range weight. The bound is
+#     expressed in FLOAT space (author-facing) as [MIN_WEIGHT..MAX_WEIGHT].
+#
+# Problem strings are emitted in a DETERMINISTIC order (capability ids sorted).
+# ---------------------------------------------------------------------------
+# Author-facing weight bounds (float space). A weight of 0 is allowed (an author
+# may explicitly zero a built-in link). Negative weights are permitted so a stat
+# can DETRACT from a capability, but must stay within a sane magnitude.
+const MIN_WEIGHT: float = -10.0
+const MAX_WEIGHT: float = 10.0
+
+
+static func validate_affects(affects: Variant) -> Array:
+	var problems: Array = []
+	if not (affects is Dictionary):
+		problems.append("affects is not a dictionary")
+		return problems
+	var d: Dictionary = affects as Dictionary
+	var cap_ids: Array = d.keys()
+	cap_ids.sort()
+	for cap_id in cap_ids:
+		var cid: String = str(cap_id)
+		if not CapabilityRegistry.has_capability(cid):
+			problems.append("unknown capability: %s" % cid)
+			continue
+		var w: Variant = d[cap_id]
+		if not (w is int or w is float):
+			problems.append("weight for %s is not numeric" % cid)
+			continue
+		var f: float = float(w)
+		if f < MIN_WEIGHT or f > MAX_WEIGHT:
+			problems.append("weight for %s out of [%s..%s]: %s" % [cid, str(MIN_WEIGHT), str(MAX_WEIGHT), str(f)])
+	return problems
