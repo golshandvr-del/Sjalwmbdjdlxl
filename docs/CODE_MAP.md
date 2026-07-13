@@ -43,6 +43,8 @@ scenes/       صحنه‌های Godot (.tscn)
 | `data_loader.gd` | بارگذاری JSON + merge مود | `get_catalog`, `get_entry`, `load_catalogs` |
 | `save_system.gd` | سریال/بازیابی کل بازی | serialize/restore کل WorldState — **پایه‌ی R3/R4** |
 | `state_hasher.gd` | checksum قطعی | تشخیص desync — **پایه‌ی R7 (مقایسه‌ی hash مود/state)** |
+| `capability_registry.gd` | **MD2.1: قرارداد بسته و نسخه‌دارِ Capability** (لایه‌ی واسطِ ثابتِ موتور بین statِ خام و AI) | `all_ids` (sorted), `has_capability`, `record`, `applies_to`, `default_q` (fixed-point)، `name_key` (i18n)، `ids_for(unit/building)` — فهرست هرگز با مود تغییر نمی‌کند |
+| `stat_affects_util.gd` | **MD2.2–2.4: نگاشتِ `affects` (Stat → Capability)** با وزنِ fixed-point (`SCALE=1000`) | `builtin_map` (نگاشتِ توکارِ Core Stats)، `builtin_affects_for`، `quantize_weight`، `resolve_affects(stat_registry)` (ادغامِ affectsِ مودها روی توکار — وصلِ بی‌کدِ Free Stat)، `validate_affects` (ردِ capabilityِ ناشناخته/وزنِ خارج از بازه) — خالص و قطعی |
 | `mod_loader.gd` | کشف/بارگذاری مود | `load_mods`, `load_packs` — **پایه‌ی R5/R7** |
 | `storage_service.gd` | ریشه‌ی محتوا | `ensure_content_root`, `resolve_pack`, `list_packs` |
 | `pack_format.gd` / `pack_reader.gd` / `pack_writer.gd` | فرمت `.nexpack` | `write_from_dir/data`, `read_catalogs` — **پایه‌ی R5** |
