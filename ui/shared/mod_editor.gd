@@ -942,11 +942,23 @@ func _build_stat_picker(parent: VBoxContainer, entity: Dictionary, part_index: i
 		check.custom_minimum_size = Vector2(150, 0)
 		check.toggled.connect(func(on: bool) -> void: _toggle_stat(part_index, stat_id, on))
 		row.add_child(check)
+		# MD12.2: the value control is now DATA-DRIVEN. A stat's value_type picks
+		# the widget (bool -> the checkbox above is the whole control; float ->
+		# a decimal SpinBox; int -> an integer SpinBox) and the registry's
+		# min/max bound the SpinBox range instead of a hard-coded 0..100000.
 		if StatRegistry.needs_value(stat_id):
+			var kind: String = StatEditorUtil.control_kind(StatRegistry.value_type(stat_id))
 			var spin: SpinBox = SpinBox.new()
-			spin.min_value = 0
-			spin.max_value = 100000
-			spin.step = 1
+			spin.min_value = StatRegistry.min_of(stat_id)
+			spin.max_value = StatRegistry.max_of(stat_id)
+			if spin.max_value <= spin.min_value:
+				spin.max_value = spin.min_value + 100000
+			if kind == "float":
+				spin.step = 0.01
+				spin.rounded = false
+			else:
+				spin.step = 1
+				spin.rounded = true
 			spin.value = float(current.get(stat_id, StatRegistry.default_value(stat_id)))
 			spin.editable = current.has(stat_id)
 			spin.value_changed.connect(func(v: float) -> void: _set_stat_value(part_index, stat_id, v))
@@ -978,11 +990,13 @@ func _toggle_stat(part_index: int, stat_id: String, on: bool) -> void:
 
 func _set_stat_value(part_index: int, stat_id: String, value: float) -> void:
 	var entity: Dictionary = _selected_entity()
-	var stats: Dictionary = _stats_dict_for(entity, part_index).duplicate(true)
+	var stats: Dictionary = _stats_dict_for(entity, part_index)
 	if not stats.has(stat_id):
 		return
-	stats[stat_id] = int(value)
-	_write_stats(entity, part_index, stats)
+	# MD12.2: coerce/clamp through the pure model helper so the stored value
+	# honours the stat's value_type (int/float) and its registry min/max.
+	var updated: Dictionary = StatEditorUtil.with_stat_value(stats, stat_id, value, StatRegistry)
+	_write_stats(entity, part_index, updated)
 	_commit(entity)
 
 
