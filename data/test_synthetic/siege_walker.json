@@ -1,0 +1,27 @@
+{
+  "id": "siege_walker",
+  "display_name_key": "unit.siege_walker.name",
+  "category": "artillery",
+  "stats": {
+    "health": 160,
+    "armor": 40,
+    "move_speed": 1,
+    "turn_rate": 1,
+    "attack_damage": 60,
+    "fire_rate": 1,
+    "attack_range": 11,
+    "splash_radius": 6,
+    "vision_range": 6
+  },
+  "cost": {
+    "resource_basic": 210
+  },
+  "build_time_ticks": 180,
+  "visual": {
+    "shape": "hexagon",
+    "color": "#6D3B8A",
+    "texture": "textures/tank.png",
+    "size_scale": 1.25,
+    "outline": true
+  }
+}
