@@ -190,16 +190,29 @@ static func _open_neighbours(width: int, height: int, tiles: Array, x: int, y: i
 static func _choke_control(width: int, height: int, tiles: Array, x: int, y: int) -> int:
 	if not _is_ground(width, height, tiles, x, y):
 		return 0
-	var open: int = _open_neighbours(width, height, tiles, x, y)
+	var up: bool = _is_ground(width, height, tiles, x, y - 1)
+	var down: bool = _is_ground(width, height, tiles, x, y + 1)
+	var left: bool = _is_ground(width, height, tiles, x - 1, y)
+	var right: bool = _is_ground(width, height, tiles, x + 1, y)
+	var open: int = int(up) + int(down) + int(left) + int(right)
+	# A TRUE corridor (two OPPOSING sides open, the perpendicular pair blocked)
+	# is the tightest choke. A tile with two ADJACENT openings (a map corner or a
+	# bend) only *looks* pinched because of the map edge, so it must rank lower
+	# than a real corridor -- otherwise a corner scores like a defended pass.
+	var vertical_corridor: bool = up and down and not left and not right
+	var horizontal_corridor: bool = left and right and not up and not down
 	# Map open-count (0..4) to a choke q: fewer openings == tighter choke.
-	# 4 -> 0, 3 -> 250, 2 -> 750, 1 -> 500, 0 -> 250 (isolated, less useful).
+	# 4 -> 0 (open field), 3 -> 250, corridor(2 opposing) -> 750, corner(2
+	# adjacent) -> 400, 1 -> 500, 0 -> 250 (isolated, less useful).
 	match open:
 		4:
 			return 0
 		3:
 			return 250
 		2:
-			return 750
+			if vertical_corridor or horizontal_corridor:
+				return 750
+			return 400
 		1:
 			return 500
 		_:
