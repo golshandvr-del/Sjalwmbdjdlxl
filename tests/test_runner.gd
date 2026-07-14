@@ -633,6 +633,12 @@ func _init() -> void:
 	test_md11_state_round_trip_sorted()
 	test_md11_cross_match_memory_and_seed()
 	test_md11_learning_source_is_ascii_and_pure()
+	# Phase MD12 (item 15): data-driven Stat UI in the mod editor.
+	test_md12_describe_stat_reads_registry_metadata()
+	test_md12_stat_ids_for_catalog_sorted()
+	test_md12_groups_for_grouped_by_category_sorted()
+	test_md12_paginate_mobile_cap_and_bounds()
+	test_md12_stat_editor_util_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
