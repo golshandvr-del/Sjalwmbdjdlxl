@@ -646,6 +646,12 @@ func _init() -> void:
 	test_md12_stat_display_name_dynamic_key_and_fallback()
 	test_md12_core_stats_have_locale_labels()
 	test_md12_stat_editor_util_source_is_ascii_and_pure()
+	# Phase MD13 (item 13): synthetic archetype package + full-pipeline gate.
+	test_md13_synthetic_files_load_and_wellformed()
+	test_md13_chain_raw_to_capabilities_to_roles()
+	test_md13_archetype_selection_matches_personality()
+	test_md13_end_to_end_determinism()
+	test_md13_resilience_incomplete_unit_generic()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
