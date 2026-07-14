@@ -68,6 +68,60 @@ scenes/       صحنه‌های Godot (.tscn)
 
 ---
 
+## ۲.۵ خطِ لوله‌ی تصمیمِ AI داده‌محور (معماریِ دورِ MD — نمای کلی)
+
+> این نمای واحدِ «چطور یک AI بدونِ دانستنِ نامِ واحد تصمیم می‌گیرد» است. هر مرحله یک
+> util خالصِ قطعیِ fixed-point (`SCALE=1000`) است؛ هیچ float در مسیرِ تصمیمی که روی
+> `state_hasher` اثر دارد باقی نمی‌ماند (قانونِ طلاییِ بند ۲.۱). موتور فهرستِ
+> Capability را هرگز تغییر نمی‌دهد؛ مود فقط **مقدارِ** capability را از راهِ
+> stat/affects عوض می‌کند (بند ۲.۳/۲.۴).
+
+```
+[data/*.json: stat خام]                         (MD1: Stat as Data — StatRegistry)
+        |
+        v
+[affects: Stat -> Capability]                   (MD2: capability_registry + stat_affects_util)
+        |
+        v
+[بردارِ Capabilityِ fixed-point]                (MD3: derived_metrics_util.compute_capabilities)
+        |   q = SCALE*v/(v+H) (منحنیِ اشباع) + cost_efficiency/resource_pressure
+        v
+[Role / Tag]                                    (MD4: role_inference_util -> primary_role)
+        |
+        +--<-- [AiProfile 35-knob] --> [وزنِ نقش/capability]   (MD5: ai_weight_derivation_util)
+        |
+        v
+[Context Vector]  <-- world summary            (MD7: ai_context_util.build_context)
+        |
+        v
+[Policy flags]    <-- Context                  (MD6: ai_policy_util.evaluate)
+        |
+        v
+[Utility Scoring]                              (MD8 unit_utility_util / MD9 building_utility_util)
+        |   score = sum(need_q * capability_q) + context/site
+        v
+[Staged Decision: state->priority->category->pick]   (MD10: ai_decision_pipeline_util.decide)
+        |
+        v
+[Command صادر می‌شود]  (ai_commander_module / strategic_ai_module — legacy فقط fallback)
+        |
+        v
+[Learning]  سطح۱ درون‌بازی (داخلِ hash) + سطح۲ بین‌بازی (user://، بیرونِ hash)  (MD11: ai_learning_util)
+```
+
+**نکاتِ کلیدیِ معماری:**
+- **AI فقط با Capability + Role کار می‌کند**، نه با statِ خام و نه با نامِ واحد →
+  هر مودِ آینده بدونِ یک خطِ کدِ جدید کار می‌کند (اثباتِ نهایی: تستِ `test_md14_mod_free_stat_round_trip_understood_by_ai`).
+- **قطعیت:** کلِ زنجیره صحیح/fixed-point است، مرتب‌سازیِ پایدار بر id، گِردکردنِ
+  round-half-away-from-zero؛ حضورِ statِ پویا hashِ شبیه‌سازی را نمی‌شکند
+  (تستِ `test_md14_dynamic_stats_do_not_break_determinism`).
+- **جداییِ cosmetic/simulation:** نمایشِ UIِ metric/role (MD12) هرگز به
+  `core/state_hasher.gd` دست نمی‌زند؛ هر چیزِ اثرگذار بر رفتار از راهِ Command می‌رود.
+- **تابِ‌آوری (بند ۲.۵):** statِ غایب → `default_q`، بردارِ ناقص → نقشِ `generic`،
+  context/policy/نامزدِ خالی → اکشنِ SAFE؛ هرگز crash/RNGِ بی‌seed.
+
+---
+
 ## ۳. ماژول‌های گیم‌پلی (`modules/`)
 
 | ماژول | فایل | مسئولیت | توابع مهم برای ۰.۶.۰ |
