@@ -1,0 +1,26 @@
+{
+  "id": "economy_harvester",
+  "display_name_key": "unit.economy_harvester.name",
+  "category": "worker",
+  "stats": {
+    "health": 90,
+    "armor": 0,
+    "move_speed": 2,
+    "attack_damage": 2,
+    "attack_range": 1,
+    "extraction_rate": 14,
+    "storage_cap": 400,
+    "vision_range": 4
+  },
+  "cost": {
+    "resource_basic": 60
+  },
+  "build_time_ticks": 55,
+  "visual": {
+    "shape": "circle",
+    "color": "#3B6D8A",
+    "texture": "textures/soldier.png",
+    "size_scale": 0.9,
+    "outline": true
+  }
+}
