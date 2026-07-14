@@ -384,7 +384,7 @@ static func pick_action(
 	var pool_key: String = category_pool(category)
 
 	if pool_key == "unit":
-		return _pick_unit(pools, w, ctx, p)
+		return _pick_unit(category, pools, w, ctx, p)
 	if pool_key == "building":
 		return _pick_building(category, pools, ctx, p)
 	# Diplomacy / none: no candidate needed; the module handles the raw action.
@@ -392,15 +392,21 @@ static func pick_action(
 
 
 # Pick the best unit via UnitUtilityUtil.select_best (id-stable tie-break).
-static func _pick_unit(pools: Dictionary, weights: Dictionary, ctx: Dictionary, p: Dictionary) -> Dictionary:
+# The chosen CATEGORY (Stage 3) biases the capability weights so the exact pick
+# reflects the category's intent (a STRIKE order favours the damage dealer, a
+# HOLDING order the durable unit) -- this is the "category then exact pick"
+# design. The bias is a deterministic integer overlay on the profile weights;
+# the shared MD8 scorer is left untouched.
+static func _pick_unit(category: String, pools: Dictionary, weights: Dictionary, ctx: Dictionary, p: Dictionary) -> Dictionary:
 	var list: Array = pools.get("unit", []) as Array if (pools.get("unit", []) is Array) else []
 	if list.is_empty():
 		return { "kind": "unit", "target_id": "", "score": 0, "detail": {} }
+	var biased: Dictionary = _category_biased_weights(category, weights)
 	var match_seed: int = int(p.get("match_seed", 0))
 	var tick: int = int(p.get("tick", 0))
 	var owner: int = int(p.get("owner", 0))
 	var noise: int = int(p.get("noise_strength_q", 0))
-	var best_id: String = UnitUtilityUtil.select_best(list, weights, ctx, match_seed, tick, owner, noise)
+	var best_id: String = UnitUtilityUtil.select_best(list, biased, ctx, match_seed, tick, owner, noise)
 	# Recompute the winning score for the detail (deterministic, same inputs).
 	var score: int = 0
 	for raw in list:
@@ -413,9 +419,33 @@ static func _pick_unit(pools: Dictionary, weights: Dictionary, ctx: Dictionary, 
 		score = UnitUtilityUtil.score_unit(
 			(cand.get("caps", {}) as Dictionary),
 			str(cand.get("primary_role", "generic")),
-			weights, ctx, match_seed, tick, owner, salt, noise)
+			biased, ctx, match_seed, tick, owner, salt, noise)
 		break
 	return { "kind": "unit", "target_id": best_id, "score": score, "detail": {} }
+
+
+# Deterministic category-bias overlay on the profile's capability weights. For a
+# unit category we DOUBLE the weight of the capabilities that category is about
+# (strike -> damage_output; holding -> survivability + holding_power) so Stage 4
+# picks the candidate that best serves the Stage 3 category. Returns a NEW dict
+# (never mutates the caller's weights); a non-unit or unknown category returns
+# the weights unchanged. Pure integer math -> lockstep safe.
+static func _category_biased_weights(category: String, weights: Dictionary) -> Dictionary:
+	var boost: Array = []
+	match category:
+		CATEGORY_STRIKE_UNIT:
+			boost = ["damage_output"]
+		CATEGORY_HOLDING_UNIT:
+			boost = ["survivability", "holding_power"]
+		_:
+			return weights
+	var out: Dictionary = weights.duplicate(true)
+	var caps: Dictionary = (out.get("capabilities", {}) as Dictionary) if (out.get("capabilities", {}) is Dictionary) else {}
+	for cap_id in boost:
+		var w_q: int = int(caps.get(cap_id, SCALE))
+		caps[cap_id] = w_q * 2
+	out["capabilities"] = caps
+	return out
 
 
 # Pick the best building by scoring each candidate with BuildingUtilityUtil
