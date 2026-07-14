@@ -11403,3 +11403,71 @@ func test_md13_archetype_selection_matches_personality() -> void:
 	var eco_pick: String = UnitUtilityUtil.select_best([tank, harvester], economic, ctx, 7, 0, 0, 0)
 	_check(eco_pick == "economy_harvester", "economic AI prefers the harvester (got %s)" % eco_pick)
 	StatRegistry.reset_definitions()
+
+
+# MD13.4: the entire pipeline is byte-for-byte deterministic. Running the full
+# raw -> capabilities -> roles -> pick chain twice with identical inputs must
+# yield identical capability vectors, identical roles, and identical picks.
+func test_md13_end_to_end_determinism() -> void:
+	print("test_md13_end_to_end_determinism")
+	StatRegistry.reset_definitions()
+	var ids: Array = _MD13_ARCHETYPES.keys()
+	ids.sort()
+	var neutral: Dictionary = { "capabilities": {}, "roles": {} }
+	for c in UnitUtilityUtil.SCORED_CAPS:
+		(neutral["capabilities"] as Dictionary)[c] = UnitUtilityUtil.SCALE
+	var candidates_a: Array = []
+	var candidates_b: Array = []
+	for id in ids:
+		var def1: Dictionary = _md13_load_synthetic(str(id))
+		var def2: Dictionary = _md13_load_synthetic(str(id))
+		var caps1: Dictionary = DerivedMetricsUtil.compute_capabilities(def1, StatRegistry, null)
+		var caps2: Dictionary = DerivedMetricsUtil.compute_capabilities(def2, StatRegistry, null)
+		_check(caps1 == caps2, "e2e: %s capability vector reproducible" % str(id))
+		var role1: String = RoleInferenceUtil.primary_role(caps1, "unit")
+		var role2: String = RoleInferenceUtil.primary_role(caps2, "unit")
+		_check(role1 == role2, "e2e: %s role reproducible" % str(id))
+		candidates_a.append({ "id": str(id), "caps": caps1, "primary_role": role1 })
+		candidates_b.append({ "id": str(id), "caps": caps2, "primary_role": role2 })
+	var ctx: Dictionary = { "under_threat": 400, "frontline_pressure": 300, "economy_gap": 200 }
+	var pick_a: String = UnitUtilityUtil.select_best(candidates_a, neutral, ctx, 42, 10, 1, 0)
+	var pick_b: String = UnitUtilityUtil.select_best(candidates_b, neutral, ctx, 42, 10, 1, 0)
+	_check(pick_a == pick_b, "e2e: full-pipeline pick reproducible (got %s / %s)" % [pick_a, pick_b])
+	_check(pick_a != "", "e2e: full-pipeline yields a valid pick")
+	StatRegistry.reset_definitions()
+
+
+# MD13.5: resilience. A unit with a MISSING core stat and an UNKNOWN stat must
+# still flow through the whole pipeline: a safe capability vector, a valid role
+# (generic when nothing clears the floor), and a valid pick -- never a crash.
+func test_md13_resilience_incomplete_unit_generic() -> void:
+	print("test_md13_resilience_incomplete_unit_generic")
+	StatRegistry.reset_definitions()
+	# A near-empty unit: only a tiny, unknown stat and no recognised combat/defense.
+	var broken: Dictionary = {
+		"id": "broken_unit",
+		"stats": { "not_a_real_stat": 5 },
+		"cost": { "resource_basic": 50 },
+	}
+	# compute_capabilities must not crash and must return safe defaults.
+	var caps: Dictionary = DerivedMetricsUtil.compute_capabilities(broken, StatRegistry, null)
+	_check(caps is Dictionary, "resilience: broken unit -> a capability dictionary")
+	for cid in caps.keys():
+		var q: int = int(caps[cid])
+		_check(q >= 0 and q <= CapabilityRegistry.SCALE, "resilience: cap %s safe/in-range" % str(cid))
+	# Role inference falls back to generic (nothing clears the floor).
+	var role: String = RoleInferenceUtil.primary_role(caps, "unit")
+	_check(role == RoleInferenceUtil.GENERIC_ROLE, "resilience: incomplete unit -> generic role (got %s)" % role)
+	# A totally empty def is also safe.
+	var empty_caps: Dictionary = DerivedMetricsUtil.compute_capabilities({}, StatRegistry, null)
+	_check(RoleInferenceUtil.primary_role(empty_caps, "unit") == RoleInferenceUtil.GENERIC_ROLE, "resilience: empty def -> generic role")
+	# The broken unit can still be selected (a valid pick, not a crash), even as
+	# the only candidate.
+	var neutral: Dictionary = { "capabilities": {}, "roles": {} }
+	for c in UnitUtilityUtil.SCORED_CAPS:
+		(neutral["capabilities"] as Dictionary)[c] = UnitUtilityUtil.SCALE
+	var pick: String = UnitUtilityUtil.select_best(
+		[{ "id": "broken_unit", "caps": caps, "primary_role": role }],
+		neutral, {}, 1, 0, 0, 0)
+	_check(pick == "broken_unit", "resilience: broken unit still selectable (got %s)" % pick)
+	StatRegistry.reset_definitions()
