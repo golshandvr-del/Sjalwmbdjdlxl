@@ -75,6 +75,31 @@ Nexus **خودش هیچ گیم‌پلی‌ای ندارد**؛ فقط هماهن�
   → RenderAdapter (فقط می‌خواند و رسم می‌کند؛ هرگز نمی‌نویسد)
 ```
 
+### ۱.۲ معماریِ AIِ داده‌محور (دورِ MD — `docs/plan_android_fix_v4.md`)
+
+دورِ MD یک **بازمعماریِ بنیادین** است (نه رفعِ باگ): AI دیگر به نامِ واحد یا
+statِ خام گره نخورده، بلکه روی یک **زنجیره‌ی داده‌محورِ کاملاً قطعیِ fixed-point**
+تصمیم می‌گیرد. این تضمین می‌کند که (۱) هر مود بدونِ یک خطِ کدِ موتور کار کند و
+(۲) کلاینت‌های lockstep روی ARM/x86 هم‌گام بمانند.
+
+```
+stat خام (data) → affects → Capability(بردار fixed-point) → Role
+     → [AiProfile → وزنِ نقش/capability] → Context → Policy
+     → Utility Scoring → تصمیمِ مرحله‌ای → Command → Learning
+```
+
+- **دو لایه:** (۱) **Stat به‌عنوان Data** (نه hard-code؛ Core Stat در برابر Free/Mod
+  Stat) و (۲) **خطِ لوله‌ی تصمیمِ چندلایه‌ی AI**. جزئیاتِ فایل‌به‌فایل و نمودارِ کامل
+  در `docs/CODE_MAP.md` بخشِ «۲.۵ خطِ لوله‌ی تصمیمِ AI».
+- **قانونِ طلایی:** هیچ float در مسیرِ تصمیمی که روی `state_hasher` اثر دارد نمی‌ماند؛
+  همه‌چیز `[0..SCALE=1000]`، مرتب‌سازیِ پایدار بر id، گِردکردنِ round-half-away-from-zero.
+- **Capability = قراردادِ بسته و نسخه‌دار (۱۷ توانایی):** مود **مقدارِ** capability را
+  از راهِ stat/affects عوض می‌کند، هرگز **فهرست** را. AI فقط Capability+Role را می‌بیند.
+- **جداییِ cosmetic/simulation:** نمایشِ UIِ metric/role هرگز به sim hash دست نمی‌زند؛
+  هر اثرِ رفتاری از راهِ Command می‌رود.
+- **تابِ‌آوری:** statِ غایب → `default_q`؛ بردارِ ناقص → نقشِ `generic`؛ context/policy/
+  نامزدِ خالی → اکشنِ SAFE؛ هرگز crash/RNGِ بی‌seed.
+
 ---
 
 ## ۲. چه چیزی از قبل ساخته شده (وضعیت پیش از ۰.۶.۰)
