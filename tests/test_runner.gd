@@ -11503,3 +11503,48 @@ func test_md14_ai_modules_wire_new_pipeline() -> void:
 	_check(strat.contains("AiDecisionPipelineUtil.decide"), "strategic AI routes macro via staged decision pipeline (MD10)")
 	_check(strat.contains("AiContextUtil.build_context"), "strategic AI builds the context vector (MD7)")
 	_check(strat.contains("BuildingUtilityUtil") or strat.contains("BuildingPlacementUtil"), "strategic AI uses building utility/placement (MD9)")
+
+
+# MD14.2: the final moddability proof. A mod defines a brand-new Free Stat with
+# an `affects` map (no engine code). After the stat is loaded (simulating a mod
+# pack load), a unit carrying that stat flows through the SAME pipeline and the
+# AI "understands" it: the free stat measurably raises the capability it feeds,
+# which in turn changes the inferred role / selection. Also proves the load is a
+# round-trip (validate -> load -> resolve -> reset restores the baseline).
+func test_md14_mod_free_stat_round_trip_understood_by_ai() -> void:
+	print("test_md14_mod_free_stat_round_trip_understood_by_ai")
+	StatRegistry.reset_definitions()
+	# A mod's Free Stat definition (the shape a .json stat file / pack carries).
+	var mod_stat: Dictionary = {
+		"id": "zeal",
+		"type": "int", "category": "special", "min": 0, "max": 100,
+		"default": 0, "higher_is_better": true, "ai_importance": 0.7,
+		"affects": { "damage_output": 0.8, "survivability": 0.3 },
+	}
+	# It must validate before any load (mod-safety gate).
+	_check(StatRegistry.validate_definition(mod_stat).is_empty(), "mod free stat validates")
+	# Its affects must validate against the capability contract (MD2.4).
+	_check(StatAffectsUtil.validate_affects(mod_stat["affects"]).is_empty(), "mod affects validates against capability contract")
+	# A unit that USES the free stat, and an identical one that does NOT.
+	var with_zeal: Dictionary = { "id": "zealot", "stats": { "health": 120, "attack_damage": 30, "zeal": 90 }, "cost": { "resource_basic": 100 } }
+	var without: Dictionary = { "id": "plain", "stats": { "health": 120, "attack_damage": 30 }, "cost": { "resource_basic": 100 } }
+	# BEFORE the mod loads, the engine does not know `zeal` -> it is inert.
+	var caps_before: Dictionary = DerivedMetricsUtil.compute_capabilities(with_zeal, StatRegistry, StatAffectsUtil.resolve_affects(StatRegistry))
+	var plain_before: Dictionary = DerivedMetricsUtil.compute_capabilities(without, StatRegistry, StatAffectsUtil.resolve_affects(StatRegistry))
+	_check(int(caps_before.get("damage_output", 0)) == int(plain_before.get("damage_output", 0)), "unknown free stat is inert before load")
+	# LOAD the mod stat (simulating a mod pack), then RESOLVE affects again.
+	StatRegistry.load_definitions({ "zeal": mod_stat })
+	_check(StatRegistry.is_free("zeal"), "zeal is a Free Stat after load")
+	var affects_after: Dictionary = StatAffectsUtil.resolve_affects(StatRegistry)
+	_check((affects_after.get("zeal", {}) as Dictionary).get("damage_output", 0) == 800, "zeal -> damage_output wired at 0.8 fixed-point with ZERO engine code")
+	# AFTER load, the zealot's damage_output capability is strictly higher than
+	# the plain unit's: the AI now "understands" the modded stat.
+	var caps_after: Dictionary = DerivedMetricsUtil.compute_capabilities(with_zeal, StatRegistry, affects_after)
+	var plain_after: Dictionary = DerivedMetricsUtil.compute_capabilities(without, StatRegistry, affects_after)
+	_check(int(caps_after.get("damage_output", 0)) > int(plain_after.get("damage_output", 0)), "modded stat raises the capability the AI reasons about")
+	# Round-trip: resetting definitions restores the pre-mod baseline exactly.
+	StatRegistry.reset_definitions()
+	var affects_reset: Dictionary = StatAffectsUtil.resolve_affects(StatRegistry)
+	_check(not affects_reset.has("zeal"), "reset removes the modded stat wiring (round-trip)")
+	_check(affects_reset == StatAffectsUtil.builtin_map(), "post-reset affects equals the built-in baseline")
+	StatRegistry.reset_definitions()
