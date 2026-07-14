@@ -1,0 +1,25 @@
+{
+  "id": "heavy_tank",
+  "display_name_key": "unit.heavy_tank.name",
+  "category": "armor",
+  "stats": {
+    "health": 620,
+    "armor": 140,
+    "shield": 60,
+    "move_speed": 1,
+    "attack_damage": 20,
+    "attack_range": 2,
+    "vision_range": 4
+  },
+  "cost": {
+    "resource_basic": 220
+  },
+  "build_time_ticks": 160,
+  "visual": {
+    "shape": "square",
+    "color": "#8A6D3B",
+    "texture": "textures/tank.png",
+    "size_scale": 1.3,
+    "outline": true
+  }
+}
