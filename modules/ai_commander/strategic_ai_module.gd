@@ -242,9 +242,17 @@ func _plan_for_player(owner: int, personality: Dictionary) -> void:
 	# MC9.4: gate base-building planners by general mode. A rebel faction has no
 	# base, so economy/research/hq-upgrade are skipped; it only manoeuvres.
 	var flags: Dictionary = AiGeneralModeUtil.planner_flags(general_mode(owner))
+	# MD10.5: consult the staged decision pipeline for the CURRENT macro priority
+	# and let it choose whether research or economy is planned FIRST this pass.
+	# This replaces the hard-coded research_first flag as the primary driver while
+	# keeping the exact same set of Commands (build_building / research_tech /
+	# upgrade_building / move). The named research_first preset remains the
+	# deterministic FALLBACK whenever the pipeline yields nothing decisive
+	# (empty context / no HQ), so existing strategic tests do not regress.
+	var research_first: bool = _economy_or_research_first(owner, personality)
 	# Priority order is intentional: secure tech/economy first, then decide
 	# whether to keep massing or to commit to the attack.
-	if bool(personality.get("research_first", true)):
+	if research_first:
 		if bool(flags.get("research", true)):
 			_plan_research(owner)
 		if bool(flags.get("economy", true)):
@@ -257,6 +265,54 @@ func _plan_for_player(owner: int, personality: Dictionary) -> void:
 	if bool(flags.get("hq_upgrade", true)):
 		_plan_hq_upgrade(owner, personality)
 	_plan_army_posture(owner, personality)
+
+
+# MD10.5: decide whether RESEARCH or ECONOMY is planned first this pass, using
+# the staged decision pipeline's macro priority. The pipeline reads the same MD7
+# context vector the placement selector uses, evaluates the owner's policy +
+# derived weights, and returns one macro priority. We map that to the boolean
+# the existing planner ordering already understands:
+#   research -> research first; economy/defense/expansion -> economy first.
+# When the pipeline cannot decide (no HQ / empty context), we fall back to the
+# legacy named preset's research_first flag so behaviour is preserved.
+func _economy_or_research_first(owner: int, personality: Dictionary) -> bool:
+	var legacy_default: bool = bool(personality.get("research_first", true))
+	var hq: Dictionary = _find_hq(owner)
+	if hq.is_empty():
+		return legacy_default
+	var context: Dictionary = _placement_context(owner)
+	var profile_weights: Dictionary = _pipeline_weights(owner)
+	var policy: Array = _pipeline_policy(owner)
+	var action: Dictionary = AiDecisionPipelineUtil.decide(context, policy, profile_weights, {}, {
+		"match_seed": 0, "tick": int(nexus.world_state.current_tick), "owner": owner,
+	})
+	var priority: String = str(action.get("priority", ""))
+	match priority:
+		AiDecisionPipelineUtil.PRIORITY_RESEARCH:
+			return true
+		AiDecisionPipelineUtil.PRIORITY_ECONOMY, AiDecisionPipelineUtil.PRIORITY_EXPANSION, AiDecisionPipelineUtil.PRIORITY_DEFENSE:
+			return false
+		_:
+			# Attack / diplomacy / unknown: keep the legacy preset ordering.
+			return legacy_default
+
+
+# MD10.5: the MD5 derived weights for the owner's decision pipeline. A
+# profile-driven AI derives from its stored AiProfile id (via the reputation /
+# profile lookup would go here in a full integration); today the strategic
+# module has no live AiProfile handle, so it uses the neutral (all-fair) weight
+# set, which is deterministic and reproduces balanced macro priorities. This
+# keeps the wiring lockstep-safe until MD14 threads the full profile through.
+func _pipeline_weights(_owner: int) -> Dictionary:
+	return AiWeightDerivationUtil.derive_weights(null)
+
+
+# MD10.5: the MD6 policy for the owner. Absent a live AiProfile the policy is
+# empty, which AiPolicyUtil treats as the baseline (attacking allowed, no hard
+# biases) -- i.e. exactly the current behaviour. A future phase can derive this
+# from the profile / named archetype.
+func _pipeline_policy(_owner: int) -> Array:
+	return []
 
 
 # --- 1) Research ------------------------------------------------------------
