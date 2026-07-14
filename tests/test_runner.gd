@@ -11475,3 +11475,31 @@ func test_md13_resilience_incomplete_unit_generic() -> void:
 		neutral, {}, 1, 0, 0, 0)
 	_check(pick == "broken_unit", "resilience: broken unit still selectable (got %s)" % pick)
 	StatRegistry.reset_definitions()
+
+
+# --- MD14: final integration, mod round-trip, determinism -------------------
+
+# MD14.1: both AI modules are wired to the NEW data-driven pipeline (MD7->MD10),
+# with the legacy hard-coded path kept ONLY as a resilience fallback. This is a
+# source-level wiring assertion (no engine run): the tactical AI must route unit
+# choice through the utility selector, and the strategic AI must route macro
+# decisions through the staged pipeline + building utility.
+func test_md14_ai_modules_wire_new_pipeline() -> void:
+	print("test_md14_ai_modules_wire_new_pipeline")
+	var tac: String = FileAccess.get_file_as_string("res://modules/ai_commander/ai_commander_module.gd")
+	_check(tac.length() > 0, "ai_commander_module source readable")
+	# Tactical AI uses the data-driven unit selector as the primary path.
+	_check(tac.contains("UnitCandidateUtil.choose_unit"), "tactical AI selects units via UnitCandidateUtil pipeline")
+	_check(tac.contains("AiWeightDerivationUtil.derive_weights"), "tactical AI derives profile weights (MD5)")
+	_check(tac.contains("AiContextUtil.build_context"), "tactical AI builds the context vector (MD7)")
+	# The old hard-coded "soldier" survives ONLY as the fallback default argument,
+	# never as the primary decision -- i.e. it is passed as a default, not issued
+	# directly. Prove choose_unit is what feeds the build command.
+	_check(tac.contains("\"unit_type\": unit_type"), "tactical AI issues the pipeline-chosen unit_type, not a literal")
+	# Strategic AI routes macro decisions through the staged pipeline + building
+	# utility (MD9/MD10).
+	var strat: String = FileAccess.get_file_as_string("res://modules/ai_commander/strategic_ai_module.gd")
+	_check(strat.length() > 0, "strategic_ai_module source readable")
+	_check(strat.contains("AiDecisionPipelineUtil.decide"), "strategic AI routes macro via staged decision pipeline (MD10)")
+	_check(strat.contains("AiContextUtil.build_context"), "strategic AI builds the context vector (MD7)")
+	_check(strat.contains("BuildingUtilityUtil") or strat.contains("BuildingPlacementUtil"), "strategic AI uses building utility/placement (MD9)")
