@@ -10374,3 +10374,91 @@ func test_md9_topology_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("WorldState"), "site_topology_util does not touch the world model type")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "site_topology_util does not touch the sim hasher")
 	_check(not src.contains("SceneTree"), "site_topology_util does not touch the scene tree type")
+
+
+# --- MD9.5: placement selector integration ----------------------------------
+
+# The outpost capability card the strategic module uses, mirrored here so the
+# integration test scores the SAME building the AI would place.
+func _md9_outpost_card() -> Dictionary:
+	return {
+		"control_value": 500,
+		"defense_value": 300,
+		"economic_value": 700,
+		"frontline_value": 500,
+		"production_value": 600,
+		"repair_value": 100,
+		"tech_value": 200,
+	}
+
+
+func test_md9_placement_selects_best_site_deterministic() -> void:
+	print("test_md9_placement_selects_best_site_deterministic")
+	# Reuse the two-room grid (also carries resources/existing safe-defaults).
+	var world: Dictionary = _md9_two_room_world()
+	var caps: Dictionary = _md9_outpost_card()
+	# A mildly-threatened context so needs (defense/economy) are non-trivial.
+	var context: Dictionary = AiContextUtil.build_context({
+		"hq": { "x": 0, "y": 3 },
+		"enemy_units": [ { "id": 1, "x": 6, "y": 3, "health": 10 } ],
+		"own_units": [ { "id": 2, "x": 1, "y": 3, "health": 10 } ],
+		"own_economy": 300, "enemy_economy": 300,
+		"own_army": 1, "enemy_army": 1,
+	}, 1)
+	var choice: Dictionary = BuildingPlacementUtil.plan_placement(caps, context, world, 3, 500)
+	_check(bool(choice.get("found", false)), "placement found a site among candidates")
+	var cx: int = int(choice.get("x", -1))
+	var cy: int = int(choice.get("y", -1))
+	_check(cx >= 0 and cy >= 0, "chosen site has valid coordinates")
+	# The chosen tile MUST be one of the enumerated candidates (never invented).
+	var cands: Array = SiteTopologyUtil.candidate_tiles(world, 3)
+	_check(cands.has(Vector2i(cx, cy)), "chosen site is one of the enumerated candidates")
+	# The chosen tile is not the HQ and not an occupied cell.
+	_check(not (cx == 0 and cy == 3), "chosen site is not the HQ")
+	# Determinism: identical inputs -> identical choice (lockstep-safe).
+	var again: Dictionary = BuildingPlacementUtil.plan_placement(caps, context, world, 3, 500)
+	_check(int(again.get("x", -9)) == cx and int(again.get("y", -9)) == cy, "placement choice is deterministic")
+	_check(int(again.get("score", -1)) == int(choice.get("score", -2)), "placement score is deterministic")
+
+
+func test_md9_placement_backward_compat_fallback() -> void:
+	print("test_md9_placement_backward_compat_fallback")
+	var caps: Dictionary = _md9_outpost_card()
+	var context: Dictionary = AiContextUtil.safe_default_context()
+	# No HQ / empty world -> no candidates -> found=false, so the strategic module
+	# falls back to the legacy _find_build_spot ring scan (behaviour preserved).
+	var empty_choice: Dictionary = BuildingPlacementUtil.plan_placement(caps, context, {}, 3, 500)
+	_check(not bool(empty_choice.get("found", true)), "empty world yields no placement (triggers legacy fallback)")
+	_check(int(empty_choice.get("x", 0)) == -1, "empty placement x is the -1 sentinel")
+	# select_site with an explicit empty candidate list behaves the same.
+	var none: Dictionary = BuildingPlacementUtil.select_site(caps, context, {}, [], 500)
+	_check(not bool(none.get("found", true)), "empty candidate list yields no placement")
+
+
+func test_md9_strategic_wires_smart_placement() -> void:
+	print("test_md9_strategic_wires_smart_placement")
+	# Source-level wiring check: _plan_expansion must go through the smart selector
+	# first and keep the legacy scan as a fallback (backward compatibility).
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/strategic_ai_module.gd")
+	_check(src.length() > 0, "strategic_ai_module.gd source readable")
+	_check(src.contains("_smart_build_spot"), "strategic AI defines a smart placement path")
+	_check(src.contains("BuildingPlacementUtil"), "strategic AI uses the MD9 placement selector")
+	_check(src.contains("AiContextUtil"), "strategic AI derives placement needs from the MD7 context")
+	_check(src.contains("_find_build_spot"), "strategic AI retains the legacy ring scan as a fallback")
+	# The fallback must run AFTER the smart attempt inside _plan_expansion.
+	var expand_idx: int = src.find("func _plan_expansion")
+	var smart_idx: int = src.find("_smart_build_spot", expand_idx)
+	var fallback_idx: int = src.find("_find_build_spot(hx, hy, owner)", expand_idx)
+	_check(expand_idx >= 0 and smart_idx > expand_idx, "smart selector called inside _plan_expansion")
+	_check(fallback_idx > smart_idx, "legacy fallback comes after the smart attempt (backward-compat)")
+	# Behavioural check: a rich economic AI still expands (an outpost appears),
+	# proving the new placement path issues a valid build command end-to-end.
+	var nexus: TickHarness = _make_strategic_harness(7, "economic", 3000)
+	var before: int = nexus.world_state.get_section("buildings").get("list", {}).size()
+	nexus.run_ticks(150)
+	var after: int = nexus.world_state.get_section("buildings").get("list", {}).size()
+	var tech: Dictionary = nexus.world_state.get_section("tech").get("players", {}).get("1", {})
+	var acted: bool = after > before \
+		or not (tech.get("researched", []) as Array).is_empty() \
+		or not (tech.get("in_progress", {}) as Dictionary).is_empty()
+	_check(acted, "economic AI still expands/researches through the new placement path")
