@@ -652,6 +652,10 @@ func _init() -> void:
 	test_md13_archetype_selection_matches_personality()
 	test_md13_end_to_end_determinism()
 	test_md13_resilience_incomplete_unit_generic()
+	# Phase MD14 (final integration): pipeline wiring, mod round-trip, determinism.
+	test_md14_ai_modules_wire_new_pipeline()
+	test_md14_mod_free_stat_round_trip_understood_by_ai()
+	test_md14_dynamic_stats_do_not_break_determinism()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
