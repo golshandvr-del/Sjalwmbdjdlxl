@@ -406,6 +406,45 @@ static func build_free_stat_definition(
 	}
 
 
+# --- MD12.5: dynamic i18n label with fallback -------------------------------
+#
+# Stat labels are looked up by the DYNAMIC key `stat.<id>.name` (Core Stats have
+# these in the shipped locale files; a Free Stat invented by a modder usually
+# does NOT). The editor must therefore degrade gracefully: if the locale has no
+# entry for the key, fall back to a human-readable version of the raw id rather
+# than printing "stat.my_cool_stat.name" at the user. This pure helper builds
+# that key + fallback so the view stays thin.
+#
+# `loc` is Localization (or any object exposing `has_key(key)` + `t(key)`); when
+# null (or lacking the methods) the humanised id is returned directly. Pure.
+static func stat_name_key(id: String) -> String:
+	return "stat.%s.name" % str(id)
+
+
+# The label to SHOW for a stat: the localised `stat.<id>.name` when the locale
+# defines it, else a humanised id ("attack_damage" -> "Attack Damage"). Never
+# leaks a raw translation key to the user (section 2.5 resilience). Deterministic.
+static func stat_display_name(id: String, loc: Object = null) -> String:
+	var key: String = stat_name_key(id)
+	if loc != null and loc.has_method("has_key") and loc.has_method("t"):
+		if bool(loc.call("has_key", key)):
+			return str(loc.call("t", key))
+	return humanise_id(str(id))
+
+
+# Turn a snake_case stat id into a Title Case label ("move_speed" -> "Move
+# Speed"). ASCII-only, deterministic; used as the last-resort display fallback.
+static func humanise_id(id: String) -> String:
+	var parts: Array = str(id).split("_", false)
+	var words: Array = []
+	for p in parts:
+		var w: String = str(p)
+		if w == "":
+			continue
+		words.append(w.substr(0, 1).to_upper() + w.substr(1))
+	return " ".join(words)
+
+
 # Validate a Free Stat definition before it is merged. Returns an Array of
 # human-readable problem strings (empty => valid). Layers the editor-specific
 # Free Stat rules ON TOP of StatRegistry.validate_definition (the shared schema
