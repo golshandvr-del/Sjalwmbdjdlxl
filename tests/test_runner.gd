@@ -614,6 +614,10 @@ func _init() -> void:
 	test_md9_topology_attack_path_and_path_chokes()
 	test_md9_topology_candidate_tiles()
 	test_md9_topology_source_is_ascii_and_pure()
+	# Phase MD9.5 (item 8): placement selector integration + strategic wiring.
+	test_md9_placement_selects_best_site_deterministic()
+	test_md9_placement_backward_compat_fallback()
+	test_md9_strategic_wires_smart_placement()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
