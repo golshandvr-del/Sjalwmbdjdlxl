@@ -783,6 +783,14 @@ func _build_main_tab(box: VBoxContainer, entity: Dictionary) -> void:
 		box.add_child(stats_label)
 		_build_stat_picker(box, entity, -1)
 
+	# MD12.4: a "define a new Free Stat" button that opens the Free Stat dialog so
+	# a modder can invent a stat (mapped onto the closed Capability contract) that
+	# then appears in the picker above. Available for every catalog.
+	var free_stat_btn: Button = Button.new()
+	free_stat_btn.text = _loc.t("ui.modeditor.freestat.define")
+	free_stat_btn.pressed.connect(_open_stat_dialog)
+	box.add_child(free_stat_btn)
+
 	# MC14.6 (req16/18): facing + firing-part/mount picker for units & buildings
 	# (objects are static scenery, so they get no firing controls).
 	if _active_catalog != ModProject.OBJECTS_CATALOG:
