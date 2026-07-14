@@ -105,7 +105,8 @@ scenes/       صحنه‌های Godot (.tscn)
 | `ui/desktop/desktop_hud.gd` | HUD دسکتاپ | کیبورد/ماوس |
 | `ui/shared/main_menu.gd` | منوی اصلی | تک‌نفره/چندنفره/تنظیمات/مود ادیتور — **محل ورود به منوی شروع (R1)** |
 | `ui/shared/options_menu.gd` | تنظیمات | locale/style/content_path |
-| `ui/shared/mod_editor.gd` | 🔴 مود ادیتور فعلی (فقط hp/cost/color) | **باید کامل بازسازی شود (R8/P6)** |
+| `ui/shared/mod_editor.gd` | 🔴 مود ادیتور فعلی (فقط hp/cost/color) | **باید کامل بازسازی شود (R8/P6)**؛ **MD12.2/12.4: کنترلِ پویا به‌ازای هر stat + تعریفِ Free Stat** روی مدلِ MD1 |
+| `ui/shared/stat_editor_util.gd` | **MD12: منطقِ خالصِ UIِ داده‌محورِ Stat** (به‌ازای هر stat یک کنترل، از رویِ StatRegistryِ داده‌محور — بدونِ SceneTree/world model/sim hash، cosmetic) | `stat_ids_for_catalog`/`groups_for` (گروه‌بندی بر `category`، id-sortِ پایدار، MD12.1)، `paginate` (سقفِ نمایشِ موبایل)، `describe_stat` (متادیتای registry)، `control_kind` (اسلایدر/عدد/سوییچ بر `value_type`)، `coerce_value` + clamp به min/max، `with_stat_value` (ویرایشِ خالصِ مدل، MD12.2)، `build_free_stat_definition`/`validate_free_stat` (Free Stat جدید: name/category/type/min/max/default/affects، MD12.4)، `stat_display_name` (کلیدِ پویا `stat.<id>.name` با fallback، MD12.5) — خالص، RefCounted، قطعی، ASCII |
 | `ui/shared/map_editor.gd` + `tile_grid.gd` | ادیتور نقشه (پایه) | **ارتقا در P6.7 (زوم/دریا/ساحل/آبجکت)** |
 | `ui/shared/custom_games.gd` | لیست بازی‌های سفارشی | `list_scenarios` |
 | `ui/shared/ui_scale.gd` | مقیاس GUI | `apply_from_settings` |
