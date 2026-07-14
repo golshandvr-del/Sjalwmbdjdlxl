@@ -293,6 +293,124 @@ func _build_dialogs() -> void:
 	_choice_dialog.get_ok_button().visible = false
 	add_child(_choice_dialog)
 
+	# MD12.4: the "define a new Free Stat" dialog. A single persistent form (its
+	# field values are reset each open) that gathers id/category/type/min/max/
+	# default; on OK it builds + validates + merges the definition.
+	_build_stat_dialog()
+
+
+# --- MD12.4: Free Stat definition dialog ------------------------------------
+# The form is a thin view: it collects raw fields and hands them to the pure
+# StatEditorUtil.build_free_stat_definition + validate_free_stat. On success the
+# new definition is merged into StatRegistry via load_definitions so it shows up
+# in the stat picker immediately. It never issues a Command or touches the sim.
+func _build_stat_dialog() -> void:
+	_stat_dialog = AcceptDialog.new()
+	_stat_dialog.title = _loc.t("ui.modeditor.freestat.title")
+	var box: VBoxContainer = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	box.custom_minimum_size = Vector2(320, 0)
+	_stat_dialog.add_child(box)
+
+	_stat_id_edit = LineEdit.new()
+	_stat_id_edit.placeholder_text = _loc.t("ui.modeditor.freestat.id")
+	box.add_child(_stat_id_edit)
+
+	_stat_category_edit = LineEdit.new()
+	_stat_category_edit.placeholder_text = _loc.t("ui.modeditor.freestat.category")
+	box.add_child(_stat_category_edit)
+
+	var type_row: HBoxContainer = HBoxContainer.new()
+	type_row.add_theme_constant_override("separation", 6)
+	box.add_child(type_row)
+	var type_label: Label = Label.new()
+	type_label.text = _loc.t("ui.modeditor.freestat.type")
+	type_row.add_child(type_label)
+	_stat_type_option = OptionButton.new()
+	for vtype in StatEditorUtil.FREE_STAT_VALUE_TYPES:
+		_stat_type_option.add_item(str(vtype))
+	type_row.add_child(_stat_type_option)
+
+	var min_row: HBoxContainer = HBoxContainer.new()
+	min_row.add_theme_constant_override("separation", 6)
+	box.add_child(min_row)
+	var min_label: Label = Label.new()
+	min_label.text = _loc.t("ui.modeditor.freestat.min")
+	min_row.add_child(min_label)
+	_stat_min_spin = SpinBox.new()
+	_stat_min_spin.min_value = -100000
+	_stat_min_spin.max_value = 100000
+	_stat_min_spin.value = 0
+	min_row.add_child(_stat_min_spin)
+
+	var max_row: HBoxContainer = HBoxContainer.new()
+	max_row.add_theme_constant_override("separation", 6)
+	box.add_child(max_row)
+	var max_label: Label = Label.new()
+	max_label.text = _loc.t("ui.modeditor.freestat.max")
+	max_row.add_child(max_label)
+	_stat_max_spin = SpinBox.new()
+	_stat_max_spin.min_value = -100000
+	_stat_max_spin.max_value = 100000
+	_stat_max_spin.value = 100
+	max_row.add_child(_stat_max_spin)
+
+	var def_row: HBoxContainer = HBoxContainer.new()
+	def_row.add_theme_constant_override("separation", 6)
+	box.add_child(def_row)
+	var def_label: Label = Label.new()
+	def_label.text = _loc.t("ui.modeditor.freestat.default")
+	def_row.add_child(def_label)
+	_stat_default_spin = SpinBox.new()
+	_stat_default_spin.min_value = -100000
+	_stat_default_spin.max_value = 100000
+	_stat_default_spin.value = 0
+	def_row.add_child(_stat_default_spin)
+
+	_stat_dialog.confirmed.connect(_on_stat_confirmed)
+	add_child(_stat_dialog)
+
+
+func _open_stat_dialog() -> void:
+	# Reset the form to sane defaults each open.
+	_stat_id_edit.text = ""
+	_stat_category_edit.text = ""
+	_stat_type_option.selected = 0
+	_stat_min_spin.value = 0
+	_stat_max_spin.value = 100
+	_stat_default_spin.value = 0
+	_stat_dialog.popup_centered()
+	_stat_id_edit.grab_focus()
+
+
+func _on_stat_confirmed() -> void:
+	var vtype: String = str(StatEditorUtil.FREE_STAT_VALUE_TYPES[maxi(0, _stat_type_option.selected)])
+	var def: Dictionary = StatEditorUtil.build_free_stat_definition(
+		_stat_id_edit.text,
+		vtype,
+		_stat_category_edit.text,
+		float(_stat_min_spin.value),
+		float(_stat_max_spin.value),
+		float(_stat_default_spin.value),
+		{},
+		_stat_applies_to())
+	var problems: Array = StatEditorUtil.validate_free_stat(def, StatRegistry, CapabilityRegistry)
+	if not problems.is_empty():
+		_set_status("%s: %s" % [_loc.t("ui.modeditor.freestat.invalid"), str(problems[0])])
+		return
+	# Merge the new definition so the picker shows it immediately.
+	StatRegistry.load_definitions({ str(def.get("id", "")): def })
+	_set_status("%s %s" % [_loc.t("ui.modeditor.freestat.added"), str(def.get("id", ""))])
+	_refresh_detail()
+
+
+# The catalog the current editor tab maps to a Free Stat's applies_to scope.
+func _stat_applies_to() -> String:
+	match _active_catalog:
+		ModProject.UNITS_CATALOG: return "unit"
+		ModProject.BUILDINGS_CATALOG: return "building"
+		_: return "both"
+
 
 # --- MC6.4 (req7): "which mod to edit?" chooser -----------------------------
 # On open the editor asks which existing mod to edit or offers a brand-new one.
