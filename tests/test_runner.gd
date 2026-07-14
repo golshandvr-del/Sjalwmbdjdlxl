@@ -11271,3 +11271,78 @@ func test_md12_stat_editor_util_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("WorldState"), "stat editor util does not touch the world model type")
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "stat editor util does not touch the sim hasher")
 	_check(not src.contains("SceneTree"), "stat editor util does not touch the scene tree type")
+
+
+# --- MD13: synthetic archetype package + full-pipeline validation -----------
+#
+# MD13 is the QUALITY GATE for the whole v4 (MD) round. It loads the six
+# synthetic units shipped in data/test_synthetic/*.json (raw stats only) and
+# drives them through the REAL pipeline built in MD2-MD10:
+#
+#   raw stats --(StatAffectsUtil)--> capabilities (DerivedMetricsUtil)
+#       --> primary role (RoleInferenceUtil) --> unit pick (UnitUtilityUtil)
+#
+# and asserts each archetype behaves as a domain expert would expect.
+
+# The synthetic archetype ids and the role each SHOULD infer to. A short list of
+# acceptable roles is allowed where two neighbouring signatures are both correct
+# (e.g. a sniper is a glass_cannon or a ranged_dps -- either is "right").
+const _MD13_ARCHETYPES: Dictionary = {
+	"heavy_tank":        ["frontline_tank"],
+	"fragile_sniper":    ["glass_cannon", "ranged_dps"],
+	"fast_scout":        ["scout", "harasser"],
+	"siege_walker":      ["siege_unit", "ranged_dps"],
+	"fast_raider":       ["harasser", "ranged_dps", "glass_cannon"],
+	"economy_harvester": ["economy_unit"],
+}
+
+
+# Load one synthetic unit definition from disk. Returns {} if unreadable so a
+# missing file degrades to a clear test failure rather than a crash.
+func _md13_load_synthetic(id: String) -> Dictionary:
+	var path: String = "res://data/test_synthetic/%s.json" % id
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if not (parsed is Dictionary):
+		return {}
+	return parsed as Dictionary
+
+
+# MD13.1: every synthetic file loads and is well-formed (id + stats + cost).
+func test_md13_synthetic_files_load_and_wellformed() -> void:
+	print("test_md13_synthetic_files_load_and_wellformed")
+	StatRegistry.reset_definitions()
+	var ids: Array = _MD13_ARCHETYPES.keys()
+	ids.sort()
+	for id in ids:
+		var def: Dictionary = _md13_load_synthetic(str(id))
+		_check(not def.is_empty(), "synthetic %s loads" % str(id))
+		_check(str(def.get("id", "")) == str(id), "synthetic %s has matching id" % str(id))
+		_check((def.get("stats", {}) as Dictionary).size() > 0, "synthetic %s has raw stats" % str(id))
+		_check((def.get("cost", {}) as Dictionary).size() > 0, "synthetic %s has a cost" % str(id))
+	StatRegistry.reset_definitions()
+
+
+# MD13.2: the raw -> capabilities -> roles chain yields the expected primary
+# role for each archetype, using the REAL DerivedMetricsUtil + RoleInferenceUtil.
+func test_md13_chain_raw_to_capabilities_to_roles() -> void:
+	print("test_md13_chain_raw_to_capabilities_to_roles")
+	StatRegistry.reset_definitions()
+	var ids: Array = _MD13_ARCHETYPES.keys()
+	ids.sort()
+	for id in ids:
+		var def: Dictionary = _md13_load_synthetic(str(id))
+		_check(not def.is_empty(), "chain: %s loaded" % str(id))
+		var caps: Dictionary = DerivedMetricsUtil.compute_capabilities(def, StatRegistry, null)
+		# The capability vector is a real fixed-point vector in [0..SCALE].
+		_check(not caps.is_empty(), "chain: %s -> non-empty capability vector" % str(id))
+		for cid in caps.keys():
+			var q: int = int(caps[cid])
+			_check(q >= 0 and q <= CapabilityRegistry.SCALE, "chain: %s cap %s in [0..SCALE]" % [str(id), str(cid)])
+		var role: String = RoleInferenceUtil.primary_role(caps, "unit")
+		var accepted: Array = _MD13_ARCHETYPES[id] as Array
+		_check(role in accepted, "chain: %s -> primary role %s in %s" % [str(id), role, str(accepted)])
+	StatRegistry.reset_definitions()
