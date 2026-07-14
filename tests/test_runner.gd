@@ -10787,50 +10787,50 @@ func test_md10_pipeline_source_is_ascii_and_pure() -> void:
 # null profile yields the neutral default.
 func test_md11_in_match_rate_from_profile() -> void:
 	print("test_md11_in_match_rate_from_profile")
-	var neutral_rate: int = AiLearningUtil.in_match_rate_q(null)
-	_check(neutral_rate == AiLearningUtil.DEFAULT_RATE_Q, "null profile -> default in-match rate")
+	var neutral_rate: int = AiRoleLearningUtil.in_match_rate_q(null)
+	_check(neutral_rate == AiRoleLearningUtil.DEFAULT_RATE_Q, "null profile -> default in-match rate")
 	var slow_p: AiProfile = AiProfile.default_profile()
 	slow_p.set_value("learning_bias", "in_match_rate", 0.0)
 	var fast_p: AiProfile = AiProfile.default_profile()
 	fast_p.set_value("learning_bias", "in_match_rate", 1.0)
-	var slow_rate: int = AiLearningUtil.in_match_rate_q(slow_p)
-	var fast_rate: int = AiLearningUtil.in_match_rate_q(fast_p)
+	var slow_rate: int = AiRoleLearningUtil.in_match_rate_q(slow_p)
+	var fast_rate: int = AiRoleLearningUtil.in_match_rate_q(fast_p)
 	_check(fast_rate > slow_rate, "higher in_match_rate knob -> larger learning rate")
 	_check(slow_rate > 0, "even the slowest learner keeps a positive rate")
 	# Determinism: same profile knob -> same rate.
-	_check(AiLearningUtil.in_match_rate_q(fast_p) == fast_rate, "in_match_rate_q is deterministic")
+	_check(AiRoleLearningUtil.in_match_rate_q(fast_p) == fast_rate, "in_match_rate_q is deterministic")
 
 
 # MD11.1: a net-success event reinforces a role weight; a net-loss event weakens
 # it. Both are fixed-point and clamped to the hard bounds.
 func test_md11_role_reinforce_and_weaken() -> void:
 	print("test_md11_role_reinforce_and_weaken")
-	var rate: int = AiLearningUtil.DEFAULT_RATE_Q
+	var rate: int = AiRoleLearningUtil.DEFAULT_RATE_Q
 	# Positive delta on net success.
-	var up: int = AiLearningUtil.role_delta(900, 100, rate)
+	var up: int = AiRoleLearningUtil.role_delta(900, 100, rate)
 	_check(up > 0, "net-success event yields a positive role delta")
 	# Negative delta on net loss.
-	var down: int = AiLearningUtil.role_delta(100, 900, rate)
+	var down: int = AiRoleLearningUtil.role_delta(100, 900, rate)
 	_check(down < 0, "net-loss event yields a negative role delta")
 	# Symmetric magnitude for mirror inputs.
 	_check(up == -down, "mirror success/loss produce mirror deltas (fixed-point)")
 	# apply_role_event moves a baseline role up on success.
-	var start: Dictionary = { "frontline_tank": AiLearningUtil.BASELINE_Q }
-	var after: Dictionary = AiLearningUtil.apply_role_event(start, "frontline_tank", 1000, 0, rate)
-	_check(int(after["frontline_tank"]) > AiLearningUtil.BASELINE_Q, "successful role rises above baseline")
+	var start: Dictionary = { "frontline_tank": AiRoleLearningUtil.BASELINE_Q }
+	var after: Dictionary = AiRoleLearningUtil.apply_role_event(start, "frontline_tank", 1000, 0, rate)
+	_check(int(after["frontline_tank"]) > AiRoleLearningUtil.BASELINE_Q, "successful role rises above baseline")
 	# Input is not mutated (pure).
-	_check(int(start["frontline_tank"]) == AiLearningUtil.BASELINE_Q, "apply_role_event does not mutate input")
+	_check(int(start["frontline_tank"]) == AiRoleLearningUtil.BASELINE_Q, "apply_role_event does not mutate input")
 	# A brand-new role starts from baseline then moves.
-	var fresh: Dictionary = AiLearningUtil.apply_role_event({}, "scout", 0, 1000, rate)
-	_check(int(fresh["scout"]) < AiLearningUtil.BASELINE_Q, "new role weakened below baseline on loss")
-	_check(int(fresh["scout"]) >= AiLearningUtil.MIN_WEIGHT_Q, "weakened role never below the hard floor")
+	var fresh: Dictionary = AiRoleLearningUtil.apply_role_event({}, "scout", 0, 1000, rate)
+	_check(int(fresh["scout"]) < AiRoleLearningUtil.BASELINE_Q, "new role weakened below baseline on loss")
+	_check(int(fresh["scout"]) >= AiRoleLearningUtil.MIN_WEIGHT_Q, "weakened role never below the hard floor")
 
 
 # MD11.1: applying a list of events is deterministic and order-independent
 # (sorted internally), and the full fold stays inside the hard bounds.
 func test_md11_apply_events_deterministic_and_sorted() -> void:
 	print("test_md11_apply_events_deterministic_and_sorted")
-	var rate: int = AiLearningUtil.DEFAULT_RATE_Q
+	var rate: int = AiRoleLearningUtil.DEFAULT_RATE_Q
 	var base: Dictionary = {}
 	var events_a: Array = [
 		{ "role_id": "scout", "success_q": 800, "loss_q": 100 },
@@ -10841,17 +10841,17 @@ func test_md11_apply_events_deterministic_and_sorted() -> void:
 		{ "role_id": "frontline_tank", "success_q": 300, "loss_q": 700 },
 		{ "role_id": "scout", "success_q": 800, "loss_q": 100 },
 	]
-	var out_a: Dictionary = AiLearningUtil.apply_role_events(base, {}, events_a, rate)
-	var out_b: Dictionary = AiLearningUtil.apply_role_events(base, {}, events_b, rate)
+	var out_a: Dictionary = AiRoleLearningUtil.apply_role_events(base, {}, events_a, rate)
+	var out_b: Dictionary = AiRoleLearningUtil.apply_role_events(base, {}, events_b, rate)
 	_check(out_a == out_b, "event order does not change the learned result")
 	# Deterministic repeat.
-	var out_a2: Dictionary = AiLearningUtil.apply_role_events(base, {}, events_a, rate)
+	var out_a2: Dictionary = AiRoleLearningUtil.apply_role_events(base, {}, events_a, rate)
 	_check(out_a == out_a2, "apply_role_events is byte-identical on repeat")
 	# Bounds respected.
 	var all_bounded: bool = true
 	for k in out_a.keys():
 		var w: int = int(out_a[k])
-		if w < AiLearningUtil.MIN_WEIGHT_Q or w > AiLearningUtil.MAX_WEIGHT_Q:
+		if w < AiRoleLearningUtil.MIN_WEIGHT_Q or w > AiRoleLearningUtil.MAX_WEIGHT_Q:
 			all_bounded = false
 	_check(all_bounded, "all learned weights stay within the hard bounds")
 
@@ -10861,20 +10861,20 @@ func test_md11_apply_events_deterministic_and_sorted() -> void:
 func test_md11_anti_exploit_cap_and_baseline_decay() -> void:
 	print("test_md11_anti_exploit_cap_and_baseline_decay")
 	# A wildly over-boosted weight is capped relative to the match-start base.
-	var base: Dictionary = { "harasser": AiLearningUtil.BASELINE_Q }
-	var runaway: Dictionary = { "harasser": AiLearningUtil.MAX_WEIGHT_Q }
-	var capped: Dictionary = AiLearningUtil.cap_match_delta(base, runaway)
-	var moved: int = int(capped["harasser"]) - AiLearningUtil.BASELINE_Q
-	_check(moved <= AiLearningUtil.MAX_MATCH_DELTA_Q, "per-match change is capped")
+	var base: Dictionary = { "harasser": AiRoleLearningUtil.BASELINE_Q }
+	var runaway: Dictionary = { "harasser": AiRoleLearningUtil.MAX_WEIGHT_Q }
+	var capped: Dictionary = AiRoleLearningUtil.cap_match_delta(base, runaway)
+	var moved: int = int(capped["harasser"]) - AiRoleLearningUtil.BASELINE_Q
+	_check(moved <= AiRoleLearningUtil.MAX_MATCH_DELTA_Q, "per-match change is capped")
 	# Soft decay moves an above-baseline weight back down toward baseline.
-	var high: Dictionary = { "siege_unit": AiLearningUtil.BASELINE_Q + 500 }
-	var decayed: Dictionary = AiLearningUtil.decay_toward_baseline(high)
-	_check(int(decayed["siege_unit"]) < AiLearningUtil.BASELINE_Q + 500, "above-baseline weight decays down")
-	_check(int(decayed["siege_unit"]) > AiLearningUtil.BASELINE_Q, "decay does not overshoot below baseline in one step")
+	var high: Dictionary = { "siege_unit": AiRoleLearningUtil.BASELINE_Q + 500 }
+	var decayed: Dictionary = AiRoleLearningUtil.decay_toward_baseline(high)
+	_check(int(decayed["siege_unit"]) < AiRoleLearningUtil.BASELINE_Q + 500, "above-baseline weight decays down")
+	_check(int(decayed["siege_unit"]) > AiRoleLearningUtil.BASELINE_Q, "decay does not overshoot below baseline in one step")
 	# A below-baseline weight decays UP toward baseline.
-	var low: Dictionary = { "support": AiLearningUtil.BASELINE_Q - 500 }
-	var decayed_low: Dictionary = AiLearningUtil.decay_toward_baseline(low)
-	_check(int(decayed_low["support"]) > AiLearningUtil.BASELINE_Q - 500, "below-baseline weight decays up")
+	var low: Dictionary = { "support": AiRoleLearningUtil.BASELINE_Q - 500 }
+	var decayed_low: Dictionary = AiRoleLearningUtil.decay_toward_baseline(low)
+	_check(int(decayed_low["support"]) > AiRoleLearningUtil.BASELINE_Q - 500, "below-baseline weight decays up")
 
 
 # MD11.2: the in-match learned state serialises to a sorted-key snapshot for the
@@ -10884,7 +10884,7 @@ func test_md11_state_round_trip_sorted() -> void:
 	var roles: Dictionary = { "scout": 1200, "frontline_tank": 800 }
 	var sites: Dictionary = { "5,5": 1300, "2,2": 700 }
 	var targets: Dictionary = { "3": 1100 }
-	var snap: Dictionary = AiLearningUtil.export_state(roles, sites, targets)
+	var snap: Dictionary = AiRoleLearningUtil.export_state(roles, sites, targets)
 	_check(snap.has("roles") and snap.has("sites") and snap.has("targets"), "snapshot has all three sections")
 	# Keys are sorted (byte-stable for the hasher).
 	var role_keys: Array = (snap["roles"] as Dictionary).keys()
@@ -10892,11 +10892,11 @@ func test_md11_state_round_trip_sorted() -> void:
 	sorted_role_keys.sort()
 	_check(role_keys == sorted_role_keys, "snapshot role keys are sorted")
 	# Round-trip preserves values.
-	var back: Dictionary = AiLearningUtil.import_state(snap)
+	var back: Dictionary = AiRoleLearningUtil.import_state(snap)
 	_check(int((back["roles"] as Dictionary)["scout"]) == 1200, "round-trip preserves role weight")
 	_check(int((back["sites"] as Dictionary)["5,5"]) == 1300, "round-trip preserves site pref")
 	# Resilience: missing sections import as empty maps, never crash.
-	var empty_back: Dictionary = AiLearningUtil.import_state({})
+	var empty_back: Dictionary = AiRoleLearningUtil.import_state({})
 	_check((empty_back["roles"] as Dictionary).is_empty(), "missing section imports as empty map")
 
 
@@ -10904,28 +10904,28 @@ func test_md11_state_round_trip_sorted() -> void:
 # deterministically; it is scaled by the profile's memory trust.
 func test_md11_cross_match_memory_and_seed() -> void:
 	print("test_md11_cross_match_memory_and_seed")
-	var mem: Dictionary = AiLearningUtil.new_memory()
-	_check(int(mem["version"]) == AiLearningUtil.MEMORY_SCHEMA_VERSION, "fresh memory has the schema version")
+	var mem: Dictionary = AiRoleLearningUtil.new_memory()
+	_check(int(mem["version"]) == AiRoleLearningUtil.MEMORY_SCHEMA_VERSION, "fresh memory has the schema version")
 	# Record a winning role and a losing role on the same mod/map.
-	mem = AiLearningUtil.record_memory(mem, "base", "arena", "frontline_tank", 400)
-	mem = AiLearningUtil.record_memory(mem, "base", "arena", "glass_cannon", -400)
+	mem = AiRoleLearningUtil.record_memory(mem, "base", "arena", "frontline_tank", 400)
+	mem = AiRoleLearningUtil.record_memory(mem, "base", "arena", "glass_cannon", -400)
 	# Seed the starting weights from memory at full trust.
 	var roles: Array = ["frontline_tank", "glass_cannon", "scout"]
-	var seed_full: Dictionary = AiLearningUtil.seed_weights_from_memory(mem, "base", "arena", roles, AiLearningUtil.SCALE)
-	_check(int(seed_full["frontline_tank"]) > AiLearningUtil.BASELINE_Q, "winning role seeded above baseline")
-	_check(int(seed_full["glass_cannon"]) < AiLearningUtil.BASELINE_Q, "losing role seeded below baseline")
-	_check(int(seed_full["scout"]) == AiLearningUtil.BASELINE_Q, "role with no memory seeds at baseline")
+	var seed_full: Dictionary = AiRoleLearningUtil.seed_weights_from_memory(mem, "base", "arena", roles, AiRoleLearningUtil.SCALE)
+	_check(int(seed_full["frontline_tank"]) > AiRoleLearningUtil.BASELINE_Q, "winning role seeded above baseline")
+	_check(int(seed_full["glass_cannon"]) < AiRoleLearningUtil.BASELINE_Q, "losing role seeded below baseline")
+	_check(int(seed_full["scout"]) == AiRoleLearningUtil.BASELINE_Q, "role with no memory seeds at baseline")
 	# Lower memory trust -> smaller nudge (closer to baseline).
-	var seed_half: Dictionary = AiLearningUtil.seed_weights_from_memory(mem, "base", "arena", roles, AiLearningUtil.SCALE / 2)
-	var full_gap: int = int(seed_full["frontline_tank"]) - AiLearningUtil.BASELINE_Q
-	var half_gap: int = int(seed_half["frontline_tank"]) - AiLearningUtil.BASELINE_Q
+	var seed_half: Dictionary = AiRoleLearningUtil.seed_weights_from_memory(mem, "base", "arena", roles, AiRoleLearningUtil.SCALE / 2)
+	var full_gap: int = int(seed_full["frontline_tank"]) - AiRoleLearningUtil.BASELINE_Q
+	var half_gap: int = int(seed_half["frontline_tank"]) - AiRoleLearningUtil.BASELINE_Q
 	_check(half_gap < full_gap, "lower memory trust yields a smaller seed nudge")
 	# Determinism: same inputs -> same seed.
-	var seed_again: Dictionary = AiLearningUtil.seed_weights_from_memory(mem, "base", "arena", roles, AiLearningUtil.SCALE)
+	var seed_again: Dictionary = AiRoleLearningUtil.seed_weights_from_memory(mem, "base", "arena", roles, AiRoleLearningUtil.SCALE)
 	_check(seed_full == seed_again, "seed_weights_from_memory is deterministic")
 	# record_memory does not mutate the caller's document.
 	var before_entries: int = (mem["entries"] as Dictionary).size()
-	var _mem2: Dictionary = AiLearningUtil.record_memory(mem, "base", "arena", "scout", 100)
+	var _mem2: Dictionary = AiRoleLearningUtil.record_memory(mem, "base", "arena", "scout", 100)
 	_check((mem["entries"] as Dictionary).size() == before_entries, "record_memory does not mutate input")
 
 
