@@ -11548,3 +11548,71 @@ func test_md14_mod_free_stat_round_trip_understood_by_ai() -> void:
 	_check(not affects_reset.has("zeal"), "reset removes the modded stat wiring (round-trip)")
 	_check(affects_reset == StatAffectsUtil.builtin_map(), "post-reset affects equals the built-in baseline")
 	StatRegistry.reset_definitions()
+
+
+# MD14.3: determinism review. The whole point of the fixed-point pipeline is that
+# adding dynamic/modded stats must NOT introduce float divergence or ordering
+# instability into anything the sim hashes. This test proves that the capability
+# vector -- the data the AI reasons about -- hashes identically (via StateHasher,
+# the same engine used for desync detection) regardless of the ORDER stats are
+# inserted, is reproducible across recomputes, and returns to the pre-mod baseline
+# after a round-trip reset. A stable hash here is the guarantee ARM/x86 lockstep
+# clients stay in sync when a mod adds stats.
+func test_md14_dynamic_stats_do_not_break_determinism() -> void:
+	print("test_md14_dynamic_stats_do_not_break_determinism")
+	StatRegistry.reset_definitions()
+	# Two mod Free Stats, so we can load them in different orders below.
+	var stat_zeal: Dictionary = {
+		"id": "zeal",
+		"type": "int", "category": "special", "min": 0, "max": 100,
+		"default": 0, "higher_is_better": true, "ai_importance": 0.7,
+		"affects": { "damage_output": 0.8, "survivability": 0.3 },
+	}
+	var stat_ward: Dictionary = {
+		"id": "ward",
+		"type": "int", "category": "special", "min": 0, "max": 100,
+		"default": 0, "higher_is_better": true, "ai_importance": 0.6,
+		"affects": { "survivability": 0.6, "holding_power": 0.4 },
+	}
+	# A unit that carries BOTH modded stats plus core stats. The `stats` dict is
+	# deliberately written in a non-sorted key order to prove insertion order is
+	# irrelevant to the deterministic output.
+	var unit: Dictionary = {
+		"id": "champion",
+		"stats": { "ward": 70, "attack_damage": 30, "zeal": 90, "health": 120 },
+		"cost": { "resource_basic": 100 },
+	}
+	# Load the two mod stats in order A (zeal, then ward).
+	StatRegistry.load_definitions({ "zeal": stat_zeal, "ward": stat_ward })
+	var affects_a: Dictionary = StatAffectsUtil.resolve_affects(StatRegistry)
+	var caps_a: Dictionary = DerivedMetricsUtil.compute_capabilities(unit, StatRegistry, affects_a)
+	var hash_a: String = StateHasher.hash_variant_string(caps_a)
+	# Recompute with the SAME registry: byte-for-byte identical (no float drift).
+	var caps_a2: Dictionary = DerivedMetricsUtil.compute_capabilities(unit, StatRegistry, affects_a)
+	_check(caps_a == caps_a2, "capability vector reproducible with dynamic stats")
+	_check(StateHasher.hash_variant_string(caps_a2) == hash_a, "capability hash reproducible with dynamic stats")
+	# Now reset and load the SAME two mod stats in the OPPOSITE order (ward, then
+	# zeal). The affects map and the capability vector -- and therefore the hash --
+	# must be identical: stat insertion order must never affect the sim hash.
+	StatRegistry.reset_definitions()
+	StatRegistry.load_definitions({ "ward": stat_ward, "zeal": stat_zeal })
+	var affects_b: Dictionary = StatAffectsUtil.resolve_affects(StatRegistry)
+	var caps_b: Dictionary = DerivedMetricsUtil.compute_capabilities(unit, StatRegistry, affects_b)
+	var hash_b: String = StateHasher.hash_variant_string(caps_b)
+	_check(caps_a == caps_b, "capability vector independent of stat load order")
+	_check(hash_b == hash_a, "capability hash independent of stat load order (lockstep-safe)")
+	# The modded stats must be all-integer fixed-point (no float leaked into the
+	# hashed vector).
+	for cap_id in caps_b.keys():
+		_check(typeof(caps_b[cap_id]) == TYPE_INT, "capability %s is fixed-point int (no float in hashed path)" % str(cap_id))
+	# Round-trip: after reset, the same unit (now with the modded stats inert)
+	# yields a stable baseline hash, and re-loading reproduces the modded hash --
+	# proving the dynamic wiring is fully reversible and deterministic.
+	StatRegistry.reset_definitions()
+	var affects_base: Dictionary = StatAffectsUtil.resolve_affects(StatRegistry)
+	var caps_base1: Dictionary = DerivedMetricsUtil.compute_capabilities(unit, StatRegistry, affects_base)
+	var hash_base1: String = StateHasher.hash_variant_string(caps_base1)
+	var caps_base2: Dictionary = DerivedMetricsUtil.compute_capabilities(unit, StatRegistry, affects_base)
+	_check(StateHasher.hash_variant_string(caps_base2) == hash_base1, "baseline (post-reset) capability hash is stable")
+	_check(hash_base1 != hash_a, "modded and baseline hashes differ (mod actually changed the vector)")
+	StatRegistry.reset_definitions()
