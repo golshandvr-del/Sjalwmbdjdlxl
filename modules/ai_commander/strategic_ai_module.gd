@@ -480,6 +480,168 @@ func _find_build_spot(hx: int, hy: int, _owner: int) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
+# --- MD9.5: smart building placement (value x site quality) -----------------
+#
+# Choose a build site for `building_type` using the pure MD9 utilities:
+#   SiteTopologyUtil (candidates) -> SiteScoringUtil (quality) ->
+#   BuildingUtilityUtil (value) -> BuildingPlacementUtil (argmax).
+# Returns Vector2i(-1,-1) when nothing scores (caller falls back to legacy).
+# Everything handed to the utils is a PLAIN snapshot the module reads from the
+# world model here, so the utils stay pure and the choice stays deterministic.
+func _smart_build_spot(owner: int, building_type: String, hx: int, hy: int) -> Vector2i:
+	var card: Dictionary = BUILDING_CARDS.get(building_type, {})
+	if card.is_empty():
+		return Vector2i(-1, -1)
+	var world: Dictionary = _placement_world_snapshot(owner, hx, hy)
+	if int(world.get("width", 0)) <= 0 or int(world.get("height", 0)) <= 0:
+		return Vector2i(-1, -1)
+	var context: Dictionary = _placement_context(owner)
+	var caps: Dictionary = (card.get("caps", {}) as Dictionary)
+	var fit: int = int(card.get("placement_fit", 500))
+	var choice: Dictionary = BuildingPlacementUtil.plan_placement(
+		caps, context, world, PLACEMENT_MAX_RADIUS, fit)
+	if not bool(choice.get("found", false)):
+		return Vector2i(-1, -1)
+	var cx: int = int(choice.get("x", -1))
+	var cy: int = int(choice.get("y", -1))
+	if cx < 0 or cy < 0:
+		return Vector2i(-1, -1)
+	# Guard against a candidate that is no longer buildable this tick (a building
+	# may have appeared since the snapshot); defer to the legacy scan if so.
+	if _tile_occupied(cx, cy):
+		return Vector2i(-1, -1)
+	return Vector2i(cx, cy)
+
+
+# Build the PLAIN map/coordinate snapshot the MD9 utilities consume. It merges
+# the topology keys (width/height/tiles/hq/enemies/occupied) with the scoring
+# keys (resources/existing) into one dictionary, all read deterministically from
+# the world model. Coordinate lists are id-sorted for a stable candidate order.
+func _placement_world_snapshot(owner: int, hx: int, hy: int) -> Dictionary:
+	var map_section: Dictionary = nexus.world_state.get_section("map")
+	var w: int = int(map_section.get("width", 0))
+	var h: int = int(map_section.get("height", 0))
+	var tiles: Array = map_section.get("tiles", [])
+
+	var enemies: Array = []
+	var occupied: Array = []
+	var existing: Array = []
+	var buildings: Dictionary = _buildings()
+	var bkeys: Array = buildings.keys()
+	bkeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in bkeys:
+		var b: Dictionary = buildings[key]
+		if int(b.get("health", 0)) <= 0:
+			continue
+		var bx: int = int(b.get("x", 0))
+		var by: int = int(b.get("y", 0))
+		occupied.append({ "x": bx, "y": by })
+		if int(b.get("owner", -1)) == owner:
+			existing.append({ "x": bx, "y": by })
+		else:
+			enemies.append({ "x": bx, "y": by })
+
+	# Enemy UNITS also count as threat anchors for frontline/vulnerability axes.
+	var units: Dictionary = _units()
+	var ukeys: Array = units.keys()
+	ukeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in ukeys:
+		var u: Dictionary = units[key]
+		if int(u.get("health", 0)) <= 0:
+			continue
+		if int(u.get("owner", -1)) == owner:
+			continue
+		enemies.append({ "x": int(u.get("x", 0)), "y": int(u.get("y", 0)) })
+
+	# Resource nodes (economy section) give the resource_access axis something to
+	# weigh; absent -> empty list (axis degrades to 0, still deterministic).
+	var resources: Array = _resource_nodes()
+
+	return {
+		"width": w,
+		"height": h,
+		"tiles": tiles,
+		"hq": { "x": hx, "y": hy },
+		"enemies": enemies,
+		"occupied": occupied,
+		"existing": existing,
+		"resources": resources,
+	}
+
+
+# Resource-node coordinates from the world model, if the scenario exposes them
+# under the "map" section (key "resource_nodes": Array[{"x","y"}]). Missing ->
+# empty (safe). Kept small + sorted for determinism.
+func _resource_nodes() -> Array:
+	var raw: Array = nexus.world_state.get_section("map").get("resource_nodes", [])
+	var out: Array = []
+	for r in raw:
+		if r is Dictionary:
+			out.append({ "x": int((r as Dictionary).get("x", 0)), "y": int((r as Dictionary).get("y", 0)) })
+	out.sort_custom(func(a, b):
+		if int(a.get("x", 0)) != int(b.get("x", 0)):
+			return int(a.get("x", 0)) < int(b.get("x", 0))
+		return int(a.get("y", 0)) < int(b.get("y", 0)))
+	return out
+
+
+# The MD7 context vector for placement need-derivation, built from a plain,
+# owner-relative world summary. Reuses AiContextUtil so the needs the building
+# utility derives match the rest of the AI backbone. Deterministic.
+func _placement_context(owner: int) -> Dictionary:
+	var hq: Dictionary = _find_hq(owner)
+	var hq_xy: Dictionary = {}
+	if not hq.is_empty():
+		hq_xy = { "x": int(hq.get("x", 0)), "y": int(hq.get("y", 0)) }
+
+	var own_units: Array = []
+	var enemy_units: Array = []
+	var units: Dictionary = _units()
+	var ukeys: Array = units.keys()
+	ukeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in ukeys:
+		var u: Dictionary = units[key]
+		if int(u.get("health", 0)) <= 0:
+			continue
+		var rec: Dictionary = {
+			"id": int(u.get("id", int(key))),
+			"x": int(u.get("x", 0)), "y": int(u.get("y", 0)),
+			"health": int(u.get("health", 1)),
+		}
+		if int(u.get("owner", -1)) == owner:
+			own_units.append(rec)
+		else:
+			enemy_units.append(rec)
+
+	var enemy_buildings: Array = []
+	var buildings: Dictionary = _buildings()
+	var bkeys: Array = buildings.keys()
+	bkeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in bkeys:
+		var b: Dictionary = buildings[key]
+		if int(b.get("health", 0)) <= 0:
+			continue
+		if int(b.get("owner", -1)) == owner:
+			continue
+		enemy_buildings.append({
+			"id": int(b.get("id", int(key))),
+			"x": int(b.get("x", 0)), "y": int(b.get("y", 0)),
+			"health": int(b.get("health", 1)),
+		})
+
+	var summary: Dictionary = {
+		"hq": hq_xy,
+		"own_units": own_units,
+		"enemy_units": enemy_units,
+		"enemy_buildings": enemy_buildings,
+		"own_economy": _resources(owner),
+		"enemy_economy": 0,
+		"own_army": own_units.size(),
+		"enemy_army": enemy_units.size(),
+	}
+	return AiContextUtil.build_context(summary, owner)
+
+
 func _tile_occupied(x: int, y: int) -> bool:
 	var buildings: Dictionary = _buildings()
 	for key in buildings.keys():
