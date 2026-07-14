@@ -618,6 +618,9 @@ func _init() -> void:
 	test_md9_placement_selects_best_site_deterministic()
 	test_md9_placement_backward_compat_fallback()
 	test_md9_strategic_wires_smart_placement()
+	# Phase MD10 (item 9): staged decision pipeline.
+	test_md10_state_classification()
+	test_md10_priority_selection_and_tiebreak()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10462,3 +10465,96 @@ func test_md9_strategic_wires_smart_placement() -> void:
 		or not (tech.get("researched", []) as Array).is_empty() \
 		or not (tech.get("in_progress", {}) as Dictionary).is_empty()
 	_check(acted, "economic AI still expands/researches through the new placement path")
+
+
+# --- Phase MD10 (item 9): staged decision pipeline --------------------------
+
+# MD10.2 Stage 1: the four situation states are classified deterministically
+# from the MD7 context vector, highest-severity-first.
+func test_md10_state_classification() -> void:
+	print("test_md10_state_classification")
+	# CRISIS: an active threat at the base flips crisis regardless of the rest.
+	var crisis_ctx: Dictionary = {
+		"under_threat": 1, "base_security": 900, "army_ratio": 900,
+		"frontline_pressure": 0, "economy_gap": 900,
+	}
+	_check(AiDecisionPipelineUtil.classify_state(crisis_ctx) == AiDecisionPipelineUtil.STATE_CRISIS,
+		"active threat -> crisis")
+	# CRISIS: a collapsing army is also a crisis even with no direct threat.
+	var losing_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 800, "army_ratio": 100,
+		"frontline_pressure": 0, "economy_gap": 500,
+	}
+	_check(AiDecisionPipelineUtil.classify_state(losing_ctx) == AiDecisionPipelineUtil.STATE_CRISIS,
+		"army badly losing -> crisis")
+	# PRESSURED: contested frontline, no direct base threat.
+	var pressured_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 800, "army_ratio": 600,
+		"frontline_pressure": 500, "economy_gap": 500,
+	}
+	_check(AiDecisionPipelineUtil.classify_state(pressured_ctx) == AiDecisionPipelineUtil.STATE_PRESSURED,
+		"contested frontline -> pressured")
+	# DOMINANT: safe and clearly ahead on both army and economy.
+	var dominant_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 900, "army_ratio": 800,
+		"frontline_pressure": 0, "economy_gap": 700,
+	}
+	_check(AiDecisionPipelineUtil.classify_state(dominant_ctx) == AiDecisionPipelineUtil.STATE_DOMINANT,
+		"safe + ahead -> dominant")
+	# DEVELOPING: safe but not yet dominant (the growing default).
+	var developing_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 800, "army_ratio": 550,
+		"frontline_pressure": 0, "economy_gap": 400,
+	}
+	_check(AiDecisionPipelineUtil.classify_state(developing_ctx) == AiDecisionPipelineUtil.STATE_DEVELOPING,
+		"safe but even -> developing")
+	# Resilience: an empty context must not crash and yields a valid state.
+	_check(AiDecisionPipelineUtil.STATES.has(AiDecisionPipelineUtil.classify_state({})),
+		"empty context yields a valid state")
+
+
+# MD10.2 Stage 2: the macro priority is the argmax over the fixed-point score
+# table, with a fixed tie-break order.
+func test_md10_priority_selection_and_tiebreak() -> void:
+	print("test_md10_priority_selection_and_tiebreak")
+	var neutral_w: Dictionary = AiWeightDerivationUtil.derive_weights(null)
+	# Insecure, threatened base -> defense wins.
+	var defense_ctx: Dictionary = {
+		"under_threat": 1, "base_security": 100, "army_ratio": 400,
+		"frontline_pressure": 700, "economy_gap": 500, "enemy_distance": 300,
+	}
+	var def_flags: Dictionary = AiPolicyUtil.evaluate([], defense_ctx)
+	_check(AiDecisionPipelineUtil.choose_priority(defense_ctx, def_flags, neutral_w) == AiDecisionPipelineUtil.PRIORITY_DEFENSE,
+		"insecure + threatened -> defense priority")
+	# Safe but far behind economically -> economy wins.
+	var econ_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 900, "army_ratio": 500,
+		"frontline_pressure": 0, "economy_gap": 50, "enemy_distance": 900,
+	}
+	var econ_flags: Dictionary = AiPolicyUtil.evaluate([], econ_ctx)
+	_check(AiDecisionPipelineUtil.choose_priority(econ_ctx, econ_flags, neutral_w) == AiDecisionPipelineUtil.PRIORITY_ECONOMY,
+		"safe + poor -> economy priority")
+	# Strong army + exposed enemy + allow_attack -> attack wins.
+	var attack_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 900, "army_ratio": 950,
+		"frontline_pressure": 0, "economy_gap": 900, "enemy_distance": 200,
+	}
+	var atk_flags: Dictionary = AiPolicyUtil.evaluate([], attack_ctx)
+	_check(AiDecisionPipelineUtil.choose_priority(attack_ctx, atk_flags, neutral_w) == AiDecisionPipelineUtil.PRIORITY_ATTACK,
+		"dominant army + exposed enemy -> attack priority")
+	# A collapsing army must yield ZERO attack urgency even with an exposed enemy
+	# (the pipeline never prioritises attacking when the army is falling apart).
+	var no_attack_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 900, "army_ratio": 200,
+		"frontline_pressure": 0, "economy_gap": 900, "enemy_distance": 100,
+	}
+	var na_flags: Dictionary = AiPolicyUtil.evaluate([], no_attack_ctx)
+	var na_scores: Dictionary = AiDecisionPipelineUtil.priority_scores(no_attack_ctx, na_flags, neutral_w)
+	_check(int(na_scores[AiDecisionPipelineUtil.PRIORITY_ATTACK]) == 0,
+		"collapsing army -> zero attack urgency")
+	# Determinism: same inputs -> same priority.
+	var r1: String = AiDecisionPipelineUtil.choose_priority(econ_ctx, econ_flags, neutral_w)
+	var r2: String = AiDecisionPipelineUtil.choose_priority(econ_ctx, econ_flags, neutral_w)
+	_check(r1 == r2, "priority selection is deterministic (same inputs -> same priority)")
+	# Every emitted priority is a member of the closed set.
+	_check(AiDecisionPipelineUtil.PRIORITIES.has(r1), "chosen priority is in the closed set")
