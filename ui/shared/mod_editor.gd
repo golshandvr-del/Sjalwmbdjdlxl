@@ -779,6 +779,12 @@ func _build_main_tab(box: VBoxContainer, entity: Dictionary) -> void:
 	if _active_catalog == ModProject.OBJECTS_CATALOG:
 		_build_object_extras(box, entity)
 
+	# MD12.3: live "capability card" -- a COSMETIC read-only panel that shows the
+	# derived Capability vector (MD3) + inferred role (MD4) for the entity as it is
+	# edited, so the author sees the effect of a stat change immediately. It never
+	# issues a Command and never touches the simulation hash; it is pure display.
+	_build_capability_card(box, entity)
+
 
 # --- MC14.6 (req16/18): facing + firing-part / mount picker -----------------
 # A thin view over GraphicFacingEditUtil: an OptionButton to pick the unit's
@@ -930,6 +936,52 @@ func _set_part_px(part_index: int, axis: String, value: int) -> void:
 
 # A checkbox-per-stat picker; ticking one reveals a value spinbox when the stat
 # needs a value. Writes into part_stats[part_index] (multi) or stats (single).
+# MD12.3: build the live capability-card panel. Reads the pure, tested
+# StatEditorUtil.capability_card() (which drives DerivedMetricsUtil +
+# RoleInferenceUtil) and renders one row per Capability (localized name + a
+# percent bar) plus the inferred primary role. This is a cosmetic feedback panel:
+# it is rebuilt on every _refresh_detail (i.e. after each stat edit) and does not
+# mutate the project model, issue Commands, or affect the deterministic hash.
+func _build_capability_card(box: VBoxContainer, entity: Dictionary) -> void:
+	var sep: HSeparator = HSeparator.new()
+	box.add_child(sep)
+
+	var title: Label = Label.new()
+	title.text = _loc.t("ui.modeditor.capability_card")
+	title.add_theme_font_size_override("font_size", 15)
+	box.add_child(title)
+
+	# The scope (unit/building/object) picks how roles are inferred; objects map
+	# to the building side of the capability contract.
+	var target: String = "building" if _active_catalog != ModProject.UNITS_CATALOG else "unit"
+	var card: Dictionary = StatEditorUtil.capability_card(entity, StatRegistry, target)
+
+	# Primary role headline (falls back gracefully to "generic" for empty stats).
+	var role_label: Label = Label.new()
+	var primary: String = str(card.get("primary_role", ""))
+	role_label.text = "%s: %s" % [_loc.t("ui.modeditor.primary_role"), primary]
+	role_label.add_theme_font_size_override("font_size", 13)
+	box.add_child(role_label)
+
+	# One row per capability: localized name + percent (0..100), sorted by id
+	# (the util already returns them id-sorted for determinism).
+	for cap in (card.get("capabilities", []) as Array):
+		var c: Dictionary = cap as Dictionary
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		box.add_child(row)
+		var name_label: Label = Label.new()
+		name_label.text = _loc.t(str(c.get("name_key", c.get("id", ""))))
+		name_label.custom_minimum_size = Vector2(160, 0)
+		row.add_child(name_label)
+		var bar: ProgressBar = ProgressBar.new()
+		bar.min_value = 0
+		bar.max_value = 100
+		bar.value = int(c.get("percent", 0))
+		bar.custom_minimum_size = Vector2(160, 0)
+		row.add_child(bar)
+
+
 func _build_stat_picker(parent: VBoxContainer, entity: Dictionary, part_index: int) -> void:
 	var current: Dictionary = _stats_dict_for(entity, part_index)
 	for stat_id in StatRegistry.ids_for(_stat_scope()):
