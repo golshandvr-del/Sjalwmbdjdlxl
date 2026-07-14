@@ -80,6 +80,36 @@ const RESEARCH_PRIORITY: Array = ["improved_weapons", "improved_armor", "advance
 const OUTPOST_COST: int = 120
 const HQ_UPGRADE_COST: int = 250
 
+# MD9.5: how far (Manhattan rings around the HQ) the smart placement selector
+# enumerates candidate tiles. Kept modest so the candidate set stays small and
+# the per-tick scoring cost bounded; the legacy scan looked at rings 2..3 only.
+const PLACEMENT_MAX_RADIUS: int = 4
+
+# MD9.5: fixed-point scale shared with the placement/utility/site-scoring utils.
+const Q_SCALE: int = 1000
+
+# MD9.5: capability "cards" for the building types the strategic planner can
+# place. Each is a q-scaled (0..1000) capability vector consumed by
+# BuildingUtilityUtil.score_building. Today only "outpost" is buildable here, so
+# a modder/future phase can extend this table without touching the selector.
+# The outpost is a forward COMMAND building: it extends economy/production reach
+# and gives a little frontline presence, so it weights economic/production/
+# frontline value and cares moderately about site quality (placement_fit).
+const BUILDING_CARDS: Dictionary = {
+	"outpost": {
+		"caps": {
+			"control_value": 500,
+			"defense_value": 300,
+			"economic_value": 700,
+			"frontline_value": 500,
+			"production_value": 600,
+			"repair_value": 100,
+			"tech_value": 200,
+		},
+		"placement_fit": 500,
+	},
+}
+
 
 func module_id() -> String:
 	return "strategic_ai"
