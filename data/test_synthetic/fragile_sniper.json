@@ -1,0 +1,25 @@
+{
+  "id": "fragile_sniper",
+  "display_name_key": "unit.fragile_sniper.name",
+  "category": "infantry",
+  "stats": {
+    "health": 35,
+    "armor": 0,
+    "move_speed": 2,
+    "attack_damage": 110,
+    "fire_rate": 1,
+    "attack_range": 9,
+    "vision_range": 8
+  },
+  "cost": {
+    "resource_basic": 95
+  },
+  "build_time_ticks": 90,
+  "visual": {
+    "shape": "triangle",
+    "color": "#B0413E",
+    "texture": "textures/soldier.png",
+    "size_scale": 0.9,
+    "outline": true
+  }
+}
