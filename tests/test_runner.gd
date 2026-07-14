@@ -10939,3 +10939,138 @@ func test_md11_learning_source_is_ascii_and_pure() -> void:
 	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "learning util does not touch the sim hasher")
 	_check(not src.contains("SceneTree"), "learning util does not touch the scene tree type")
 	_check(not src.contains("randi") and not src.contains("randf"), "learning util uses no unseeded RNG")
+
+
+# ============================================================================
+# Phase MD12 (expert item 15): data-driven Stat UI in the mod editor.
+# ============================================================================
+
+# MD12.1: describe_stat pulls every field the editor needs from the registry
+# (value_type / category / min / max / default / needs_value / core) and builds
+# the i18n name key, degrading to safe defaults for a null registry.
+func test_md12_describe_stat_reads_registry_metadata() -> void:
+	print("test_md12_describe_stat_reads_registry_metadata")
+	StatRegistry.reset_definitions()
+	var d: Dictionary = StatEditorUtil.describe_stat("health", StatRegistry)
+	_check(str(d["id"]) == "health", "descriptor keeps the stat id")
+	_check(str(d["name_key"]) == "stat.health.name", "descriptor builds the i18n name key")
+	_check(str(d["value_type"]) == "int", "health value_type read from registry")
+	_check(str(d["category"]) == "defense", "health category read from registry")
+	_check(float(d["max"]) == 100000.0, "health max read from registry")
+	_check(bool(d["core"]) == true, "health flagged as a core stat")
+	# A pure-flag stat (needs_value false, bool type).
+	var s: Dictionary = StatEditorUtil.describe_stat("stealth", StatRegistry)
+	_check(str(s["value_type"]) == "bool", "stealth value_type is bool")
+	_check(bool(s["needs_value"]) == false, "stealth needs no numeric value")
+	# Null registry -> safe defaults, still a usable descriptor.
+	var f: Dictionary = StatEditorUtil.describe_stat("whatever", null)
+	_check(str(f["category"]) == StatEditorUtil.MISC_CATEGORY, "null registry -> misc category")
+	_check(str(f["value_type"]) == "int", "null registry -> int default")
+	_check(str(f["name_key"]) == "stat.whatever.name", "null registry still builds name key")
+
+
+# MD12.1: stat_ids_for returns the sorted set of stat ids valid for a catalog
+# and honours applies_to (a unit-only stat like move_speed is absent from the
+# building catalog). Empty for a null registry.
+func test_md12_stat_ids_for_catalog_sorted() -> void:
+	print("test_md12_stat_ids_for_catalog_sorted")
+	StatRegistry.reset_definitions()
+	var unit_ids: Array = StatEditorUtil.stat_ids_for("unit", StatRegistry)
+	_check(unit_ids.size() > 0, "unit catalog yields stats")
+	# Sorted.
+	var sorted_copy: Array = unit_ids.duplicate()
+	sorted_copy.sort()
+	_check(unit_ids == sorted_copy, "unit stat ids are sorted")
+	_check(unit_ids.has("move_speed"), "unit catalog includes move_speed")
+	_check(unit_ids.has("health"), "unit catalog includes the both-applies health")
+	# Buildings exclude unit-only mobility stats.
+	var building_ids: Array = StatEditorUtil.stat_ids_for("building", StatRegistry)
+	_check(not building_ids.has("move_speed"), "building catalog excludes unit-only move_speed")
+	_check(building_ids.has("extraction_rate"), "building catalog includes extraction_rate")
+	# Null registry -> empty, never a crash.
+	_check(StatEditorUtil.stat_ids_for("unit", null) == [], "null registry -> empty id list")
+
+
+# MD12.1: groups_for buckets a catalog's stats by category, groups sorted by
+# category id, stats inside a group kept in sorted-id order, every stat present
+# exactly once.
+func test_md12_groups_for_grouped_by_category_sorted() -> void:
+	print("test_md12_groups_for_grouped_by_category_sorted")
+	StatRegistry.reset_definitions()
+	var groups: Array = StatEditorUtil.groups_for("unit", StatRegistry)
+	_check(groups.size() > 0, "unit catalog yields groups")
+	# Group categories are sorted ASC.
+	var cats: Array = []
+	for g in groups:
+		cats.append(str((g as Dictionary)["category"]))
+	var cats_sorted: Array = cats.duplicate()
+	cats_sorted.sort()
+	_check(cats == cats_sorted, "groups sorted by category id")
+	# Every stat id from the flat list appears exactly once across groups.
+	var flat: Array = StatEditorUtil.stat_ids_for("unit", StatRegistry)
+	var seen: Dictionary = {}
+	for g in groups:
+		var last: String = ""
+		for desc in (g as Dictionary)["stats"]:
+			var sid: String = str((desc as Dictionary)["id"])
+			seen[sid] = int(seen.get(sid, 0)) + 1
+			# Stats inside a group stay in sorted-id order.
+			_check(last == "" or sid > last, "stat %s follows sorted order in its group" % sid)
+			last = sid
+	_check(seen.size() == flat.size(), "grouping covers every stat exactly once")
+	# categories_for mirrors the group categories.
+	_check(StatEditorUtil.categories_for("unit", StatRegistry) == cats, "categories_for matches group categories")
+
+
+# MD12.1: paginate never shows more than the page cap, clamps out-of-range pages
+# back into bounds, reports an accurate page_count/total, and covers the whole
+# list across its pages with no duplicates or gaps.
+func test_md12_paginate_mobile_cap_and_bounds() -> void:
+	print("test_md12_paginate_mobile_cap_and_bounds")
+	var items: Array = []
+	for i in range(19):
+		items.append({ "id": "s%02d" % i })
+	var p0: Dictionary = StatEditorUtil.paginate(items, 0, 8)
+	_check(int(p0["page_count"]) == 3, "19 items / 8 per page -> 3 pages")
+	_check(int(p0["total"]) == 19, "total reported")
+	_check((p0["stats"] as Array).size() == 8, "first page holds the cap of 8")
+	# Last page holds the remainder.
+	var p2: Dictionary = StatEditorUtil.paginate(items, 2, 8)
+	_check((p2["stats"] as Array).size() == 3, "last page holds the remaining 3")
+	# Out-of-range page clamps to the last valid page.
+	var pbig: Dictionary = StatEditorUtil.paginate(items, 99, 8)
+	_check(int(pbig["page"]) == 2, "page beyond range clamps to last page")
+	# Negative page clamps to 0.
+	var pneg: Dictionary = StatEditorUtil.paginate(items, -5, 8)
+	_check(int(pneg["page"]) == 0, "negative page clamps to first page")
+	# page_size < 1 is clamped to 1 (never divide by zero).
+	var pz: Dictionary = StatEditorUtil.paginate(items, 0, 0)
+	_check(int(pz["page_size"]) == 1, "page_size clamped to at least 1")
+	_check(int(pz["page_count"]) == 19, "page_size 1 -> one page per item")
+	# Union of all pages == the whole list, in order, no duplicates.
+	var rebuilt: Array = []
+	for pg in range(int(p0["page_count"])):
+		for desc in (StatEditorUtil.paginate(items, pg, 8)["stats"] as Array):
+			rebuilt.append(desc)
+	_check(rebuilt == items, "pages cover the whole list in order with no gaps")
+	# Empty list -> a single empty page (never crashes).
+	var pe: Dictionary = StatEditorUtil.paginate([], 0, 8)
+	_check(int(pe["page_count"]) == 1 and (pe["stats"] as Array).is_empty(), "empty list -> one empty page")
+
+
+# MD12.1: the util is pure ASCII, a RefCounted, and never touches the scene
+# tree / world model / sim hasher (cosmetic descriptor builder only).
+func test_md12_stat_editor_util_source_is_ascii_and_pure() -> void:
+	print("test_md12_stat_editor_util_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://ui/shared/stat_editor_util.gd")
+	_check(src.length() > 0, "stat_editor_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "stat_editor_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "stat editor util extends RefCounted")
+	_check(not src.contains("WorldState"), "stat editor util does not touch the world model type")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "stat editor util does not touch the sim hasher")
+	_check(not src.contains("SceneTree"), "stat editor util does not touch the scene tree type")
