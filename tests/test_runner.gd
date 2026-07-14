@@ -622,6 +622,9 @@ func _init() -> void:
 	test_md10_state_classification()
 	test_md10_priority_selection_and_tiebreak()
 	test_md10_category_selection()
+	test_md10_pick_action_unit_and_building()
+	test_md10_decide_end_to_end_and_deterministic()
+	test_md10_pipeline_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10602,3 +10605,153 @@ func test_md10_category_selection() -> void:
 	var sorted_cats: Array = cats.duplicate()
 	sorted_cats.sort()
 	_check(cats == sorted_cats, "CATEGORIES is stably sorted")
+
+
+# --- MD10 helpers: sample candidate pools -----------------------------------
+
+# A fragile, high-damage "glass cannon" unit candidate.
+func _md10_glass_cannon() -> Dictionary:
+	return {
+		"id": "sniper",
+		"primary_role": "glass_cannon",
+		"caps": { "survivability": 100, "damage_output": 950, "holding_power": 100,
+			"mobility": 500, "cost_efficiency": 400 },
+	}
+
+
+# A durable, high-holding "tank" unit candidate.
+func _md10_tank() -> Dictionary:
+	return {
+		"id": "tank",
+		"primary_role": "frontline_tank",
+		"caps": { "survivability": 950, "damage_output": 300, "holding_power": 900,
+			"mobility": 200, "cost_efficiency": 400 },
+	}
+
+
+# A defensive tower building candidate.
+func _md10_tower() -> Dictionary:
+	return {
+		"id": "tower",
+		"placement_fit": 800,
+		"caps": { "defense_value": 950, "economic_value": 0, "tech_value": 0,
+			"frontline_value": 700, "production_value": 0 },
+	}
+
+
+# An economic farm building candidate.
+func _md10_farm() -> Dictionary:
+	return {
+		"id": "farm",
+		"placement_fit": 100,
+		"caps": { "defense_value": 0, "economic_value": 950, "tech_value": 0,
+			"frontline_value": 0, "production_value": 100 },
+	}
+
+
+# MD10.4 Stage 4: the exact pick delegates to the MD8 unit scorer and MD9
+# building scorer, choosing the best fit for the context.
+func test_md10_pick_action_unit_and_building() -> void:
+	print("test_md10_pick_action_unit_and_building")
+	var neutral_w: Dictionary = AiWeightDerivationUtil.derive_weights(null)
+	var pools: Dictionary = {
+		"unit": [ _md10_glass_cannon(), _md10_tank() ],
+		"building": [ _md10_tower(), _md10_farm() ],
+	}
+	# Under threat, a HOLDING unit pick should favour the durable tank.
+	var threat_ctx: Dictionary = {
+		"under_threat": 1, "frontline_pressure": 200, "economy_gap": 500,
+		"base_security": 200, "army_ratio": 400,
+	}
+	var hold_pick: Dictionary = AiDecisionPipelineUtil.pick_action(
+		AiDecisionPipelineUtil.CATEGORY_HOLDING_UNIT, threat_ctx, neutral_w, pools, {})
+	_check(str(hold_pick.get("kind", "")) == "unit", "holding pick draws a unit")
+	_check(str(hold_pick.get("target_id", "")) == "tank", "under threat, holding pick favours the durable tank")
+	# On the offensive with an even army, a STRIKE unit favours the glass cannon
+	# (high frontline pressure rewards raw damage_output).
+	var strike_ctx: Dictionary = {
+		"under_threat": 0, "frontline_pressure": 1000, "economy_gap": 500,
+		"base_security": 900, "army_ratio": 900,
+	}
+	var strike_pick: Dictionary = AiDecisionPipelineUtil.pick_action(
+		AiDecisionPipelineUtil.CATEGORY_STRIKE_UNIT, strike_ctx, neutral_w, pools, {})
+	_check(str(strike_pick.get("target_id", "")) == "sniper", "heavy pressure -> strike pick favours the damage dealer")
+	# A DEFENSIVE building pick under siege favours the tower over the farm.
+	var siege_ctx: Dictionary = {
+		"under_threat": 1, "base_security": 0, "frontline_pressure": 900,
+		"economy_gap": 0, "army_ratio": 0,
+	}
+	var def_pick: Dictionary = AiDecisionPipelineUtil.pick_action(
+		AiDecisionPipelineUtil.CATEGORY_DEFENSIVE_BUILDING, siege_ctx, neutral_w, pools, {})
+	_check(str(def_pick.get("kind", "")) == "building", "defensive pick draws a building")
+	_check(str(def_pick.get("target_id", "")) == "tower", "under siege, defensive pick favours the tower")
+	# An ECONOMIC building pick while safe+poor favours the farm.
+	var econ_ctx: Dictionary = {
+		"under_threat": 0, "base_security": 1000, "frontline_pressure": 0,
+		"economy_gap": 0, "army_ratio": 1000,
+	}
+	var econ_pick: Dictionary = AiDecisionPipelineUtil.pick_action(
+		AiDecisionPipelineUtil.CATEGORY_ECONOMIC_BUILDING, econ_ctx, neutral_w, pools, {})
+	_check(str(econ_pick.get("target_id", "")) == "farm", "safe + poor, economic pick favours the farm")
+	# An empty pool yields an empty target without crashing.
+	var empty_pick: Dictionary = AiDecisionPipelineUtil.pick_action(
+		AiDecisionPipelineUtil.CATEGORY_STRIKE_UNIT, strike_ctx, neutral_w, {}, {})
+	_check(str(empty_pick.get("target_id", "")) == "", "empty pool -> empty target, no crash")
+	# A diplomacy/none category needs no candidate.
+	var dip_pick: Dictionary = AiDecisionPipelineUtil.pick_action(
+		AiDecisionPipelineUtil.CATEGORY_DIPLOMACY_ACTION, econ_ctx, neutral_w, pools, {})
+	_check(str(dip_pick.get("kind", "")) == "" and str(dip_pick.get("target_id", "")) == "",
+		"diplomacy action needs no candidate")
+
+
+# MD10.1 + MD10.4: the full four-stage decide() returns a complete, structured
+# decision and is byte-identical for identical inputs (determinism).
+func test_md10_decide_end_to_end_and_deterministic() -> void:
+	print("test_md10_decide_end_to_end_and_deterministic")
+	var neutral_w: Dictionary = AiWeightDerivationUtil.derive_weights(null)
+	var pools: Dictionary = {
+		"unit": [ _md10_glass_cannon(), _md10_tank() ],
+		"building": [ _md10_tower(), _md10_farm() ],
+	}
+	# A crisis context: threatened, insecure -> defense -> defensive building or
+	# holding unit -> a concrete pick.
+	var crisis_ctx: Dictionary = AiContextUtil.build_context({
+		"hq": { "x": 2, "y": 2 },
+		"enemy_units": [ { "id": 1, "x": 3, "y": 2, "health": 10 } ],
+		"own_army": 1, "enemy_army": 5,
+		"own_economy": 1, "enemy_economy": 5,
+	}, 1)
+	var params: Dictionary = { "match_seed": 42, "tick": 7, "owner": 1, "noise_strength_q": 0 }
+	var action: Dictionary = AiDecisionPipelineUtil.decide(crisis_ctx, [], neutral_w, pools, params)
+	# Full closed key set present.
+	for k in AiDecisionPipelineUtil.ACTION_KEYS:
+		_check(action.has(k), "decide() emits action key %s" % k)
+	_check(AiDecisionPipelineUtil.STATES.has(str(action.get("state", ""))), "state is in the closed set")
+	_check(AiDecisionPipelineUtil.PRIORITIES.has(str(action.get("priority", ""))), "priority is in the closed set")
+	_check(AiDecisionPipelineUtil.CATEGORIES.has(str(action.get("category", ""))), "category is in the closed set")
+	_check(str(action.get("state", "")) == AiDecisionPipelineUtil.STATE_CRISIS, "threatened base -> crisis state")
+	_check(str(action.get("priority", "")) == AiDecisionPipelineUtil.PRIORITY_DEFENSE, "crisis -> defense priority")
+	# Determinism: same inputs -> byte-identical action.
+	var again: Dictionary = AiDecisionPipelineUtil.decide(crisis_ctx, [], neutral_w, pools, params)
+	_check(action == again, "decide() is byte-identical for identical inputs")
+	# Resilience: a fully empty pipeline never crashes and returns a full set.
+	var safe: Dictionary = AiDecisionPipelineUtil.safe_default_action()
+	_check(safe.size() == AiDecisionPipelineUtil.ACTION_KEYS.size(), "safe default action has the full key set")
+
+
+# MD10 Definition of Done: the pipeline source is pure ASCII and touches no
+# scene tree / world model / sim hasher.
+func test_md10_pipeline_source_is_ascii_and_pure() -> void:
+	print("test_md10_pipeline_source_is_ascii_and_pure")
+	var src: String = FileAccess.get_file_as_string("res://modules/ai_commander/ai_decision_pipeline_util.gd")
+	_check(src.length() > 0, "ai_decision_pipeline_util.gd source readable")
+	var ascii_ok: bool = true
+	for i in range(src.length()):
+		if src.unicode_at(i) > 127:
+			ascii_ok = false
+			break
+	_check(ascii_ok, "ai_decision_pipeline_util.gd is ASCII-only")
+	_check(src.contains("extends RefCounted"), "pipeline util extends RefCounted")
+	_check(not src.contains("WorldState"), "pipeline util does not touch the world model type")
+	_check(not src.contains("state_hasher") and not src.contains("StateHasher"), "pipeline util does not touch the sim hasher")
+	_check(not src.contains("SceneTree"), "pipeline util does not touch the scene tree type")
