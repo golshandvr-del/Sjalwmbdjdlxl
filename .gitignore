@@ -41,3 +41,13 @@ Thumbs.db
 .idea/
 .vscode/
 .github/workflows/
+
+# Web template cruft (not part of the Godot project)
+node_modules/
+package.json
+package-lock.json
+wrangler.jsonc
+vite.config.ts
+tsconfig.json
+dist/
+.wrangler/
