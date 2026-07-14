@@ -641,6 +641,8 @@ func _init() -> void:
 	test_md12_control_kind_by_value_type()
 	test_md12_coerce_value_type_and_clamp()
 	test_md12_with_stat_value_pure_and_respects_bounds()
+	test_md12_build_free_stat_definition_shape()
+	test_md12_validate_free_stat_rules()
 	test_md12_stat_editor_util_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
@@ -11113,6 +11115,91 @@ func test_md12_with_stat_value_pure_and_respects_bounds() -> void:
 	_check(not out2.has("armor"), "absent stat is not added by a value edit")
 	# Deterministic.
 	_check(StatEditorUtil.with_stat_value(stats, "health", 500000, StatRegistry) == out, "with_stat_value deterministic")
+
+
+# Test helper: true when any string in `arr` contains `needle` (substring).
+func _has_substr(arr: Array, needle: String) -> bool:
+	for item in arr:
+		if str(item).contains(needle):
+			return true
+	return false
+
+
+# MD12.4: build_free_stat_definition + normalise_stat_id produce a valid MD1
+# definition dictionary in the shape StatRegistry.load_definitions() merges.
+func test_md12_build_free_stat_definition_shape() -> void:
+	print("test_md12_build_free_stat_definition_shape")
+	StatRegistry.reset_definitions()
+	# Author-typed messy id + affects out of key order.
+	var def: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"  2My Cool-Stat!! ", "float", "morale", 0.0, 10.0, 3.0,
+		{ "survivability": 0.5, "damage_output": 1.0 }, "unit")
+	_check(str(def["id"]) == "my_cool_stat", "author id normalised to my_cool_stat")
+	_check(str(def["value_type"]) == "float", "value_type carried through")
+	_check(str(def["category"]) == "morale", "category carried through")
+	_check(float(def["min"]) == 0.0 and float(def["max"]) == 10.0, "min/max carried as floats")
+	_check(str(def["applies_to"]) == "unit", "applies_to carried through")
+	_check(bool(def["core"]) == false, "free stat is not core")
+	_check(str(def["display_name_key"]) == "stat.my_cool_stat.name", "display_name_key uses normalised id (MD12.5)")
+	# affects copied in sorted-key order (deterministic).
+	var keys: Array = (def["affects"] as Dictionary).keys()
+	_check(keys == ["damage_output", "survivability"], "affects keys sorted deterministically")
+	# bool type flips needs_value off.
+	var bdef: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"flying", "bool", "mobility", 0.0, 1.0, false, {}, "unit")
+	_check(bool(bdef["needs_value"]) == false, "bool free stat needs no numeric value")
+	# Unknown value_type / applies_to fall back to safe defaults.
+	var fb: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"weird", "mystery", "", 0.0, 1.0, 0, {}, "planet")
+	_check(str(fb["value_type"]) == "int", "unknown value_type -> int")
+	_check(str(fb["applies_to"]) == "both", "unknown applies_to -> both")
+	_check(str(fb["category"]) == StatEditorUtil.MISC_CATEGORY, "empty category -> misc")
+	# Deterministic: same input -> byte-for-byte same definition.
+	var again: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"  2My Cool-Stat!! ", "float", "morale", 0.0, 10.0, 3.0,
+		{ "survivability": 0.5, "damage_output": 1.0 }, "unit")
+	_check(again == def, "build_free_stat_definition deterministic")
+
+
+# MD12.4: validate_free_stat layers Free-Stat rules on top of the shared schema
+# check -- id collision with core stats, unknown affects capability, bad type.
+func test_md12_validate_free_stat_rules() -> void:
+	print("test_md12_validate_free_stat_rules")
+	StatRegistry.reset_definitions()
+	# A well-formed free stat validates clean.
+	var good: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"morale", "int", "morale", 0.0, 100.0, 50,
+		{ "survivability": 0.4 }, "unit")
+	var ok: Array = StatEditorUtil.validate_free_stat(good, StatRegistry, CapabilityRegistry)
+	_check(ok.is_empty(), "well-formed free stat validates clean")
+	# Colliding with a reserved core stat is rejected.
+	var collide: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"health", "int", "defense", 0.0, 100.0, 50, {}, "unit")
+	var cp: Array = StatEditorUtil.validate_free_stat(collide, StatRegistry, CapabilityRegistry)
+	_check(_has_substr(cp, "collides"), "core-stat id collision rejected")
+	# affects onto an unknown capability is rejected.
+	var badcap: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"luck", "int", "misc", 0.0, 100.0, 0,
+		{ "not_a_capability": 1.0 }, "unit")
+	var bcp: Array = StatEditorUtil.validate_free_stat(badcap, StatRegistry, CapabilityRegistry)
+	_check(_has_substr(bcp, "unknown capability"), "affects unknown capability rejected")
+	# min > max is caught by the shared schema layer.
+	var bad_band: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"tempo", "int", "misc", 100.0, 0.0, 0, {}, "unit")
+	var bbp: Array = StatEditorUtil.validate_free_stat(bad_band, StatRegistry, CapabilityRegistry)
+	_check(_has_substr(bbp, "min") and _has_substr(bbp, "max"), "min>max rejected via shared schema")
+	# An empty-id def (nothing usable typed) is rejected.
+	var empty: Dictionary = StatEditorUtil.build_free_stat_definition(
+		"!!!", "int", "misc", 0.0, 1.0, 0, {}, "unit")
+	var ep: Array = StatEditorUtil.validate_free_stat(empty, StatRegistry, CapabilityRegistry)
+	_check(_has_substr(ep, "non-empty id"), "empty free stat id rejected")
+	# The validated free stat round-trips through the registry as a Free Stat.
+	StatRegistry.reset_definitions()
+	StatRegistry.load_definitions({ "morale": good })
+	_check(StatRegistry.is_free("morale"), "merged free stat classified as free")
+	_check(not StatRegistry.is_core("morale"), "free stat is not core")
+	_check(StatRegistry.value_type("morale") == "int", "free stat value_type queryable after merge")
+	StatRegistry.reset_definitions()
 
 
 # MD12.1: the util is pure ASCII, a RefCounted, and never touches the scene
