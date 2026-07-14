@@ -304,6 +304,12 @@ static func priority_scores(context: Variant, flags: Variant, weights: Variant) 
 		attack = _avg2(army_ratio, SCALE - enemy_distance)
 		if bool(f.get("prefer_harass_when_exposed", false)) and enemy_distance <= 600:
 			attack += SCALE / 4
+		# Dominant army + genuinely exposed enemy: the textbook opening to press
+		# the advantage. This aggression bonus lets a decisive push outrank the
+		# "when comfortable" priorities (research/expansion) that a strong, safe
+		# position would otherwise favour.
+		if army_ratio >= 600 and enemy_distance <= 400:
+			attack += SCALE / 4
 	# A collapsing army must never prioritise attacking.
 	if army_ratio < 300:
 		attack = 0
