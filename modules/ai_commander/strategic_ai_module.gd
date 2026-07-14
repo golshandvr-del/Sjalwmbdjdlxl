@@ -298,7 +298,15 @@ func _plan_expansion(owner: int, personality: Dictionary) -> void:
 	var hq: Dictionary = _find_hq(owner)
 	if hq.is_empty():
 		return
-	var spot: Vector2i = _find_build_spot(int(hq.get("x", 0)), int(hq.get("y", 0)), owner)
+	var hx: int = int(hq.get("x", 0))
+	var hy: int = int(hq.get("y", 0))
+	# MD9.5: pick the site by (building value x site quality) over a limited
+	# candidate set, instead of "first empty tile near HQ". If the smart selector
+	# finds nothing (empty candidate set / unusual map), fall back to the legacy
+	# deterministic ring scan so existing behaviour is preserved (backward-compat).
+	var spot: Vector2i = _smart_build_spot(owner, "outpost", hx, hy)
+	if spot.x < 0:
+		spot = _find_build_spot(hx, hy, owner)
 	if spot.x < 0:
 		return
 	nexus.issue_command("build_building", owner, {
