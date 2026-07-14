@@ -1,0 +1,26 @@
+{
+  "id": "fast_raider",
+  "display_name_key": "unit.fast_raider.name",
+  "category": "cavalry",
+  "stats": {
+    "health": 70,
+    "armor": 10,
+    "move_speed": 6,
+    "turn_rate": 7,
+    "attack_damage": 45,
+    "fire_rate": 2,
+    "attack_range": 1,
+    "vision_range": 7
+  },
+  "cost": {
+    "resource_basic": 85
+  },
+  "build_time_ticks": 70,
+  "visual": {
+    "shape": "arrow",
+    "color": "#8A3B5B",
+    "texture": "textures/soldier.png",
+    "size_scale": 0.95,
+    "outline": true
+  }
+}
