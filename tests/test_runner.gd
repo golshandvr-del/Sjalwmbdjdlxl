@@ -643,6 +643,8 @@ func _init() -> void:
 	test_md12_with_stat_value_pure_and_respects_bounds()
 	test_md12_build_free_stat_definition_shape()
 	test_md12_validate_free_stat_rules()
+	test_md12_stat_display_name_dynamic_key_and_fallback()
+	test_md12_core_stats_have_locale_labels()
 	test_md12_stat_editor_util_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
@@ -11200,6 +11202,51 @@ func test_md12_validate_free_stat_rules() -> void:
 	_check(not StatRegistry.is_core("morale"), "free stat is not core")
 	_check(StatRegistry.value_type("morale") == "int", "free stat value_type queryable after merge")
 	StatRegistry.reset_definitions()
+
+
+# MD12.5: stat_display_name resolves the dynamic stat.<id>.name key when the
+# locale defines it, and falls back to a humanised id when it does not.
+func test_md12_stat_display_name_dynamic_key_and_fallback() -> void:
+	print("test_md12_stat_display_name_dynamic_key_and_fallback")
+	# key builder + humaniser are pure and deterministic.
+	_check(StatEditorUtil.stat_name_key("move_speed") == "stat.move_speed.name", "stat_name_key builds dynamic key")
+	_check(StatEditorUtil.humanise_id("attack_damage") == "Attack Damage", "humanise_id title-cases snake id")
+	_check(StatEditorUtil.humanise_id("health") == "Health", "humanise_id single word")
+	# Null loc -> always the humanised id (never a raw key leak).
+	_check(StatEditorUtil.stat_display_name("move_speed", null) == "Move Speed", "null loc -> humanised id")
+	# With a loaded locale, a Core Stat resolves to its shipped label.
+	var loc: Localization = Localization.new()
+	loc.load_all("res://localization")
+	_check(loc.has_key("stat.health.name"), "core stat name key shipped in locale")
+	_check(StatEditorUtil.stat_display_name("health", loc) == "Health", "core stat resolves to localised label")
+	# A Free Stat with no locale entry degrades to the humanised id (resilience).
+	_check(not loc.has_key("stat.my_cool_stat.name"), "free stat has no shipped locale key")
+	_check(StatEditorUtil.stat_display_name("my_cool_stat", loc) == "My Cool Stat", "missing key -> humanised id fallback")
+	# Deterministic.
+	_check(StatEditorUtil.stat_display_name("my_cool_stat", loc) == "My Cool Stat", "display name deterministic")
+
+
+# MD12.5: every Core Stat id in the registry has a stat.<id>.name label in BOTH
+# shipped locales (so the data-driven editor never shows a raw key for a core).
+func test_md12_core_stats_have_locale_labels() -> void:
+	print("test_md12_core_stats_have_locale_labels")
+	var en: Localization = Localization.new()
+	en.load_all("res://localization")
+	en.set_locale("en")
+	var fa: Localization = Localization.new()
+	fa.load_all("res://localization")
+	fa.set_locale("fa")
+	StatRegistry.reset_definitions()
+	var missing_en: Array = []
+	var missing_fa: Array = []
+	for id in StatRegistry.all_ids():
+		var key: String = "stat.%s.name" % str(id)
+		if not en.has_key(key):
+			missing_en.append(str(id))
+		if not fa.has_key(key):
+			missing_fa.append(str(id))
+	_check(missing_en.is_empty(), "every core stat has an en label")
+	_check(missing_fa.is_empty(), "every core stat has a fa label")
 
 
 # MD12.1: the util is pure ASCII, a RefCounted, and never touches the scene
