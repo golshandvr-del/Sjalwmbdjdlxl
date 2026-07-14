@@ -625,6 +625,14 @@ func _init() -> void:
 	test_md10_pick_action_unit_and_building()
 	test_md10_decide_end_to_end_and_deterministic()
 	test_md10_pipeline_source_is_ascii_and_pure()
+	# Phase MD11 (item 12): learning layer (in-match L1 + cross-match L2).
+	test_md11_in_match_rate_from_profile()
+	test_md11_role_reinforce_and_weaken()
+	test_md11_apply_events_deterministic_and_sorted()
+	test_md11_anti_exploit_cap_and_baseline_decay()
+	test_md11_state_round_trip_sorted()
+	test_md11_cross_match_memory_and_seed()
+	test_md11_learning_source_is_ascii_and_pure()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
