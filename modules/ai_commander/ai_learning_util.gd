@@ -30,8 +30,12 @@
 # deterministic summaries from worldstate and feed them in.
 #
 # CODE LANGUAGE POLICY: English-only identifiers/comments, pure ASCII.
+#
+# NOTE: named AiRoleLearningUtil (not AiLearningUtil) because MC13's diplomacy
+# trust/tactic learner already owns the class_name AiLearningUtil. This MD11
+# util is the ROLE / SITE / TARGET learner and must not collide with it.
 # ----------------------------------------------------------------------------
-class_name AiLearningUtil
+class_name AiRoleLearningUtil
 extends RefCounted
 
 
