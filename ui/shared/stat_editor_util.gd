@@ -239,3 +239,64 @@ static func _to_float(v: Variant) -> float:
 	if v is String and str(v).is_valid_float():
 		return str(v).to_float()
 	return 0.0
+
+
+# --- MD12.3: cosmetic "capability card" feedback ----------------------------
+#
+# As the modder edits stats, the editor shows a LIVE card: the entity's
+# Capability vector (MD3) and its inferred primary/ranked roles (MD4), so the
+# author sees the effect of a change immediately. This is COSMETIC feedback
+# (section 2.2) -- it drives no Command and never touches the sim hash -- so it
+# lives here as a pure display builder the editor renders read-only.
+#
+# `entity_def` : the unit/building dict being edited (has a "stats" sub-dict).
+# `stat_registry` : StatRegistry (or a stub) for normalisation metadata.
+# `target` : "unit" | "building" | "auto" for role inference.
+# Returns:
+#   {
+#     "capabilities": Array< { id, name_key, q, percent } > sorted by id,
+#     "primary_role": String,
+#     "roles": Array< { role, score_q, percent } > (ranked, from infer_roles),
+#   }
+# `percent` is an integer 0..100 (q * 100 / SCALE, rounded) purely for display.
+# Deterministic; never crashes on an empty/malformed entity (MD3/MD4 resilience).
+static func capability_card(entity_def: Variant, stat_registry: Object = null, target: String = "auto") -> Dictionary:
+	var vector: Dictionary = DerivedMetricsUtil.compute_capabilities(entity_def, stat_registry, null)
+	var scale: int = DerivedMetricsUtil.SCALE
+	var caps: Array = []
+	var ids: Array = vector.keys()
+	ids.sort()
+	for cid in ids:
+		var q: int = int(vector[cid])
+		caps.append({
+			"id": str(cid),
+			"name_key": CapabilityRegistry.name_key(str(cid)),
+			"q": q,
+			"percent": _q_to_percent(q, scale),
+		})
+	var ranked_in: Array = RoleInferenceUtil.infer_roles(vector, target)
+	var roles: Array = []
+	for r in ranked_in:
+		var rd: Dictionary = r as Dictionary
+		var score: int = int(rd.get("score_q", 0))
+		roles.append({
+			"role": str(rd.get("role", "")),
+			"score_q": score,
+			"percent": _q_to_percent(score, scale),
+		})
+	return {
+		"capabilities": caps,
+		"primary_role": RoleInferenceUtil.primary_role(vector, target),
+		"roles": roles,
+	}
+
+
+# Convert a fixed-point q in [0..scale] to an integer percent 0..100 (rounded).
+static func _q_to_percent(q: int, scale: int) -> int:
+	if scale <= 0:
+		return 0
+	var num: int = q * 100
+	var half: int = scale / 2
+	if num >= 0:
+		return (num + half) / scale
+	return -(((-num) + half) / scale)
