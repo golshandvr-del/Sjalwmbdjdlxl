@@ -11061,6 +11061,60 @@ func test_md12_paginate_mobile_cap_and_bounds() -> void:
 	_check(int(pe["page_count"]) == 1 and (pe["stats"] as Array).is_empty(), "empty list -> one empty page")
 
 
+# MD12.2: control_kind maps a value_type to the widget the editor should draw.
+func test_md12_control_kind_by_value_type() -> void:
+	print("test_md12_control_kind_by_value_type")
+	_check(StatEditorUtil.control_kind("bool") == "switch", "bool -> switch")
+	_check(StatEditorUtil.control_kind("int") == "int", "int -> int")
+	_check(StatEditorUtil.control_kind("float") == "float", "float -> float")
+	# Unknown / empty falls back to int (safe numeric default).
+	_check(StatEditorUtil.control_kind("mystery") == "int", "unknown type -> int fallback")
+	_check(StatEditorUtil.control_kind("") == "int", "empty type -> int fallback")
+
+
+# MD12.2: coerce_value honours value_type and clamps into the registry's
+# [min..max] band. int rounds half away from zero; bool ignores bounds.
+func test_md12_coerce_value_type_and_clamp() -> void:
+	print("test_md12_coerce_value_type_and_clamp")
+	StatRegistry.reset_definitions()
+	# health is int, min 1, max 100000.
+	var hi: Variant = StatEditorUtil.coerce_value("health", 250000, StatRegistry)
+	_check(hi is int and int(hi) == 100000, "health clamped to registry max as int")
+	var lo: Variant = StatEditorUtil.coerce_value("health", -5, StatRegistry)
+	_check(lo is int and int(lo) == 1, "health clamped up to registry min")
+	var rounded: Variant = StatEditorUtil.coerce_value("health", 42.6, StatRegistry)
+	_check(rounded is int and int(rounded) == 43, "int stat rounds half away from zero")
+	# fire_rate is float, min 0.01, max 100.0.
+	var fr: Variant = StatEditorUtil.coerce_value("fire_rate", 2.5, StatRegistry)
+	_check(fr is float and abs(float(fr) - 2.5) < 0.0001, "float stat keeps its decimals")
+	var frhi: Variant = StatEditorUtil.coerce_value("fire_rate", 9999.0, StatRegistry)
+	_check(frhi is float and abs(float(frhi) - 100.0) < 0.0001, "float stat clamped to max")
+	# stealth is bool -> truthiness, bounds ignored.
+	var st: Variant = StatEditorUtil.coerce_value("stealth", 1, StatRegistry)
+	_check(st is bool and bool(st) == true, "bool stat coerces truthy input to true")
+	var stf: Variant = StatEditorUtil.coerce_value("stealth", 0, StatRegistry)
+	_check(stf is bool and bool(stf) == false, "bool stat coerces zero to false")
+	# Null registry -> unbounded int, no crash.
+	var nr: Variant = StatEditorUtil.coerce_value("anything", 12.4, null)
+	_check(nr is int and int(nr) == 12, "null registry -> unbounded int coercion")
+
+
+# MD12.2: with_stat_value edits the MODEL purely (no input mutation), applies the
+# clamped/typed value only when the stat is present.
+func test_md12_with_stat_value_pure_and_respects_bounds() -> void:
+	print("test_md12_with_stat_value_pure_and_respects_bounds")
+	StatRegistry.reset_definitions()
+	var stats: Dictionary = { "health": 100 }
+	var out: Dictionary = StatEditorUtil.with_stat_value(stats, "health", 500000, StatRegistry)
+	_check(int(out["health"]) == 100000, "value clamped to max in the returned model")
+	_check(int(stats["health"]) == 100, "input stats dict is not mutated (pure)")
+	# A stat that is not present is left untouched (editor toggles presence).
+	var out2: Dictionary = StatEditorUtil.with_stat_value(stats, "armor", 50, StatRegistry)
+	_check(not out2.has("armor"), "absent stat is not added by a value edit")
+	# Deterministic.
+	_check(StatEditorUtil.with_stat_value(stats, "health", 500000, StatRegistry) == out, "with_stat_value deterministic")
+
+
 # MD12.1: the util is pure ASCII, a RefCounted, and never touches the scene
 # tree / world model / sim hasher (cosmetic descriptor builder only).
 func test_md12_stat_editor_util_source_is_ascii_and_pure() -> void:
