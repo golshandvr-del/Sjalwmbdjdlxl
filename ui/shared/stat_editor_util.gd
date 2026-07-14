@@ -12,14 +12,14 @@
 #   screen never has to show more than a fixed cap of controls at once.
 #
 # Design rules (Definition of Done, plan section 2 constant principles):
-#   - PURE INFRASTRUCTURE: RefCounted, no SceneTree / WorldState / sim-hash
+#   - PURE INFRASTRUCTURE: RefCounted, no scene-tree / world-model / sim-hash
 #     dependency. It only DESCRIBES what the editor should draw. The editor
 #     (ui/shared/mod_editor.gd, MD12.2) turns each descriptor into a widget.
 #   - DETERMINISTIC: ids are emitted in a stable order (stat ids sorted inside
 #     each group; groups sorted by category id) so the same query always yields
 #     byte-for-byte the same layout -- friendly to UI diffing and to tests.
 #   - COSMETIC (section 2.2): the descriptors carry no simulation state and this
-#     util never touches state_hasher. It reads metadata only.
+#     util never touches the sim hasher. It reads metadata only.
 #   - RESILIENCE (section 2.5): an unknown catalog / a stat missing metadata
 #     never crashes -- it degrades to sensible defaults (int, category "misc").
 #   - English-only identifiers/comments (CODE_POLICY); any author-facing label
@@ -313,7 +313,7 @@ static func _q_to_percent(q: int, scale: int) -> int:
 #
 # This block produces the MD1 definition dictionary such an author edits, in the
 # exact shape `StatRegistry.load_definitions()` merges and `validate_definition`
-# checks. It stays PURE (RefCounted static, no SceneTree / sim hash): the editor
+# checks. It stays PURE (RefCounted static, no scene-tree / sim hash): the editor
 # collects fields, calls build_free_stat_definition(), validates with
 # validate_free_stat(), and on success hands the dict to the project model +
 # StatRegistry.load_definitions(). Deterministic: `affects` keys are emitted in
