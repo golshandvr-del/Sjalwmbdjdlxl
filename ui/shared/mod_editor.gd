@@ -98,6 +98,19 @@ var _file_dialog: FileDialog
 var _choice_dialog: AcceptDialog
 var _choice_paths: Array = []
 
+# MD12.4 (req: data-driven stat UI): the "define a new Free Stat" dialog. It
+# collects id/category/type/min/max/default, builds the MD1 definition through
+# the pure StatEditorUtil.build_free_stat_definition, validates it with
+# validate_free_stat, and on success merges it into StatRegistry so the new stat
+# appears in the picker immediately. Fields are rebuilt each open.
+var _stat_dialog: AcceptDialog
+var _stat_id_edit: LineEdit
+var _stat_category_edit: LineEdit
+var _stat_type_option: OptionButton
+var _stat_min_spin: SpinBox
+var _stat_max_spin: SpinBox
+var _stat_default_spin: SpinBox
+
 # The stat-value spinboxes currently on screen, keyed by "part:<i>:<stat>" so a
 # value edit can find its way back into the right part. Rebuilt every render.
 var _stat_controls: Dictionary = {}
