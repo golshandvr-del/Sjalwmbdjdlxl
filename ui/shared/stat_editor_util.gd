@@ -300,3 +300,150 @@ static func _q_to_percent(q: int, scale: int) -> int:
 	if num >= 0:
 		return (num + half) / scale
 	return -(((-num) + half) / scale)
+
+
+# --- MD12.4: define a NEW Free Stat in the mod editor -----------------------
+#
+# The mod editor lets an author invent a brand-new stat (a Free Stat, section
+# 2.4) by giving it a name/category/type/min/max/default and a set of `affects`
+# weights onto the CLOSED Capability contract (section 2.3). A Free Stat may
+# ONLY reach gameplay through those `affects` weights -- it never wires into the
+# engine's combat/economy logic -- so building one here is a pure, model-side
+# operation with no simulation side effects.
+#
+# This block produces the MD1 definition dictionary such an author edits, in the
+# exact shape `StatRegistry.load_definitions()` merges and `validate_definition`
+# checks. It stays PURE (RefCounted static, no SceneTree / sim hash): the editor
+# collects fields, calls build_free_stat_definition(), validates with
+# validate_free_stat(), and on success hands the dict to the project model +
+# StatRegistry.load_definitions(). Deterministic: `affects` keys are emitted in
+# sorted order so the same input yields byte-for-byte the same definition.
+
+# Allowed value types for a Free Stat (mirrors StatRegistry.VALID_VALUE_TYPES;
+# duplicated here so the editor can validate without a registry instance).
+const FREE_STAT_VALUE_TYPES: Array = ["int", "float", "bool"]
+
+# Catalogs a Free Stat may apply to (matches StatRegistry.APPLIES_*).
+const FREE_STAT_APPLIES: Array = ["unit", "building", "both"]
+
+
+# Normalise a raw author-typed id into a safe stat id: lower-case, ASCII letters
+# / digits / underscore only, leading digits stripped, collapsed underscores.
+# Returns "" when nothing usable remains (the editor then shows an error). Pure.
+static func normalise_stat_id(raw: String) -> String:
+	var lower: String = str(raw).strip_edges().to_lower()
+	var out: String = ""
+	var prev_us: bool = false
+	for i in range(lower.length()):
+		var ch: String = lower.substr(i, 1)
+		var code: int = ch.unicode_at(0)
+		var is_digit: bool = code >= 48 and code <= 57
+		var is_alpha: bool = code >= 97 and code <= 122
+		if is_alpha or (is_digit and out != ""):
+			out += ch
+			prev_us = false
+		elif is_digit and out == "":
+			# Leading digit: skip until the first letter so ids stay valid.
+			continue
+		else:
+			# Any separator collapses to a single underscore (never leading).
+			if out != "" and not prev_us:
+				out += "_"
+				prev_us = true
+	# Trim a trailing underscore.
+	while out.ends_with("_"):
+		out = out.substr(0, out.length() - 1)
+	return out
+
+
+# Build a Free Stat definition dictionary from the fields the editor collects.
+# `affects` maps capability_id -> weight (float/int); it is copied with keys in
+# sorted order for determinism. The result carries `core=false` (it is a Free
+# Stat) and a `display_name_key` of `stat.<id>.name` (MD12.5 i18n). This is a
+# pure builder: it does NOT validate (call validate_free_stat separately) and it
+# does NOT touch the registry -- the caller merges it via load_definitions().
+static func build_free_stat_definition(
+		id: String,
+		value_type: String,
+		category: String,
+		min_value: float,
+		max_value: float,
+		default_value: Variant,
+		affects: Dictionary = {},
+		applies_to: String = "both") -> Dictionary:
+	var sid: String = normalise_stat_id(id)
+	var vtype: String = str(value_type)
+	if not (vtype in FREE_STAT_VALUE_TYPES):
+		vtype = "int"
+	var apply: String = str(applies_to)
+	if not (apply in FREE_STAT_APPLIES):
+		apply = "both"
+	# Deterministic affects: copy in sorted-key order, numbers only.
+	var clean_affects: Dictionary = {}
+	var cap_ids: Array = affects.keys()
+	cap_ids.sort()
+	for cap in cap_ids:
+		var w: Variant = affects[cap]
+		if w is float or w is int:
+			clean_affects[str(cap)] = w
+	var cat: String = str(category).strip_edges()
+	if cat == "":
+		cat = MISC_CATEGORY
+	return {
+		"id": sid,
+		"value_type": vtype,
+		"category": cat,
+		"min": float(min_value),
+		"max": float(max_value),
+		"default": default_value,
+		"affects": clean_affects,
+		"applies_to": apply,
+		"needs_value": vtype != "bool",
+		"higher_is_better": true,
+		"ai_importance": 0.5,
+		"core": false,
+		"display_name_key": "stat.%s.name" % sid,
+	}
+
+
+# Validate a Free Stat definition before it is merged. Returns an Array of
+# human-readable problem strings (empty => valid). Layers the editor-specific
+# Free Stat rules ON TOP of StatRegistry.validate_definition (the shared schema
+# check): a Free Stat additionally must have a usable id, MUST NOT collide with a
+# reserved Core Stat, its `applies_to` must be known, and EVERY `affects` key
+# must name a real Capability in the closed contract (section 2.3). `registry`
+# is StatRegistry (or a stub) for the collision/schema checks; `capability_reg`
+# is CapabilityRegistry (or a stub) for the affects-target check. Both may be
+# null -> the corresponding checks are skipped (still returns the id/type rules).
+static func validate_free_stat(def: Variant, registry: Object = null, capability_reg: Object = null) -> Array:
+	var problems: Array = []
+	if not (def is Dictionary):
+		problems.append("definition is not a dictionary")
+		return problems
+	var d: Dictionary = def as Dictionary
+	# Shared schema validation (min/max, value_type, ai_importance, affects type).
+	if registry != null and registry.has_method("validate_definition"):
+		for p in registry.call("validate_definition", d):
+			problems.append(str(p))
+	# Free-Stat-specific rules.
+	var id: String = str(d.get("id", ""))
+	if id == "":
+		problems.append("free stat needs a non-empty id")
+	elif normalise_stat_id(id) != id:
+		problems.append("id is not a normalised stat id: %s" % id)
+	# Must not shadow a reserved Core Stat.
+	if id != "" and registry != null and registry.has_method("is_core"):
+		if bool(registry.call("is_core", id)):
+			problems.append("id collides with a reserved core stat: %s" % id)
+	# applies_to must be one of the known catalogs.
+	if d.has("applies_to") and not (str(d["applies_to"]) in FREE_STAT_APPLIES):
+		problems.append("invalid applies_to: %s" % str(d["applies_to"]))
+	# Every affects target must be a real Capability (closed contract).
+	if capability_reg != null and capability_reg.has_method("has_capability"):
+		var affects: Dictionary = (d.get("affects", {}) as Dictionary)
+		var cap_ids: Array = affects.keys()
+		cap_ids.sort()
+		for cap in cap_ids:
+			if not bool(capability_reg.call("has_capability", str(cap))):
+				problems.append("affects unknown capability: %s" % str(cap))
+	return problems
