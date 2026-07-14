@@ -70,6 +70,14 @@ requirements `R#`, and the executable phase plan `P0`..`P8`). For a fast
 > Context -> Utility Scoring -> Staged Action Selection -> Learning`. All decision
 > math is fixed-point (`SCALE=1000`) for lockstep safety. See that plan for the
 > full phase breakdown, the expert-opinion critique, and the determinism rules.
+>
+> **Status:** Round 4 (`MD1`..`MD14`) is **code-complete**. The AI now selects
+> units/buildings by data-driven *capability* utility (no more hard-coded
+> `"soldier"`), a mod's new Free stat is understood with **zero engine code**
+> (proven by the `test_md14_*` round-trip tests), and the whole decision path is
+> fixed-point so dynamic stats never break lockstep. The end-to-end data-flow
+> diagram lives in [`docs/CODE_MAP.md`](docs/CODE_MAP.md) section 2.5, and the
+> architecture summary in [`docs/STRUCTURE.md`](docs/STRUCTURE.md) section 1.2.
 
 ---
 
