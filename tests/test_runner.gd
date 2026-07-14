@@ -11346,3 +11346,60 @@ func test_md13_chain_raw_to_capabilities_to_roles() -> void:
 		var accepted: Array = _MD13_ARCHETYPES[id] as Array
 		_check(role in accepted, "chain: %s -> primary role %s in %s" % [str(id), role, str(accepted)])
 	StatRegistry.reset_definitions()
+
+
+# Build a full unit-utility candidate ({id, caps, primary_role}) for a synthetic
+# archetype, running it through the real capability + role pipeline.
+func _md13_candidate(id: String) -> Dictionary:
+	var def: Dictionary = _md13_load_synthetic(id)
+	var caps: Dictionary = DerivedMetricsUtil.compute_capabilities(def, StatRegistry, null)
+	var role: String = RoleInferenceUtil.primary_role(caps, "unit")
+	return { "id": id, "caps": caps, "primary_role": role }
+
+
+# MD13.3: the SAME synthetic catalog run under different AI personalities yields
+# personality-consistent picks -- the domain-expert acceptance criterion. A
+# defensive AI prefers the durable tank over the fragile sniper; an aggressive
+# AI prefers high-damage/mobility; an economic AI prefers the harvester.
+func test_md13_archetype_selection_matches_personality() -> void:
+	print("test_md13_archetype_selection_matches_personality")
+	StatRegistry.reset_definitions()
+	var ctx: Dictionary = {}
+	# Contrast 1: durable tank vs fragile sniper under a DEFENSIVE profile.
+	var tank: Dictionary = _md13_candidate("heavy_tank")
+	var sniper: Dictionary = _md13_candidate("fragile_sniper")
+	var defensive: Dictionary = {
+		"capabilities": {
+			"survivability": 2200, "holding_power": 2000, "damage_output": 300,
+			"mobility": 500, "siege_power": 600, "anti_air_power": 800,
+			"scout_power": 600, "support_power": 900, "cost_efficiency": 1000,
+		},
+		"roles": { "frontline_tank": 2000, "glass_cannon": 200, "ranged_dps": 300 },
+	}
+	var def_pick: String = UnitUtilityUtil.select_best([tank, sniper], defensive, ctx, 7, 0, 0, 0)
+	_check(def_pick == "heavy_tank", "defensive AI prefers durable tank over fragile sniper (got %s)" % def_pick)
+	# Contrast 2: same pair under an AGGRESSIVE profile -> the sniper (damage).
+	var aggressive: Dictionary = {
+		"capabilities": {
+			"survivability": 300, "holding_power": 300, "damage_output": 2400,
+			"mobility": 1400, "siege_power": 1000, "anti_air_power": 700,
+			"scout_power": 700, "support_power": 400, "cost_efficiency": 700,
+		},
+		"roles": { "frontline_tank": 200, "glass_cannon": 2000, "ranged_dps": 1800 },
+	}
+	var agg_pick: String = UnitUtilityUtil.select_best([tank, sniper], aggressive, ctx, 7, 0, 0, 0)
+	_check(agg_pick == "fragile_sniper", "aggressive AI prefers the damage sniper (got %s)" % agg_pick)
+	# Contrast 3: harvester vs tank under an ECONOMIC profile -> the harvester.
+	var harvester: Dictionary = _md13_candidate("economy_harvester")
+	var economic: Dictionary = {
+		"capabilities": {
+			"survivability": 400, "holding_power": 400, "damage_output": 300,
+			"mobility": 500, "siege_power": 200, "anti_air_power": 200,
+			"scout_power": 500, "support_power": 500, "cost_efficiency": 1500,
+			"resource_pressure": 2600,
+		},
+		"roles": { "frontline_tank": 200, "economy_unit": 2400 },
+	}
+	var eco_pick: String = UnitUtilityUtil.select_best([tank, harvester], economic, ctx, 7, 0, 0, 0)
+	_check(eco_pick == "economy_harvester", "economic AI prefers the harvester (got %s)" % eco_pick)
+	StatRegistry.reset_definitions()
