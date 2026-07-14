@@ -1,0 +1,26 @@
+{
+  "id": "fast_scout",
+  "display_name_key": "unit.fast_scout.name",
+  "category": "recon",
+  "stats": {
+    "health": 55,
+    "armor": 0,
+    "move_speed": 7,
+    "turn_rate": 8,
+    "attack_damage": 4,
+    "attack_range": 1,
+    "vision_range": 13,
+    "stealth": 1
+  },
+  "cost": {
+    "resource_basic": 40
+  },
+  "build_time_ticks": 45,
+  "visual": {
+    "shape": "diamond",
+    "color": "#3B8A6D",
+    "texture": "textures/soldier.png",
+    "size_scale": 0.8,
+    "outline": true
+  }
+}
