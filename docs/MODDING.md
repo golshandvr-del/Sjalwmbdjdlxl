@@ -161,6 +161,38 @@ from `load_after` (stable topological sort, ties by id), and **merges** each
 mod's entries into the base catalogs (last-writer-wins). Same mod set on every
 machine -> identical catalogs -> still lockstep-safe.
 
+### How the AI automatically understands your stat (MD3-MD11)
+
+Once your stat is wired with `affects`, **no further modding is needed** for the
+AI to use it -- the whole decision chain is data-driven:
+
+```
+your raw stat -> affects -> Capability vector -> Role
+   -> AI profile weights -> Context -> Policy -> Utility score -> action
+```
+
+1. **Capability vector (MD3):** the engine turns every unit/building's raw stats
+   into a normalised fixed-point capability card via a deterministic saturation
+   curve `q = SCALE * v / (v + H)`. Your `affects` weights decide *which*
+   capabilities your stat raises.
+2. **Role (MD4):** the capability card is matched against role signatures
+   (`frontline_tank`, `glass_cannon`, `scout`, ...). A stat that boosts
+   `survivability`+`holding_power` nudges a unit toward `frontline_tank`.
+3. **Selection (MD5-MD10):** each AI personality derives role/capability weights,
+   builds a context vector, and scores candidates by `sum(need * capability)`. A
+   unit whose modded stat makes it better at what the AI currently needs gets
+   built -- **the AI never keys on unit names**, so your new unit competes fairly
+   from day one.
+
+This is why a brand-new Free stat "just works": the AI reasons about
+*capabilities*, and your `affects` map is the only bridge it needs. See the full
+data-flow diagram in `docs/CODE_MAP.md` (section 2.5) and the end-to-end proof in
+`tests/test_runner.gd` (`test_md14_mod_free_stat_round_trip_understood_by_ai`).
+
+Everything on this path is **fixed-point integer math** (`SCALE = 1000`), so a
+modded stat can never introduce float divergence between lockstep clients
+(`test_md14_dynamic_stats_do_not_break_determinism`).
+
 ---
 
 ## 4. Where textures come from
