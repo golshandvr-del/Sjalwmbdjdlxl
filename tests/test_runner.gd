@@ -621,6 +621,7 @@ func _init() -> void:
 	# Phase MD10 (item 9): staged decision pipeline.
 	test_md10_state_classification()
 	test_md10_priority_selection_and_tiebreak()
+	test_md10_category_selection()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10558,3 +10559,46 @@ func test_md10_priority_selection_and_tiebreak() -> void:
 	_check(r1 == r2, "priority selection is deterministic (same inputs -> same priority)")
 	# Every emitted priority is a member of the closed set.
 	_check(AiDecisionPipelineUtil.PRIORITIES.has(r1), "chosen priority is in the closed set")
+
+
+# MD10.3 Stage 3: each macro priority maps to a concrete action category, with
+# defense refined by policy/pressure. Every category draws from the documented
+# candidate pool.
+func test_md10_category_selection() -> void:
+	print("test_md10_category_selection")
+	var calm_ctx: Dictionary = { "frontline_pressure": 0 }
+	var no_flags: Dictionary = AiPolicyUtil.baseline_flags()
+	# Defense with no static-defense policy and light pressure -> holding unit.
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_DEFENSE, calm_ctx, no_flags) == AiDecisionPipelineUtil.CATEGORY_HOLDING_UNIT,
+		"defense + light pressure -> holding unit")
+	# Defense under a static-defense policy -> defensive building.
+	var static_flags: Dictionary = AiPolicyUtil.baseline_flags()
+	static_flags["prefer_static_defense"] = true
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_DEFENSE, calm_ctx, static_flags) == AiDecisionPipelineUtil.CATEGORY_DEFENSIVE_BUILDING,
+		"defense + static-defense policy -> defensive building")
+	# Defense under heavy frontline pressure -> defensive building.
+	var pressured_ctx: Dictionary = { "frontline_pressure": 800 }
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_DEFENSE, pressured_ctx, no_flags) == AiDecisionPipelineUtil.CATEGORY_DEFENSIVE_BUILDING,
+		"defense + heavy pressure -> defensive building")
+	# The remaining priorities map to their fixed categories.
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_ECONOMY, calm_ctx, no_flags) == AiDecisionPipelineUtil.CATEGORY_ECONOMIC_BUILDING,
+		"economy -> economic building")
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_RESEARCH, calm_ctx, no_flags) == AiDecisionPipelineUtil.CATEGORY_TECH_BUILDING,
+		"research -> tech building")
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_ATTACK, calm_ctx, no_flags) == AiDecisionPipelineUtil.CATEGORY_STRIKE_UNIT,
+		"attack -> strike unit")
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_EXPANSION, calm_ctx, no_flags) == AiDecisionPipelineUtil.CATEGORY_EXPANSION_BUILDING,
+		"expansion -> expansion building")
+	_check(AiDecisionPipelineUtil.choose_category(AiDecisionPipelineUtil.PRIORITY_DIPLOMACY, calm_ctx, no_flags) == AiDecisionPipelineUtil.CATEGORY_DIPLOMACY_ACTION,
+		"diplomacy -> diplomacy action")
+	# Each category maps to the documented pool.
+	_check(AiDecisionPipelineUtil.category_pool(AiDecisionPipelineUtil.CATEGORY_HOLDING_UNIT) == "unit", "holding unit draws from unit pool")
+	_check(AiDecisionPipelineUtil.category_pool(AiDecisionPipelineUtil.CATEGORY_STRIKE_UNIT) == "unit", "strike unit draws from unit pool")
+	_check(AiDecisionPipelineUtil.category_pool(AiDecisionPipelineUtil.CATEGORY_DEFENSIVE_BUILDING) == "building", "defensive building draws from building pool")
+	_check(AiDecisionPipelineUtil.category_pool(AiDecisionPipelineUtil.CATEGORY_ECONOMIC_BUILDING) == "building", "economic building draws from building pool")
+	_check(AiDecisionPipelineUtil.category_pool(AiDecisionPipelineUtil.CATEGORY_DIPLOMACY_ACTION) == "", "diplomacy action needs no candidate pool")
+	# The category list is stably sorted (closed set).
+	var cats: Array = AiDecisionPipelineUtil.categories()
+	var sorted_cats: Array = cats.duplicate()
+	sorted_cats.sort()
+	_check(cats == sorted_cats, "CATEGORIES is stably sorted")
