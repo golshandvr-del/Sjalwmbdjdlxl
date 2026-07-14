@@ -156,3 +156,86 @@ static func paginate(descriptors: Array, page: int, page_size: int = DEFAULT_PAG
 # Convenience: paginate a whole catalog's flat descriptor list in one call.
 static func paginate_catalog(catalog: String, registry: Object, page: int, page_size: int = DEFAULT_PAGE_SIZE) -> Dictionary:
 	return paginate(descriptors_for(catalog, registry), page, page_size)
+
+
+# --- MD12.2: per-stat edit logic (model-side, UI-agnostic) ------------------
+
+# Which UI control a stat's value_type wants. The editor (MD12.2) maps this to a
+# concrete widget: "switch" -> CheckBox (bool flag, no numeric value),
+# "int" -> integer SpinBox, "float" -> decimal SpinBox / slider. Pure lookup.
+static func control_kind(value_type: String) -> String:
+	match str(value_type):
+		"bool":
+			return "switch"
+		"float":
+			return "float"
+		_:
+			return "int"
+
+
+# Coerce a raw editor input into the value a stat should actually store, honoring
+# the stat's value_type and clamping into its [min..max] band. This is the pure
+# heart of MD12.2 so the edit logic is tested on the MODEL, not the UI:
+#   - bool stat    -> the raw value truthiness (min/max ignored),
+#   - int stat     -> rounded to the nearest integer then clamped,
+#   - float stat   -> clamped as a float.
+# `registry` supplies value_type/min_of/max_of; a null registry treats the stat
+# as an unbounded int (safe default). Deterministic (round-half-away-from-zero).
+static func coerce_value(id: String, raw: Variant, registry: Object = null) -> Variant:
+	var vtype: String = "int"
+	if registry != null and registry.has_method("value_type"):
+		vtype = str(registry.call("value_type", str(id)))
+	if vtype == "bool":
+		return _to_bool(raw)
+	var num: float = _to_float(raw)
+	# Clamp into the declared band when the registry provides one.
+	var has_bounds: bool = registry != null and registry.has_method("min_of") and registry.has_method("max_of")
+	if has_bounds:
+		var lo: float = float(registry.call("min_of", str(id)))
+		var hi: float = float(registry.call("max_of", str(id)))
+		if hi >= lo:
+			if num < lo:
+				num = lo
+			if num > hi:
+				num = hi
+	if vtype == "float":
+		return num
+	# int: round half away from zero, deterministically.
+	if num >= 0.0:
+		return int(num + 0.5)
+	return int(num - 0.5)
+
+
+# Apply a coerced value to a stats dictionary WITHOUT mutating the input (pure):
+# returns a new dictionary. When the stat is not present it is a no-op copy (the
+# editor toggles presence separately via its checkbox). Used by MD12.2's
+# value_changed handler and unit-tested on the model.
+static func with_stat_value(stats: Dictionary, id: String, raw: Variant, registry: Object = null) -> Dictionary:
+	var out: Dictionary = stats.duplicate(true)
+	if not out.has(str(id)):
+		return out
+	out[str(id)] = coerce_value(id, raw, registry)
+	return out
+
+
+# --- Internals: value coercion ----------------------------------------------
+
+static func _to_bool(v: Variant) -> bool:
+	if v is bool:
+		return v
+	if v is int or v is float:
+		return float(v) != 0.0
+	if v is String:
+		var s: String = str(v).to_lower()
+		return s == "true" or s == "1" or s == "yes" or s == "on"
+	return false
+
+
+static func _to_float(v: Variant) -> float:
+	if v is bool:
+		return 1.0 if v else 0.0
+	if v is int or v is float:
+		return float(v)
+	if v is String and str(v).is_valid_float():
+		return str(v).to_float()
+	return 0.0
