@@ -11,7 +11,7 @@
 # candidate rings mirror the geometry style of PlacementPlanner. Nothing here is
 # a module; it takes a PLAIN grid snapshot (flat Array of ints, index =
 # y*width + x, 0 = walkable; matches PathService / MapModule) so it stays pure
-# and headlessly testable. No SceneTree, no world model, no sim hasher.
+# and headlessly testable: no scene-tree node, no world-model object, no hasher.
 #
 # Determinism: every scan is over a stably-ordered set (tiles in row-major
 # index order, candidates de-duplicated then sorted by (x, y)), and pathfinding
