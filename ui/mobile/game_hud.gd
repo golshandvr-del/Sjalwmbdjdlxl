@@ -1520,8 +1520,8 @@ func _refresh_selection_panel() -> void:
 		alive += 1
 		var t: String = str(u.get("type", "unit"))
 		by_type[t] = int(by_type.get(t, 0)) + 1
-		total_hp += int(u.get("hp", 0))
-		total_max_hp += int(u.get("max_hp", u.get("hp", 0)))
+		total_hp += int(u.get("health", 0))
+		total_max_hp += int(u.get("max_health", u.get("health", 0)))
 	if alive == 0:
 		_selection_panel.visible = false
 		return
