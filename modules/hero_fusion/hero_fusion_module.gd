@@ -151,6 +151,14 @@ func _perform_fusion(owner: int, recipe: Dictionary, selected: Array) -> void:
 			to_consume.append(int(u.get("id", -1)))
 			remaining_need[t] = int(remaining_need[t]) - 1
 
+	# Guard against malformed MODDED recipes: a recipe whose ingredients list is
+	# empty (or all counts are 0) matches any selection but consumes nothing --
+	# indexing to_consume[0] below would crash. Reject it cleanly instead so a
+	# bad mod pack can never take the game down (mod-safety contract).
+	if to_consume.is_empty():
+		nexus.emit_event(EVENT_REJECTED, { "owner": owner, "reason": "recipe_consumes_nothing" })
+		return
+
 	# Position of the hero = position of the first consumed unit.
 	var first_unit: Dictionary = _units().get(str(to_consume[0]), {})
 	var hx: int = int(first_unit.get("x", 0))
