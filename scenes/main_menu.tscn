@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://chxprrson40p3"]
 
-[ext_resource type="Script" uid="uid://d0i01yq02jdb8" path="res://ui/shared/main_menu.gd" id="1_mainmenu"]
+[ext_resource type="Script" path="res://ui/shared/main_menu.gd" id="1_mainmenu"]
 
 [sub_resource type="GDScript" id="GDScript_bg"]
 script/source = "extends ColorRect"
