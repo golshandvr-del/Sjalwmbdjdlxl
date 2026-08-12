@@ -319,16 +319,31 @@ func summarize(owner: int) -> Dictionary:
 
 
 # The stored economy score for one owner (resilient: 0 when absent). The economy
-# section stores per-owner balances under "players"/"balances"; fall back to a
-# flat "gold" reading if the richer shape is not present.
+# section stores per-owner WALLETS under "players": owner(str) -> { resource_id
+# -> amount }. Resource ids are data-driven (mods may add their own), so the
+# score is the deterministic SUM over the wallet's sorted keys -- never a
+# hard-coded id. Legacy flat shapes ("balances", plain int, "gold"/"stored")
+# are still honoured for old saves/tests.
 func _economy_for(econ: Dictionary, owner: int) -> int:
 	var players: Variant = econ.get("players", econ.get("balances", {}))
 	if players is Dictionary and (players as Dictionary).has(str(owner)):
 		var rec: Variant = (players as Dictionary)[str(owner)]
 		if rec is Dictionary:
-			return int((rec as Dictionary).get("gold", (rec as Dictionary).get("stored", 0)))
+			return _wallet_total(rec as Dictionary)
 		return int(rec)
 	return int(econ.get("gold", 0))
+
+
+# Deterministic total of a wallet dictionary (resource_id -> amount). Sorted
+# keys keep the fold order stable; legacy "gold"/"stored" keys are just wallet
+# entries and sum naturally.
+func _wallet_total(wallet: Dictionary) -> int:
+	var total: int = 0
+	var keys: Array = wallet.keys()
+	keys.sort()
+	for key in keys:
+		total += int(wallet[key])
+	return total
 
 
 # Summed economy score of every non-owner player (0 when none / absent).
@@ -344,7 +359,7 @@ func _enemy_economy(econ: Dictionary, owner: int) -> int:
 			continue
 		var rec: Variant = (players as Dictionary)[key]
 		if rec is Dictionary:
-			total += int((rec as Dictionary).get("gold", (rec as Dictionary).get("stored", 0)))
+			total += _wallet_total(rec as Dictionary)
 		else:
 			total += int(rec)
 	return total
