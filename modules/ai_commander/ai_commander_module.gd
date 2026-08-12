@@ -191,6 +191,20 @@ func _manage_offense(owner: int, _diff: Dictionary) -> void:
 
 # --- Target / HQ lookup helpers ---------------------------------------------
 
+# P7.5 team-awareness: two owners are hostile unless they share a team (read
+# from the "match" section, mirroring CombatModule._is_hostile). Without this
+# the AI marched on TEAMMATES in team/ctf modes and then never fought them.
+# Owners without a team entry default to their own one-player team (FFA
+# behaviour unchanged). Deterministic: pure world-state read.
+func _is_hostile(owner_a: int, owner_b: int) -> bool:
+	if owner_a == owner_b:
+		return false
+	var teams: Dictionary = nexus.world_state.get_section("match").get("teams", {})
+	var team_a: int = int(teams.get(str(owner_a), owner_a))
+	var team_b: int = int(teams.get(str(owner_b), owner_b))
+	return team_a != team_b
+
+
 func _nearest_enemy(unit: Dictionary, owner: int) -> Dictionary:
 	var ux: int = int(unit["x"])
 	var uy: int = int(unit["y"])
@@ -204,7 +218,7 @@ func _nearest_enemy(unit: Dictionary, owner: int) -> Dictionary:
 	ukeys.sort_custom(func(a, b): return int(a) < int(b))
 	for key in ukeys:
 		var other: Dictionary = units[key]
-		if int(other.get("owner", owner)) == owner:
+		if not _is_hostile(owner, int(other.get("owner", owner))):
 			continue
 		if int(other.get("health", 0)) <= 0:
 			continue
@@ -223,7 +237,7 @@ func _nearest_enemy(unit: Dictionary, owner: int) -> Dictionary:
 	bkeys.sort_custom(func(a, b): return int(a) < int(b))
 	for key in bkeys:
 		var b: Dictionary = buildings[key]
-		if int(b.get("owner", owner)) == owner:
+		if not _is_hostile(owner, int(b.get("owner", owner))):
 			continue
 		if int(b.get("health", 0)) <= 0:
 			continue
