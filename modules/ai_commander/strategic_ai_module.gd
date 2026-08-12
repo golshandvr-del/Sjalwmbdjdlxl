@@ -698,6 +698,19 @@ func _placement_context(owner: int) -> Dictionary:
 	return AiContextUtil.build_context(summary, owner)
 
 
+# P7.5 team-awareness: two owners are hostile unless they share a team (read
+# from the "match" section, mirroring CombatModule._is_hostile). Without this
+# the strategic all-in targeted TEAMMATE HQs in team/ctf modes and rallied
+# defensively against friendly patrols. Deterministic: pure world-state read.
+func _is_hostile(owner_a: int, owner_b: int) -> bool:
+	if owner_a == owner_b:
+		return false
+	var teams: Dictionary = nexus.world_state.get_section("match").get("teams", {})
+	var team_a: int = int(teams.get(str(owner_a), owner_a))
+	var team_b: int = int(teams.get(str(owner_b), owner_b))
+	return team_a != team_b
+
+
 func _tile_occupied(x: int, y: int) -> bool:
 	var buildings: Dictionary = _buildings()
 	for key in buildings.keys():
@@ -719,7 +732,7 @@ func _nearest_enemy_building(owner: int) -> Dictionary:
 	keys.sort_custom(func(a, b): return int(a) < int(b))
 	for key in keys:
 		var b: Dictionary = buildings[key]
-		if int(b.get("owner", owner)) == owner or int(b.get("health", 0)) <= 0:
+		if not _is_hostile(owner, int(b.get("owner", owner))) or int(b.get("health", 0)) <= 0:
 			continue
 		var d: int = abs(ax - int(b.get("x", 0))) + abs(ay - int(b.get("y", 0)))
 		var bid: int = int(b.get("id", 0))
@@ -742,7 +755,7 @@ func _nearest_enemy_unit_anchor(owner: int) -> Dictionary:
 	keys.sort_custom(func(a, b): return int(a) < int(b))
 	for key in keys:
 		var u: Dictionary = units[key]
-		if int(u.get("owner", owner)) == owner or int(u.get("health", 0)) <= 0:
+		if not _is_hostile(owner, int(u.get("owner", owner))) or int(u.get("health", 0)) <= 0:
 			continue
 		var d: int = abs(ax - int(u.get("x", 0))) + abs(ay - int(u.get("y", 0)))
 		var uid: int = int(u.get("id", 0))
@@ -764,7 +777,7 @@ func _enemy_near_base(owner: int) -> bool:
 	var units: Dictionary = _units()
 	for key in units.keys():
 		var u: Dictionary = units[key]
-		if int(u.get("owner", owner)) == owner or int(u.get("health", 0)) <= 0:
+		if not _is_hostile(owner, int(u.get("owner", owner))) or int(u.get("health", 0)) <= 0:
 			continue
 		var d: int = abs(hx - int(u.get("x", 0))) + abs(hy - int(u.get("y", 0)))
 		if d <= 5:
