@@ -237,6 +237,7 @@
 		"ui.game.confirm_leave": "Paused. Press Back again to leave the match.",
 		"ui.game.defeat": "Defeat",
 		"ui.game.desktop_hint": "WASD/Arrows: pan  |  Wheel: zoom  |  L-click/drag: select  |  R-click: move/plot  |  M: move mode  |  Enter: confirm route  |  Esc: cancel  |  Space/B/R/U/F/Tab/V/L",
+		"ui.game.draw": "Draw",
 		"ui.game.fuse_hero": "Fuse Hero",
 		"ui.game.language": "Language",
 		"ui.game.pause": "Pause",

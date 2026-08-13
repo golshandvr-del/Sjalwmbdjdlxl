@@ -237,6 +237,7 @@
 		"ui.game.confirm_leave": "متوقف شد. برای خروج از بازی، دوباره back را بزنید.",
 		"ui.game.defeat": "شکست",
 		"ui.game.desktop_hint": "WASD/جهت‌نما: حرکت دوربین | چرخ ماوس: بزرگنمایی | کلیک چپ/کشیدن: انتخاب | کلیک راست: حرکت/مسیر | M: حالت حرکت | Enter: تأیید مسیر | Esc: لغو | Space/B/R/U/F/Tab/V/L",
+		"ui.game.draw": "مساوی",
 		"ui.game.fuse_hero": "ادغام قهرمان",
 		"ui.game.language": "زبان",
 		"ui.game.pause": "توقف",
