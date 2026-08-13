@@ -869,11 +869,11 @@ func _on_match_over(_event_name: String, payload: Dictionary) -> void:
 	var winner: int = int(payload.get("winner", -1))
 	var text: String = ""
 	if winner == LOCAL_PLAYER:
-		text = "VICTORY"
+		text = _local_text("ui.game.victory")
 	elif winner < 0:
-		text = "DRAW"
+		text = _local_text("ui.game.draw")
 	else:
-		text = "DEFEAT"
+		text = _local_text("ui.game.defeat")
 	_overlay_label.text = text
 	_overlay.visible = true
 	# Stop the simulation so nothing moves behind the overlay.
