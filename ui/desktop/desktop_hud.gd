@@ -811,7 +811,7 @@ func _on_match_over(_event_name: String, payload: Dictionary) -> void:
 	if winner == LOCAL_PLAYER:
 		text = _loc.t("ui.game.victory")
 	elif winner < 0:
-		text = "DRAW"
+		text = _loc.t("ui.game.draw")
 	else:
 		text = _loc.t("ui.game.defeat")
 	_overlay_label.text = text
