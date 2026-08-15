@@ -783,8 +783,18 @@ func _on_fuse_pressed() -> void:
 
 func _on_style_pressed() -> void:
 	var active: String = _render_adapter.toggle_style()
-	var label: String = _loc.t("ui.game.style_detailed") if active == RenderAdapter.STYLE_DETAILED else _loc.t("ui.game.style_simple")
-	_style_button.text = "%s: %s" % [_loc.t("ui.game.style"), label]
+	_style_button.text = "%s: %s" % [_loc.t("ui.game.style"), _style_label(active)]
+
+
+# Map a render-style id to its localized label (simple / detailed / sprite).
+func _style_label(style_id: String) -> String:
+	match style_id:
+		RenderAdapter.STYLE_DETAILED:
+			return _loc.t("ui.game.style_detailed")
+		RenderAdapter.STYLE_SPRITE:
+			return _loc.t("ui.game.style_sprite")
+		_:
+			return _loc.t("ui.game.style_simple")
 
 
 func _on_lang_pressed() -> void:
