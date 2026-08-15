@@ -226,9 +226,13 @@ func _refresh() -> void:
 
 
 func _style_label(style_id: String) -> String:
-	if style_id == "detailed":
-		return _loc.t("ui.game.style_detailed")
-	return _loc.t("ui.game.style_simple")
+	match style_id:
+		"detailed":
+			return _loc.t("ui.game.style_detailed")
+		"sprite":
+			return _loc.t("ui.game.style_sprite")
+		_:
+			return _loc.t("ui.game.style_simple")
 
 
 func _on_off(value: bool) -> String:
