@@ -450,10 +450,11 @@ func _build_slot_row(index: int) -> Control:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
 
-	# Team selector (host only can change; joins see it read-only).
+	# Team selector (host only can change; joins see it read-only). The team
+	# count comes from the shared AiGroupUtil so every lobby/setup screen offers
+	# the same range (single source of truth; mod-friendly to extend in one place).
 	var team_option: OptionButton = OptionButton.new()
-	var team_count: int = 4
-	for t in range(team_count):
+	for t in range(AiGroupUtil.TEAM_COUNT):
 		team_option.add_item("%s %d" % [_loc.t("ui.lobby.team"), t + 1], t)
 	team_option.selected = int(slot["team"])
 	team_option.disabled = (_role != "host")
@@ -471,8 +472,11 @@ func _on_team_changed(index: int, team: int) -> void:
 	if _role != "host":
 		return
 	_slots[index]["team"] = team
-	# Rebroadcast the beacon (team layout is host-authoritative; the actual team
-	# assignment is written into match_config at start).
+	# Push the new authoritative layout to every client immediately so their
+	# lobby view mirrors the host's team choice (previously nothing was sent, so
+	# clients kept showing the stale teams until an unrelated event rebroadcast).
+	# The final assignment is still written into match_config at start.
+	_broadcast_slots()
 
 
 func _on_ready_toggled() -> void:
