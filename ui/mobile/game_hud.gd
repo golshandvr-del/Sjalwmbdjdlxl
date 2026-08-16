@@ -198,6 +198,8 @@ func _ready() -> void:
 
 	# Phase A.5: localized tooltips so each button's purpose is clear.
 	_apply_tooltips()
+	# Localize the static button captions (the .tscn ships English placeholders).
+	_apply_static_labels()
 
 	# P3.2/P3.3 (v0.6.0): build the minimap, zoom buttons, and control-group
 	# panel programmatically so they overlay the existing HUD without touching
@@ -209,6 +211,18 @@ func _ready() -> void:
 
 
 # Phase A.5: attach a localized tooltip to every HUD button.
+# Localize the buttons whose captions never change at runtime. The scene file
+# carries English placeholder texts; this pass replaces them with the player's
+# language so the mobile HUD matches the rest of the localized UI.
+func _apply_static_labels() -> void:
+	_build_button.text = _local_text("ui.game.build_soldier")
+	_research_button.text = _local_text("ui.game.research")
+	_upgrade_button.text = _local_text("ui.game.upgrade_hq")
+	_fuse_button.text = _local_text("ui.game.fuse_hero")
+	_style_button.text = "%s: %s" % [_local_text("ui.game.style"), _style_label(_render_adapter.style_id)]
+	_restart_button.text = _local_text("ui.game.play_again")
+
+
 func _apply_tooltips() -> void:
 	_build_button.tooltip_text = _local_text("ui.game.tip.build")
 	_research_button.tooltip_text = _local_text("ui.game.tip.research")
@@ -342,14 +356,20 @@ func _show_onboarding() -> void:
 
 
 # Resolve a localization key through the shared service, falling back to the key.
+# The Localization instance is cached: building it re-reads every JSON file from
+# disk, which is far too expensive to repeat (some callers run every frame).
+var _loc_cache: Localization = null
+
+
 func _local_text(key: String) -> String:
-	var loc: Localization = Localization.new()
-	loc.load_all("res://localization")
-	var ui: Dictionary = Nexus.world_state.get_section("ui_prefs")
-	var locale: String = str(ui.get("locale", ""))
-	if locale != "":
-		loc.set_locale(locale)
-	return loc.t(key)
+	if _loc_cache == null:
+		_loc_cache = Localization.new()
+		_loc_cache.load_all("res://localization")
+		var ui: Dictionary = Nexus.world_state.get_section("ui_prefs")
+		var locale: String = str(ui.get("locale", ""))
+		if locale != "":
+			_loc_cache.set_locale(locale)
+	return _loc_cache.t(key)
 
 
 func _process(_delta: float) -> void:
@@ -361,7 +381,7 @@ func _process(_delta: float) -> void:
 func _refresh_top_bar() -> void:
 	var economy: Object = Nexus.get_module("economy")
 	var gold: int = economy.get_resource(LOCAL_PLAYER, "resource_basic") if economy != null else 0
-	_resource_label.text = "Resources: %d" % gold
+	_resource_label.text = "%s: %d" % [_local_text("ui.game.resources"), gold]
 	var paused: bool = Nexus.sim_clock.is_paused()
 	var units: int = Nexus.get_module("units").count()
 	# Phase 2: surface researched-tech count so the player sees progress.
@@ -372,14 +392,14 @@ func _refresh_top_bar() -> void:
 		researched = (Nexus.world_state.get_section("tech").get("players", {})
 			.get(str(LOCAL_PLAYER), {}).get("researched", []) as Array).size()
 	_status_label.text = "%s   |   Tick: %d   |   Units: %d   |   Sel: %d   |   Tech: %d" % [
-		"PAUSED" if paused else "RUNNING",
+		_local_text("ui.game.paused") if paused else _local_text("ui.game.running"),
 		Nexus.world_state.current_tick,
 		units,
 		_selected_unit_ids.size(),
 		researched,
 	]
-	_pause_button.text = "Resume" if paused else "Pause"
-	_speed_button.text = "Speed x%.0f" % Nexus.sim_clock.time_scale
+	_pause_button.text = _local_text("ui.game.resume") if paused else _local_text("ui.game.pause")
+	_speed_button.text = "%s x%.0f" % [_local_text("ui.game.speed"), Nexus.sim_clock.time_scale]
 	# The Fuse button is only meaningful with units selected.
 	_fuse_button.disabled = _selected_unit_ids.is_empty()
 
@@ -796,18 +816,18 @@ func _on_style_pressed() -> void:
 	# detailed (MOWAS-style) renderers. This is purely cosmetic -- the swap never
 	# touches the simulation (Logic/Render Separation).
 	var active: String = _render_adapter.toggle_style()
-	_style_button.text = "Style: %s" % _style_label(active)
+	_style_button.text = "%s: %s" % [_local_text("ui.game.style"), _style_label(active)]
 
 
-# Map a render-style id to a short human label for the Style button.
+# Map a render-style id to a short localized label for the Style button.
 func _style_label(style_id: String) -> String:
 	match style_id:
 		RenderAdapter.STYLE_DETAILED:
-			return "Detailed"
+			return _local_text("ui.game.style_detailed")
 		RenderAdapter.STYLE_SPRITE:
-			return "Sprite"
+			return _local_text("ui.game.style_sprite")
 		_:
-			return "Simple"
+			return _local_text("ui.game.style_simple")
 
 
 # --- Phase 2 controls -------------------------------------------------------
