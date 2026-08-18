@@ -186,6 +186,7 @@
 		"ui.custom.back": "Back",
 		"ui.custom.empty": "No installed scenarios found.",
 		"ui.custom.play": "Play",
+		"ui.custom.players": "players",
 		"ui.custom.title": "Custom Games",
 		"ui.debug.event_log": "Event Log",
 		"ui.debug.modules_connected": "Modules connected",

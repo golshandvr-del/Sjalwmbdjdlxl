@@ -18,7 +18,11 @@
 extends Control
 
 const MAIN_MENU_SCENE: String = "res://scenes/main_menu.tscn"
-const GAME_SCENE: String = "res://scenes/game_main.tscn"
+# The game scene (mobile vs desktop HUD) is resolved from the GLOBAL ui_mode
+# preference at play time (_resolve_game_scene), same as Match Setup -- a fixed
+# scene here would force the mobile HUD onto desktop players.
+const MOBILE_SCENE: String = "res://scenes/game_main.tscn"
+const DESKTOP_SCENE: String = "res://scenes/game_desktop.tscn"
 
 var _loc: Localization = null
 var _scenarios: Array = []
@@ -70,7 +74,7 @@ func _refresh() -> void:
 				label = _loc.t(str(s.get("display_name_key", "")))
 			if label == "" or label == str(s.get("display_name_key", "")):
 				label = str(s.get("id", ""))
-			_list.add_item("%s  (%d players)" % [label, int(s.get("players", 0))])
+			_list.add_item("%s  (%d %s)" % [label, int(s.get("players", 0)), _loc.t("ui.custom.players")])
 	var empty: bool = _scenarios.is_empty()
 	if _empty_label != null:
 		_empty_label.visible = empty
@@ -90,7 +94,7 @@ func _on_play() -> void:
 	if ws != null:
 		ws.get_section("editor")["playtest_scenario"] = scenario_id
 	if _has_tree():
-		get_tree().change_scene_to_file(GAME_SCENE)
+		get_tree().change_scene_to_file(_resolve_game_scene())
 
 
 func _on_back() -> void:
@@ -122,3 +126,21 @@ func _world_state() -> WorldState:
 
 func _has_tree() -> bool:
 	return is_inside_tree() and get_tree() != null
+
+
+# Pick the game scene from the global ui_mode preference (same logic as Match
+# Setup): "desktop"/"mobile" are honoured directly; "auto" resolves from the
+# device profile so the chosen scenario opens with the right HUD everywhere.
+func _resolve_game_scene() -> String:
+	var settings: GameSettings = GameSettings.new(_world_state())
+	settings.load_from_file()
+	var setting: String = settings.get_ui_mode()
+	var is_mobile: bool = OS.has_feature("mobile")
+	var has_touch: bool = DisplayServer.is_touchscreen_available()
+	var short_edge: float = 0.0
+	var vp: Viewport = get_viewport()
+	if vp != null:
+		var vs: Vector2 = vp.get_visible_rect().size
+		short_edge = minf(vs.x, vs.y)
+	var resolved: String = GameSettings.resolve_ui_mode_for(setting, is_mobile, has_touch, short_edge)
+	return MOBILE_SCENE if resolved == "mobile" else DESKTOP_SCENE
