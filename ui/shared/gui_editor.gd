@@ -79,7 +79,9 @@ func _ready() -> void:
 func _t(key: String) -> String:
 	if _loc == null:
 		return key
-	return _loc.tr(key)
+	# NOTE: must be Localization.t(), NOT Object.tr() -- tr() is the engine's
+	# TranslationServer lookup (empty here), which returns the raw key untouched.
+	return _loc.t(key)
 
 
 func _world_state() -> Object:
