@@ -22,6 +22,11 @@
 extends Control
 
 const MAIN_MENU_SCENE: String = "res://scenes/main_menu.tscn"
+# Playtest resolves the game scene (mobile vs desktop HUD) from the GLOBAL
+# ui_mode preference, same as Match Setup -- a fixed scene would force the
+# mobile HUD onto desktop players.
+const MOBILE_SCENE: String = "res://scenes/game_main.tscn"
+const DESKTOP_SCENE: String = "res://scenes/game_desktop.tscn"
 # MB10.2 (bug 29): shared loading overlay shown while a map pack is written.
 const ProgressOverlayScript = preload("res://ui/shared/progress_overlay.gd")
 
@@ -235,7 +240,7 @@ func _on_playtest() -> void:
 	if ws != null:
 		ws.get_section("editor")["playtest_scenario"] = _project.scenario_id
 	if _has_tree():
-		get_tree().change_scene_to_file("res://scenes/game_main.tscn")
+		get_tree().change_scene_to_file(_resolve_game_scene())
 
 
 func _on_back() -> void:
@@ -404,3 +409,18 @@ func _world_state() -> WorldState:
 
 func _has_tree() -> bool:
 	return is_inside_tree() and get_tree() != null
+
+
+# Pick the game scene from the global ui_mode preference (same logic as Match
+# Setup) so a play-test opens with the right HUD on every device.
+func _resolve_game_scene() -> String:
+	var setting: String = _settings.get_ui_mode() if _settings != null else "auto"
+	var is_mobile: bool = OS.has_feature("mobile")
+	var has_touch: bool = DisplayServer.is_touchscreen_available()
+	var short_edge: float = 0.0
+	var vp: Viewport = get_viewport()
+	if vp != null:
+		var vs: Vector2 = vp.get_visible_rect().size
+		short_edge = minf(vs.x, vs.y)
+	var resolved: String = GameSettings.resolve_ui_mode_for(setting, is_mobile, has_touch, short_edge)
+	return MOBILE_SCENE if resolved == "mobile" else DESKTOP_SCENE
