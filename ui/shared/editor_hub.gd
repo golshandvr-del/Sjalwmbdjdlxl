@@ -45,7 +45,10 @@ func _ready() -> void:
 func _t(key: String) -> String:
 	if _loc == null:
 		return key
-	return _loc.tr(key)
+	# NOTE: must be Localization.t(), NOT Object.tr() -- tr() is the engine's
+	# TranslationServer lookup (empty here), which silently returns the raw key,
+	# so the hub used to render "ui.editorhub.title" instead of localized text.
+	return _loc.t(key)
 
 
 # --- UI construction --------------------------------------------------------
