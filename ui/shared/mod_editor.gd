@@ -177,11 +177,18 @@ func _build_header(root: VBoxContainer) -> void:
 	root.add_child(meta)
 	_mod_id_edit = LineEdit.new()
 	_mod_id_edit.custom_minimum_size = Vector2(180, 0)
-	_mod_id_edit.text_changed.connect(func(t: String) -> void: _project.set_manifest_field("id", ModProject.normalise_id(t)))
+	# Manifest edits autosave (draft protection) but do NOT push one undo
+	# snapshot per keystroke; undo still restores the manifest via the full
+	# project snapshots recorded by real edits.
+	_mod_id_edit.text_changed.connect(func(t: String) -> void:
+		_project.set_manifest_field("id", ModProject.normalise_id(t))
+		_maybe_autosave())
 	meta.add_child(_mod_id_edit)
 	_mod_name_edit = LineEdit.new()
 	_mod_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_mod_name_edit.text_changed.connect(func(t: String) -> void: _project.set_manifest_field("name", t))
+	_mod_name_edit.text_changed.connect(func(t: String) -> void:
+		_project.set_manifest_field("name", t)
+		_maybe_autosave())
 	meta.add_child(_mod_name_edit)
 
 
@@ -632,6 +639,9 @@ func _on_name_confirmed() -> void:
 		_set_status(_loc.t("ui.modeditor.status.bad_id"))
 		return
 	_selected_id = result
+	# Structural edit: record for undo + autosave (was previously skipped, so
+	# renames/adds were not undoable and could be lost on an app kill).
+	_after_model_change()
 	_set_status(_loc.t("ui.modeditor.status.added"))
 	_refresh_tree()
 	_refresh_detail()
@@ -686,6 +696,8 @@ func _apply_build(target_id: String, multi: bool) -> void:
 		def["editor"] = editor_meta
 	_set_entity(target_id, def)
 	_selected_id = target_id
+	# Structural edit: record for undo + autosave (build replaces the skeleton).
+	_after_model_change()
 	_build_dialog.hide()
 	_set_status(_loc.t("ui.modeditor.status.built"))
 	_refresh_tree()
@@ -699,6 +711,8 @@ func _delete_node(target_id: String) -> void:
 		ModProject.OBJECTS_CATALOG: _project.remove_object(target_id)
 	if _selected_id == target_id:
 		_selected_id = ""
+	# Structural edit: record for undo + autosave (a delete MUST be undoable).
+	_after_model_change()
 	_set_status(_loc.t("ui.modeditor.status.removed"))
 	_refresh_tree()
 	_refresh_detail()
@@ -731,8 +745,18 @@ func _commit(entity: Dictionary) -> void:
 	_set_entity(_selected_id, entity)
 	# MC5.3/5.4 (req6): every mutation funnels here, so snapshot for undo and
 	# offer the draft to autosave right after the model changes.
+	_after_model_change()
+
+
+# Shared post-mutation hook: snapshot for undo, offer the draft to autosave,
+# and refresh the undo/redo button enabled-state (which would otherwise go
+# stale -- on touch devices there is no Ctrl+Z, so the buttons MUST enable).
+# Structural edits (rename/add/delete/build) call this too, so the documented
+# "every mutation is undoable + autosaved" invariant actually holds.
+func _after_model_change() -> void:
 	_record_history()
 	_maybe_autosave()
+	_refresh_labels()
 
 
 # --- MC5.3/5.4 (req6): undo/redo + autosave (mirrors ui/shared/map_editor.gd) --
@@ -1416,10 +1440,14 @@ func _build_training_tab(box: VBoxContainer, entity: Dictionary) -> void:
 	tech_row.add_child(tech_opt)
 
 	# Ensure the buildable block is stored even before the user changes anything.
+	# Written WITHOUT _commit: this runs from _refresh_detail (i.e. from merely
+	# SELECTING a node), so going through _commit would push a meaningless undo
+	# snapshot per selection and pollute the undo timeline. The default block is
+	# deterministic and harmless to re-apply, so no history entry is needed.
 	if not entity.has("buildable"):
 		var e: Dictionary = _selected_entity()
 		e["buildable"] = buildable
-		_commit(e)
+		_set_entity(_selected_id, e)
 
 
 # --- Image upload -----------------------------------------------------------
