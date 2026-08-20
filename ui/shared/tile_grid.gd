@@ -59,8 +59,11 @@ func _gui_input(event: InputEvent) -> void:
 func _pixel_to_cell(p: Vector2) -> Vector2i:
 	if _project == null or _tile_px <= 0.0:
 		return Vector2i(-1, -1)
-	var x: int = int((p.x - _origin.x) / _tile_px)
-	var y: int = int((p.y - _origin.y) / _tile_px)
+	# floor(), NOT int(): int() truncates toward zero, so a click up to one tile
+	# LEFT/ABOVE the grid (fraction in (-1, 0)) would collapse to cell 0 and slip
+	# through the bounds check, painting the first row/column from the margin.
+	var x: int = int(floorf((p.x - _origin.x) / _tile_px))
+	var y: int = int(floorf((p.y - _origin.y) / _tile_px))
 	if x < 0 or y < 0 or x >= int(_project.width) or y >= int(_project.height):
 		return Vector2i(-1, -1)
 	return Vector2i(x, y)
@@ -108,7 +111,9 @@ func _draw() -> void:
 
 
 func _draw_entity(x: int, y: int, owner: int, is_building: bool) -> void:
-	var col: Color = OWNER_COLORS[owner % OWNER_COLORS.size()]
+	# posmod: GDScript % keeps the sign of the dividend, so a negative owner
+	# (e.g. a neutral/-1 marker) would index the array from the end.
+	var col: Color = OWNER_COLORS[posmod(owner, OWNER_COLORS.size())]
 	var top_left: Vector2 = _origin + Vector2(x, y) * _tile_px
 	var centre: Vector2 = top_left + Vector2(_tile_px, _tile_px) * 0.5
 	if is_building:
@@ -121,7 +126,7 @@ func _draw_entity(x: int, y: int, owner: int, is_building: bool) -> void:
 # A flag marker: a small diamond (rotated square) tinted by team, with a white
 # outline so it reads on top of any terrain.
 func _draw_flag(x: int, y: int, team: int) -> void:
-	var col: Color = OWNER_COLORS[team % OWNER_COLORS.size()]
+	var col: Color = OWNER_COLORS[posmod(team, OWNER_COLORS.size())]
 	var centre: Vector2 = _origin + Vector2(x, y) * _tile_px + Vector2(_tile_px, _tile_px) * 0.5
 	var r: float = _tile_px * 0.4
 	var points: PackedVector2Array = PackedVector2Array([
