@@ -4360,7 +4360,7 @@ func test_mb7_new_scenario_sized_resizes_and_reseats() -> void:
 	var proj: ScenarioProject = ScenarioProject.new()
 	proj.new_scenario_sized("sized_map", "Sized Map", 30, 18)
 	_check(proj.width == 30 and proj.height == 18, "new_scenario_sized applied dims")
-	_check(proj.id == "sized_map", "id set on sized scenario")
+	_check(proj.scenario_id == "sized_map", "id set on sized scenario")
 	# Two HQs + two soldiers, all seated inside the new bounds.
 	_check(proj.buildings.size() == 2, "two HQs re-seated")
 	_check(proj.units.size() == 2, "two soldiers re-seated")
@@ -8798,22 +8798,25 @@ func test_ma4_scale_is_orientation_agnostic() -> void:
 # container so its many buttons can never overflow off a narrow phone screen.
 func test_ma4_bottom_bar_scrolls() -> void:
 	print("test_ma4_bottom_bar_scrolls")
-	var packed: PackedScene = load("res://scenes/game_main.tscn")
-	_check(packed != null, "game_main scene loads")
-	if packed == null:
+	# Parse the scene FILE as text (like the other scene-structure tests do).
+	# Loading it as a PackedScene would compile game_hud.gd, whose Nexus
+	# autoload reference cannot resolve in this headless test harness and
+	# spams SCRIPT ERROR noise into every run.
+	var src: String = FileAccess.get_file_as_string("res://scenes/game_main.tscn")
+	_check(src != "", "game_main scene source is readable")
+	if src == "":
 		return
-	var state: SceneState = packed.get_state()
-	# Walk the scene state looking for a ScrollContainer that parents the bottom
-	# action Row, and confirm horizontal scrolling is enabled.
+	# Look for a ScrollContainer node parented under BottomBar, and the action
+	# Row node parented under that Scroll node.
 	var found_scroll: bool = false
 	var row_under_scroll: bool = false
-	for i in range(state.get_node_count()):
-		var node_name: String = str(state.get_node_name(i))
-		var node_type: String = str(state.get_node_type(i))
-		var node_path: String = str(state.get_node_path(i))
-		if node_type == "ScrollContainer" and node_path.contains("BottomBar"):
+	for line in src.split("\n"):
+		var l: String = str(line)
+		if not l.begins_with("[node "):
+			continue
+		if l.contains("type=\"ScrollContainer\"") and l.contains("parent=\"BottomBar"):
 			found_scroll = true
-		if node_name == "Row" and node_path.contains("Scroll"):
+		if l.contains("name=\"Row\"") and l.contains("Scroll\""):
 			row_under_scroll = true
 	_check(found_scroll, "bottom bar contains a ScrollContainer")
 	_check(row_under_scroll, "the action Row lives inside the ScrollContainer")
