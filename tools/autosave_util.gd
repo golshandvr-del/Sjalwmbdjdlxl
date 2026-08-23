@@ -172,12 +172,9 @@ func write_snapshot(kind: String, snapshot: Variant) -> bool:
 		return false
 	var saved_at: int = int(Time.get_unix_time_from_system())
 	var env: Dictionary = build_envelope(kind, snapshot, saved_at)
-	var f: FileAccess = FileAccess.open(path, FileAccess.WRITE)
-	if f == null:
-		return false
-	f.store_string(JSON.stringify(env, "\t"))
-	f.close()
-	return true
+	# Atomic write: the autosave IS the crash-recovery net, so it must never be
+	# torn by the very crash it protects against.
+	return SafeFileUtil.write_text(path, JSON.stringify(env, "\t"))
 
 
 # Throttled convenience: only writes when should_autosave_now() allows it. `now`

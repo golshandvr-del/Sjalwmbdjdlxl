@@ -142,12 +142,11 @@ func clear() -> void:
 # --- File IO (thin wrappers over the pure core) -----------------------------
 
 func save_to_file(path: String = DEFAULT_PATH) -> bool:
-	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
+	# Atomic write: reputation history persists across matches; a torn file
+	# would silently erase every AI relationship the player has built.
+	if not SafeFileUtil.write_text(path, JSON.stringify(export_dict(), "\t")):
 		push_error("AiReputationStore: cannot open '%s' for writing" % path)
 		return false
-	file.store_string(JSON.stringify(export_dict(), "\t"))
-	file.close()
 	return true
 
 

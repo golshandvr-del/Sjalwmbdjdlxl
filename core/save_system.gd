@@ -58,14 +58,14 @@ func apply_snapshot(snapshot: Dictionary) -> bool:
 
 
 # Write the current game to a JSON file. Returns true on success.
+# Atomic (temp + rename): a crash mid-write never destroys a previous save.
 func save_to_file(path: String) -> bool:
 	var snapshot: Dictionary = build_snapshot()
-	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
+	if snapshot.is_empty():
+		return false
+	if not SafeFileUtil.write_text(path, JSON.stringify(snapshot, "\t")):
 		push_error("SaveSystem: cannot open '%s' for writing" % path)
 		return false
-	file.store_string(JSON.stringify(snapshot, "\t"))
-	file.close()
 	return true
 
 

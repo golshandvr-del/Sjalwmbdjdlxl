@@ -378,11 +378,9 @@ func save_to_file(path: String) -> Array:
 	var text: String = to_json()
 	if text == "":
 		return [false, "ui.guieditor.save_invalid"]
-	var f: FileAccess = FileAccess.open(str(path), FileAccess.WRITE)
-	if f == null:
+	# Atomic write: never leave a half-written .nexgui replacing a good one.
+	if not SafeFileUtil.write_text(str(path), text):
 		return [false, "ui.guieditor.save_io"]
-	f.store_string(text)
-	f.close()
 	return [true, ""]
 
 

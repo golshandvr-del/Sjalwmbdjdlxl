@@ -82,10 +82,14 @@ static func write_from_data(manifest: Variant, files: Dictionary, out_path: Stri
 # success. Public so tests (and future tools) can drive it directly.
 static func write_entries(out_path: String, entries: Dictionary) -> bool:
 	_ensure_parent_dir(out_path)
+	# Crash-safe: ZIPPacker streams incrementally, so it targets a sibling temp
+	# file; only a COMPLETE archive is renamed over the destination. A process
+	# kill mid-write therefore never corrupts an existing pack on disk.
+	var tmp_path: String = SafeFileUtil.temp_path_for(out_path)
 	var packer: ZIPPacker = ZIPPacker.new()
-	var err: int = packer.open(out_path)
+	var err: int = packer.open(tmp_path)
 	if err != OK:
-		push_error("PackWriter: cannot open '%s' for writing (err %d)" % [out_path, err])
+		push_error("PackWriter: cannot open '%s' for writing (err %d)" % [tmp_path, err])
 		return false
 	var paths: Array = entries.keys()
 	paths.sort()
@@ -100,7 +104,7 @@ static func write_entries(out_path: String, entries: Dictionary) -> bool:
 		packer.write_file(bytes)
 		packer.close_file()
 	packer.close()
-	return FileAccess.file_exists(out_path)
+	return SafeFileUtil.promote(out_path)
 
 
 # --- Internals --------------------------------------------------------------

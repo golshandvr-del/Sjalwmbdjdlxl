@@ -431,14 +431,13 @@ func reset_to_defaults() -> void:
 # --- Persistence (separate from the game save) ------------------------------
 
 # Write the current preferences to a JSON file. Returns true on success.
+# Atomic (temp + rename): an app kill mid-write cannot torch the settings file
+# (which would silently reset every preference on the next launch).
 func save_to_file(path: String = DEFAULT_PATH) -> bool:
 	ensure_defaults()
-	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
+	if not SafeFileUtil.write_text(path, JSON.stringify(_export_dict(), "\t")):
 		push_error("GameSettings: cannot open '%s' for writing" % path)
 		return false
-	file.store_string(JSON.stringify(_export_dict(), "\t"))
-	file.close()
 	return true
 
 

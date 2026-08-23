@@ -71,12 +71,11 @@ func save_game(display_name: String, slot_id: String = "") -> String:
 		"tick": int(_nexus.world_state.current_tick),
 	}
 	var path: String = _path_for(slot_id)
-	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
+	# Atomic write: an app kill mid-save must never leave a torn/empty save that
+	# replaces the player's previous good file (data-loss P0 invariant).
+	if not SafeFileUtil.write_text(path, JSON.stringify(snapshot, "\t")):
 		push_error("SaveManager: cannot write '%s'" % path)
 		return ""
-	file.store_string(JSON.stringify(snapshot, "\t"))
-	file.close()
 	return slot_id
 
 
@@ -149,12 +148,9 @@ func export_save(slot_id: String, dest_path: String) -> bool:
 		push_error("SaveManager: nothing to export at '%s'" % src)
 		return false
 	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(src)
-	var out: FileAccess = FileAccess.open(dest_path, FileAccess.WRITE)
-	if out == null:
+	if not SafeFileUtil.write_bytes(dest_path, bytes):
 		push_error("SaveManager: cannot export to '%s'" % dest_path)
 		return false
-	out.store_buffer(bytes)
-	out.close()
 	return true
 
 
@@ -176,11 +172,8 @@ func import_save(src_path: String) -> String:
 	var meta: Dictionary = snapshot.get("meta", {})
 	var display_name: String = str(meta.get("name", src_path.get_file().get_basename()))
 	var slot_id: String = "%s_%d" % [_sanitise(display_name), int(Time.get_unix_time_from_system())]
-	var out: FileAccess = FileAccess.open(_path_for(slot_id), FileAccess.WRITE)
-	if out == null:
+	if not SafeFileUtil.write_text(_path_for(slot_id), text):
 		return ""
-	out.store_string(text)
-	out.close()
 	return slot_id
 
 

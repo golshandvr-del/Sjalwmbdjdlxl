@@ -656,6 +656,10 @@ func _init() -> void:
 	test_md14_ai_modules_wire_new_pipeline()
 	test_md14_mod_free_stat_round_trip_understood_by_ai()
 	test_md14_dynamic_stats_do_not_break_determinism()
+	# Crash-safe persistence (SafeFileUtil): atomic temp+rename writes.
+	test_safe_file_write_text_and_bytes()
+	test_safe_file_failed_promote_keeps_old_file()
+	test_safe_file_streamed_promote()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -11616,3 +11620,60 @@ func test_md14_dynamic_stats_do_not_break_determinism() -> void:
 	_check(StateHasher.hash_variant_string(caps_base2) == hash_base1, "baseline (post-reset) capability hash is stable")
 	_check(hash_base1 != hash_a, "modded and baseline hashes differ (mod actually changed the vector)")
 	StatRegistry.reset_definitions()
+
+
+# ---------------------------------------------------------------------------
+# SafeFileUtil (crash-safe persistence): atomic temp+rename writes
+# ---------------------------------------------------------------------------
+
+func test_safe_file_write_text_and_bytes() -> void:
+	print("test_safe_file_write_text_and_bytes")
+	var path: String = "user://_test_safe_file.json"
+	# Fresh write lands the exact payload.
+	_check(SafeFileUtil.write_text(path, "hello_v1"), "write_text succeeds")
+	_check(FileAccess.get_file_as_string(path) == "hello_v1", "payload v1 on disk")
+	# Overwrite replaces the content fully (no torn mixture, no temp left).
+	_check(SafeFileUtil.write_text(path, "hello_v2_longer_payload"), "overwrite succeeds")
+	_check(FileAccess.get_file_as_string(path) == "hello_v2_longer_payload", "payload v2 replaced v1")
+	_check(not FileAccess.file_exists(SafeFileUtil.temp_path_for(path)), "no stale temp after write_text")
+	# Bytes round-trip.
+	var bytes: PackedByteArray = PackedByteArray([0, 1, 2, 255, 128])
+	_check(SafeFileUtil.write_bytes(path, bytes), "write_bytes succeeds")
+	_check(FileAccess.get_file_as_bytes(path) == bytes, "byte payload intact")
+	DirAccess.remove_absolute(path)
+
+
+func test_safe_file_failed_promote_keeps_old_file() -> void:
+	print("test_safe_file_failed_promote_keeps_old_file")
+	var path: String = "user://_test_safe_keep.json"
+	_check(SafeFileUtil.write_text(path, "good_old_data"), "seed good file")
+	# Promote with NO temp present must fail and must not touch the good file --
+	# this models a crash that happened before the new payload finished writing.
+	SafeFileUtil.discard_temp(path)
+	_check(not SafeFileUtil.promote(path), "promote without temp fails")
+	_check(FileAccess.get_file_as_string(path) == "good_old_data", "old file untouched after failed promote")
+	DirAccess.remove_absolute(path)
+
+
+func test_safe_file_streamed_promote() -> void:
+	print("test_safe_file_streamed_promote")
+	var path: String = "user://_test_safe_stream.bin"
+	_check(SafeFileUtil.write_text(path, "previous_generation"), "seed previous file")
+	# A caller streaming its own bytes (like PackWriter/ZIPPacker) targets the
+	# temp path, then promotes it over the destination in one atomic step.
+	var tmp: String = SafeFileUtil.temp_path_for(path)
+	var f: FileAccess = FileAccess.open(tmp, FileAccess.WRITE)
+	_check(f != null, "temp opens for streaming")
+	f.store_string("streamed_new_generation")
+	f.close()
+	_check(SafeFileUtil.promote(path), "promote succeeds")
+	_check(FileAccess.get_file_as_string(path) == "streamed_new_generation", "streamed payload promoted")
+	_check(not FileAccess.file_exists(tmp), "temp gone after promote")
+	# discard_temp() cleans an aborted stream without touching the destination.
+	var f2: FileAccess = FileAccess.open(tmp, FileAccess.WRITE)
+	f2.store_string("aborted_half_write")
+	f2.close()
+	SafeFileUtil.discard_temp(path)
+	_check(not FileAccess.file_exists(tmp), "aborted temp discarded")
+	_check(FileAccess.get_file_as_string(path) == "streamed_new_generation", "destination untouched by discard")
+	DirAccess.remove_absolute(path)

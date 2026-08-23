@@ -119,14 +119,12 @@ func import_pack(src_path: String) -> bool:
 	storage.ensure_content_root()
 	var pack_id: String = str((manifest as Dictionary).get("id", "imported_pack"))
 	var dest: String = storage.resolve(PackFormat.pack_file_name(pack_id))
-	# Copy the bytes into the content root.
+	# Copy the bytes into the content root (atomic: a kill mid-import must not
+	# leave a torn .nexpack that shadows a previously good one).
 	var bytes: PackedByteArray = FileAccess.get_file_as_bytes(src_path)
-	var out: FileAccess = FileAccess.open(dest, FileAccess.WRITE)
-	if out == null:
+	if not SafeFileUtil.write_bytes(dest, bytes):
 		push_error("ModPackManager: cannot write pack to content root '%s'" % dest)
 		return false
-	out.store_buffer(bytes)
-	out.close()
 	# Load all packs (including the new one) into the live catalogs.
 	var texture_service: Object = _nexus.get("texture_service") if _nexus.has_method("get") else null
 	ModLoader.load_packs(_nexus.data_loader, storage, texture_service)

@@ -239,12 +239,10 @@ func _on_reset() -> void:
 func _on_export() -> void:
 	var data: Dictionary = AiBuilderUtil.export_dict(_profile)
 	var path: String = _export_path()
-	var f: FileAccess = FileAccess.open(path, FileAccess.WRITE)
-	if f == null:
+	# Atomic write: exporting over an existing profile must not tear it.
+	if not SafeFileUtil.write_text(path, JSON.stringify(data, "\t")):
 		_set_status(_t("ui.aibuilder.status.export_failed"))
 		return
-	f.store_string(JSON.stringify(data, "\t"))
-	f.close()
 	_set_status(_t("ui.aibuilder.status.exported"))
 
 
