@@ -44,22 +44,30 @@ func load_catalog(catalog_name: String, dir_path: String) -> int:
 		push_warning("DataLoader: directory not found '%s'" % dir_path)
 		_catalogs[catalog_name] = catalog
 		return 0
+	# DETERMINISM: DirAccess iteration order is OS/filesystem dependent, and
+	# "later files override earlier ones" below makes that order MEANINGFUL when
+	# two files define the same id. Collect names first and sort them so every
+	# platform (and every peer in a lockstep match) builds the exact same catalog.
+	var file_names: Array = []
 	dir.list_dir_begin()
 	var file_name: String = dir.get_next()
 	while file_name != "":
 		if not dir.current_is_dir() and file_name.ends_with(".json"):
-			var full_path: String = dir_path.path_join(file_name)
-			var parsed: Variant = load_json_file(full_path)
-			if parsed is Dictionary:
-				var entry: Dictionary = parsed as Dictionary
-				var entry_id: String = str(entry.get("id", ""))
-				if entry_id == "":
-					push_warning("DataLoader: entry without 'id' in '%s'" % full_path)
-				else:
-					# Later files override earlier ones (mod support hook).
-					catalog[entry_id] = entry
+			file_names.append(file_name)
 		file_name = dir.get_next()
 	dir.list_dir_end()
+	file_names.sort()
+	for sorted_name in file_names:
+		var full_path: String = dir_path.path_join(str(sorted_name))
+		var parsed: Variant = load_json_file(full_path)
+		if parsed is Dictionary:
+			var entry: Dictionary = parsed as Dictionary
+			var entry_id: String = str(entry.get("id", ""))
+			if entry_id == "":
+				push_warning("DataLoader: entry without 'id' in '%s'" % full_path)
+			else:
+				# Later files (in sorted name order) override earlier ones.
+				catalog[entry_id] = entry
 	_catalogs[catalog_name] = catalog
 	return catalog.size()
 
