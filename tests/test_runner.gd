@@ -660,6 +660,7 @@ func _init() -> void:
 	test_safe_file_write_text_and_bytes()
 	test_safe_file_failed_promote_keeps_old_file()
 	test_safe_file_streamed_promote()
+	test_md15_pack_export_collects_visual_textures()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -11680,3 +11681,33 @@ func test_safe_file_streamed_promote() -> void:
 	_check(not FileAccess.file_exists(tmp), "aborted temp discarded")
 	_check(FileAccess.get_file_as_string(path) == "streamed_new_generation", "destination untouched by discard")
 	DirAccess.remove_absolute(path)
+
+
+# MD15: an exported .nexpack must be SELF-CONTAINED. The base data uses the
+# `visual.texture` field (render layer standard), so the export texture
+# collector must pick it up alongside `graphic.parts[].texture` and the legacy
+# top-level `texture`. A pack exported without its textures shows magenta
+# placeholders on the importing machine.
+func test_md15_pack_export_collects_visual_textures() -> void:
+	print("test_md15_pack_export_collects_visual_textures")
+	var manager: ModPackManager = ModPackManager.new()
+	var refs: Dictionary = {}
+	# Standard render-layer field.
+	manager._collect_texture_refs({
+		"id": "u1",
+		"visual": { "shape": "circle", "texture": "textures/soldier.png" },
+	}, refs)
+	_check(refs.has("textures/soldier.png"), "visual.texture collected")
+	# Graphic parts (mod editor authored).
+	manager._collect_texture_refs({
+		"id": "u2",
+		"graphic": { "parts": [ { "texture": "textures/turret.png" } ] },
+	}, refs)
+	_check(refs.has("textures/turret.png"), "graphic.parts texture collected")
+	# Legacy flat field.
+	manager._collect_texture_refs({ "id": "u3", "texture": "textures/old.png" }, refs)
+	_check(refs.has("textures/old.png"), "legacy texture collected")
+	# Empty visual.texture is ignored (no blank key pollution).
+	var refs2: Dictionary = {}
+	manager._collect_texture_refs({ "id": "u4", "visual": { "texture": "" } }, refs2)
+	_check(refs2.is_empty(), "empty visual.texture ignored")

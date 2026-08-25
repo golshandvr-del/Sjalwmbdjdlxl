@@ -140,7 +140,8 @@ func _resolve_storage() -> Object:
 	settings.load_from_file()
 	return StorageService.new(settings.get_content_path())
 
-# Walk an entry's graphic block(s) and collect any texture paths it references.
+# Walk an entry's graphic/visual block(s) and collect any texture paths it
+# references, so the exported pack is truly SELF-CONTAINED on another machine.
 func _collect_texture_refs(entry: Dictionary, refs: Dictionary) -> void:
 	var graphic: Variant = entry.get("graphic", null)
 	if graphic is Dictionary:
@@ -149,6 +150,14 @@ func _collect_texture_refs(entry: Dictionary, refs: Dictionary) -> void:
 			for part in (parts as Array):
 				if part is Dictionary and (part as Dictionary).has("texture"):
 					refs[str((part as Dictionary)["texture"])] = true
+	# The render layer's primary field: `visual.texture` (see TextureService and
+	# the base data/units/*.json). Without this an exported pack silently drops
+	# every texture referenced the standard way.
+	var visual: Variant = entry.get("visual", null)
+	if visual is Dictionary and (visual as Dictionary).has("texture"):
+		var tex: String = str((visual as Dictionary)["texture"])
+		if tex != "":
+			refs[tex] = true
 	# Legacy / simple single-texture field.
 	if entry.has("texture"):
 		refs[str(entry["texture"])] = true
