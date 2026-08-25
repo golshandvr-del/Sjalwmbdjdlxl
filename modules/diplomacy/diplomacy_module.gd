@@ -473,7 +473,8 @@ func _sync_alliance_teams() -> void:
 		if parts.size() == 2:
 			owners[int(parts[0])] = true
 			owners[int(parts[1])] = true
-	# Union-find over allied pairs.
+	# Union-find over allied pairs. (Union-by-lower-root makes every component's
+	# final root its MINIMUM member, independent of union order.)
 	var parent: Dictionary = {}
 	for o in owners.keys():
 		parent[o] = o
@@ -492,7 +493,13 @@ func _sync_alliance_teams() -> void:
 			component_members[root] = []
 		(component_members[root] as Array).append(o)
 	var section: Dictionary = _section()
-	for root in component_members.keys():
+	# DETERMINISM: with 2+ alliance components, each consumes a fresh id from
+	# `next_alliance_team` in iteration order. Dictionary insertion order is an
+	# implementation detail we must not hash-depend on, so iterate roots SORTED --
+	# every peer then hands out identical team ids to identical components.
+	var roots: Array = component_members.keys()
+	roots.sort()
+	for root in roots:
 		var members: Array = component_members[root]
 		if members.size() < 2:
 			# A lone owner is no longer allied: restore its own team.
