@@ -84,6 +84,12 @@ var _local_pending: Array = []
 # Remembered local checksums per tick, for comparison when a peer reports theirs.
 var _local_checksums: Dictionary = {}
 
+# How many recent checksum entries to retain. A peer's report always concerns a
+# recent tick (network latency is bounded by the stall gate), so anything older
+# is dead weight: without a cap this map grew UNBOUNDED for the whole match
+# (one entry per checksum interval, forever) -- a slow leak on long sessions.
+const _MAX_CHECKSUM_HISTORY: int = 64
+
 # Latched desync info (null until a mismatch is detected).
 var _desync: Dictionary = {}
 
@@ -259,6 +265,13 @@ func _maybe_emit_checksum(tick: int) -> void:
 		return
 	var h: int = StateHasher.hash_world(nexus.world_state)
 	_local_checksums[tick] = h
+	# Trim ancient entries so a long match cannot grow this map without bound.
+	# Local bookkeeping only -- never part of the hashed world state.
+	if _local_checksums.size() > _MAX_CHECKSUM_HISTORY:
+		var ticks: Array = _local_checksums.keys()
+		ticks.sort()
+		while ticks.size() > _MAX_CHECKSUM_HISTORY:
+			_local_checksums.erase(ticks.pop_front())
 	nexus.emit_event(EVENT_CHECKSUM, { "tick": tick, "peer": local_peer, "hash": h })
 
 
