@@ -661,6 +661,12 @@ func _init() -> void:
 	test_safe_file_failed_promote_keeps_old_file()
 	test_safe_file_streamed_promote()
 	test_md15_pack_export_collects_visual_textures()
+	# Gameplay audit fixes (BUG-G1..G5): spawn validation, anti-stacking, corpses.
+	test_g1_spawn_validation_relocates_bad_tiles()
+	test_g2_idle_unit_tile_is_reserved()
+	test_g3_destroyed_building_is_removed()
+	test_g4_goals_never_land_on_buildings()
+	test_g5_final_step_diverts_from_occupied_tile()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -11711,3 +11717,118 @@ func test_md15_pack_export_collects_visual_textures() -> void:
 	var refs2: Dictionary = {}
 	manager._collect_texture_refs({ "id": "u4", "visual": { "texture": "" } }, refs2)
 	_check(refs2.is_empty(), "empty visual.texture ignored")
+
+
+# --- Gameplay audit fixes (BUG-G1..G5) ---------------------------------------
+
+# BUG-G1: a spawn requested on a wall / off-map / occupied tile is relocated to
+# the nearest free tile instead of creating a permanently-stuck unit.
+func test_g1_spawn_validation_relocates_bad_tiles() -> void:
+	print("test_g1_spawn_validation_relocates_bad_tiles")
+	var nexus: TickHarness = _make_phase2_harness()
+	var units: Object = nexus.get_module("units")
+	var map: Object = nexus.get_module("map")
+	# Wall at (5,4): spawning there must relocate to a free neighbour.
+	map.set_terrain(5, 4, MapModule.TERRAIN_WALL)
+	var uid: int = units.spawn_unit("soldier", 0, 5, 4)
+	var u: Dictionary = units.get_unit(uid)
+	_check(not (int(u["x"]) == 5 and int(u["y"]) == 4), "spawn on wall relocated")
+	_check(map.is_walkable(int(u["x"]), int(u["y"])), "relocated spawn tile is walkable")
+	# Off-map spawn: relocated onto the map.
+	var uid2: int = units.spawn_unit("soldier", 0, -3, -3)
+	var u2: Dictionary = units.get_unit(uid2)
+	_check(map.is_walkable(int(u2["x"]), int(u2["y"])), "off-map spawn relocated onto walkable ground")
+	# Spawn onto an already-occupied tile: relocated (no stacking at birth).
+	var uid3: int = units.spawn_unit("soldier", 0, 8, 4)
+	var uid4: int = units.spawn_unit("soldier", 0, 8, 4)
+	var a: Dictionary = units.get_unit(uid3)
+	var b: Dictionary = units.get_unit(uid4)
+	_check(not (int(a["x"]) == int(b["x"]) and int(a["y"]) == int(b["y"])), "duplicate spawn tile relocated")
+	# Spawn onto the HQ tile (building at 1,4): relocated off the building.
+	var uid5: int = units.spawn_unit("soldier", 0, 1, 4)
+	var c: Dictionary = units.get_unit(uid5)
+	_check(not (int(c["x"]) == 1 and int(c["y"]) == 4), "spawn on building tile relocated")
+	# A relocated unit can actually MOVE (the historical stuck-forever bug).
+	nexus.issue_command("move_unit", 0, { "unit_ids": [uid], "x": 10, "y": 6 }, 1)
+	nexus.run_ticks(60)
+	var moved: Dictionary = units.get_unit(uid)
+	_check(int(moved["x"]) == 10 or int(moved["y"]) == 6 or not (moved.get("path", []) as Array).is_empty() or (int(moved["x"]) != int(u["x"]) or int(moved["y"]) != int(u["y"])), "relocated unit is able to move")
+
+
+# BUG-G2: ordering a unit onto the tile of an IDLE (arrived) unit must pick a
+# different destination -- the arrived unit no longer carries a move_goal, so
+# its CURRENT tile has to be reserved.
+func test_g2_idle_unit_tile_is_reserved() -> void:
+	print("test_g2_idle_unit_tile_is_reserved")
+	var nexus: TickHarness = _make_phase2_harness()
+	var units: Object = nexus.get_module("units")
+	var a: int = units.spawn_unit("soldier", 0, 4, 2)
+	var b: int = units.spawn_unit("soldier", 0, 4, 6)
+	# March A to (8,4) and let it fully arrive (goal cleared, idle).
+	nexus.issue_command("move_unit", 0, { "unit_ids": [a], "x": 8, "y": 4 }, 1)
+	nexus.run_ticks(40)
+	var ua: Dictionary = units.get_unit(a)
+	_check(int(ua["x"]) == 8 and int(ua["y"]) == 4, "unit A arrived at requested tile")
+	_check(not ua.has("move_goal"), "arrived unit dropped its move_goal")
+	# Now order B to the SAME tile: it must receive a DIFFERENT goal.
+	nexus.issue_command("move_unit", 0, { "unit_ids": [b], "x": 8, "y": 4 }, 1)
+	nexus.run_ticks(40)
+	var ub: Dictionary = units.get_unit(b)
+	_check(not (int(ub["x"]) == 8 and int(ub["y"]) == 4), "unit B did not stack on idle unit A")
+	_check((ub.get("path", []) as Array).is_empty(), "unit B finished moving (settled nearby)")
+
+
+# BUG-G3: a building whose health reaches zero is REMOVED from the world:
+# it stops producing resources and frees its tile.
+func test_g3_destroyed_building_is_removed() -> void:
+	print("test_g3_destroyed_building_is_removed")
+	var nexus: TickHarness = _make_phase2_harness()
+	var buildings: Object = nexus.get_module("buildings")
+	var economy: Object = nexus.get_module("economy")
+	var enemy_hq: int = _first_building_of(nexus, 1)
+	_check(enemy_hq >= 0, "enemy HQ exists before the kill")
+	# Kill it via the combat path: zero health + the destroyed event.
+	var b: Dictionary = buildings.get_building(enemy_hq)
+	b["health"] = 0
+	nexus.emit_event("buildings.destroyed", { "id": enemy_hq, "owner": 1 })
+	_check(buildings.get_building(enemy_hq).is_empty(), "destroyed building erased from the list")
+	# Its production stream is dead: resources for owner 1 stay flat.
+	var before: int = economy.get_resource(1, "resource_basic")
+	nexus.run_ticks(30)
+	_check(economy.get_resource(1, "resource_basic") == before, "dead building produces nothing")
+
+
+# BUG-G4: a movement destination is never a building tile (buildings do not
+# alter terrain, so plain map-walkability used to allow parking on the HQ).
+func test_g4_goals_never_land_on_buildings() -> void:
+	print("test_g4_goals_never_land_on_buildings")
+	var nexus: TickHarness = _make_phase2_harness()
+	var units: Object = nexus.get_module("units")
+	var uid: int = units.spawn_unit("soldier", 0, 6, 4)
+	# Order the unit ONTO the friendly HQ tile (1,4): it must settle nearby.
+	nexus.issue_command("move_unit", 0, { "unit_ids": [uid], "x": 1, "y": 4 }, 1)
+	nexus.run_ticks(60)
+	var u: Dictionary = units.get_unit(uid)
+	_check(not (int(u["x"]) == 1 and int(u["y"]) == 4), "unit did not stop on the HQ tile")
+	_check((u.get("path", []) as Array).is_empty(), "unit settled (path consumed)")
+
+
+# BUG-G5: if another unit occupies the destination when the mover takes its
+# FINAL step, the mover diverts instead of stepping onto it.
+func test_g5_final_step_diverts_from_occupied_tile() -> void:
+	print("test_g5_final_step_diverts_from_occupied_tile")
+	var nexus: TickHarness = _make_phase2_harness()
+	var units: Object = nexus.get_module("units")
+	var mover: int = units.spawn_unit("soldier", 0, 3, 2)
+	# Send the mover toward (9,2)...
+	nexus.issue_command("move_unit", 0, { "unit_ids": [mover], "x": 9, "y": 2 }, 1)
+	nexus.run_ticks(3)
+	# ...then a squatter appears exactly on the goal AFTER the plan was made.
+	var squatter: int = units.spawn_unit("soldier", 1, 9, 2)
+	var sq: Dictionary = units.get_unit(squatter)
+	_check(int(sq["x"]) == 9 and int(sq["y"]) == 2, "squatter holds the goal tile")
+	nexus.run_ticks(80)
+	var m: Dictionary = units.get_unit(mover)
+	var stacked: bool = int(m["x"]) == int(sq["x"]) and int(m["y"]) == int(sq["y"])
+	_check(not stacked, "mover did not finish on top of the squatter")
+	_check((m.get("path", []) as Array).is_empty(), "mover settled cleanly")

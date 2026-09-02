@@ -83,7 +83,20 @@ func _ensure_state() -> void:
 
 # Spawn a unit directly (used by scenario setup). Returns the new unit id.
 # `veterancy_bonus` lets producers (e.g. Hero Fusion) grant a starting rank.
+#
+# BUG-G1 (gameplay audit): the requested tile is VALIDATED before use. A unit
+# spawned off-map or inside a wall could never move again (A* refuses blocked
+# starts) -- the historical "spawned but stuck forever" bug. A unit spawned on
+# top of another unit/building started permanently stacked. When the requested
+# tile is unusable we deterministically relocate to the nearest free tile
+# (stable BFS, lockstep-safe). Maps with no grid configured (headless test
+# harnesses) keep the exact requested coordinates.
 func spawn_unit(type: String, owner: int, x: int, y: int, veterancy_bonus: int = 0) -> int:
+	var map_section: Dictionary = nexus.world_state.get_section("map")
+	if int(map_section.get("width", 0)) > 0 and not _tile_spawn_free(x, y):
+		var relocated: Vector2i = _nearest_spawn_free(Vector2i(x, y))
+		x = relocated.x
+		y = relocated.y
 	var archetype: Variant = nexus.data_loader.get_entry(CATALOG, type)
 	var stats: Dictionary = {}
 	var category: String = "infantry"
@@ -160,6 +173,22 @@ func _advance_movement(unit: Dictionary) -> void:
 		if not _replan_unit(unit):
 			unit["path"] = []
 		return
+	# BUG-G5 (gameplay audit): the FINAL step must not land on a tile another
+	# living unit is already standing on (it may have arrived there after this
+	# path was planned -- the last remaining stacking window). Retarget to the
+	# nearest free tile; if none exists, stop cleanly one tile short.
+	# Mid-path tiles are exempt on purpose: passing through is transient.
+	if path.size() == 1 and _tile_occupied_by_other(nx, ny, int(unit["id"])):
+		var new_goal: Vector2i = _nearest_spawn_free(Vector2i(nx, ny))
+		if new_goal == Vector2i(nx, ny) or new_goal == Vector2i(int(unit["x"]), int(unit["y"])):
+			unit["path"] = []
+			unit.erase("move_goal")
+			return
+		unit["move_goal"] = [new_goal.x, new_goal.y]
+		if not _replan_unit(unit):
+			unit["path"] = []
+			unit.erase("move_goal")
+		return
 	unit["x"] = nx
 	unit["y"] = ny
 	path.remove_at(0)
@@ -218,8 +247,11 @@ func _handle_move_command(data: Dictionary) -> void:
 	# BUG-3 fix (P0.3): if the requested goal tile is not walkable (wall / off
 	# map / occupied by a building), retarget to the NEAREST reachable walkable
 	# tile so the move never silently fails and the unit still heads that way.
+	# BUG-G4 (gameplay audit): a DESTINATION additionally excludes building
+	# tiles (buildings do not alter terrain, so _map_walkable alone let units
+	# park on top of the HQ).
 	var goal: Vector2i = Vector2i(gx, gy)
-	if not _map_walkable(goal.x, goal.y):
+	if not _goal_walkable(goal.x, goal.y):
 		goal = _nearest_walkable(goal)
 	# BUG-MA1 / MB1.3 fix (Android): when units are ordered to the same tile do NOT
 	# send them all to the identical goal (that stacks every unit into one block --
@@ -232,7 +264,7 @@ func _handle_move_command(data: Dictionary) -> void:
 	# id, stable BFS ring-out) so lockstep peers compute identical results.
 	var valid_ids: Array = _sorted_living_ids(ids)
 	var reserved: Dictionary = _reserved_goal_tiles(valid_ids)
-	var goals: Array = FormationUtil.plan_goals(goal, valid_ids.size(), _map_walkable, reserved)
+	var goals: Array = FormationUtil.plan_goals(goal, valid_ids.size(), Callable(self, "_goal_walkable"), reserved)
 	for i in range(valid_ids.size()):
 		var key: String = str(valid_ids[i])
 		var unit: Dictionary = _units()[key]
@@ -302,9 +334,16 @@ func _reserved_goal_tiles(exclude_ids: Array) -> Dictionary:
 			continue
 		var unit: Dictionary = list[key]
 		var mg: Variant = unit.get("move_goal", null)
-		if mg == null:
+		if mg != null:
+			reserved["%d,%d" % [int(mg[0]), int(mg[1])]] = true
 			continue
-		reserved["%d,%d" % [int(mg[0]), int(mg[1])]] = true
+		# BUG-G2 (gameplay audit): a unit that already ARRIVED loses its
+		# move_goal, so its tile was NOT reserved and the next command could
+		# plant a fresh goal directly on top of it (stacking bug reopened).
+		# An idle unit's CURRENT tile is therefore reserved too. Units that are
+		# still travelling are not reserved by position (they will leave).
+		if (unit.get("path", []) as Array).is_empty():
+			reserved["%d,%d" % [int(unit.get("x", 0)), int(unit.get("y", 0))]] = true
 	return reserved
 
 
@@ -323,7 +362,7 @@ func _nearest_walkable(goal: Vector2i) -> Vector2i:
 		guard += 1
 		var next_frontier: Array = []
 		for tile in frontier:
-			if _map_walkable(tile.x, tile.y):
+			if _goal_walkable(tile.x, tile.y):
 				return tile
 			for off in offsets:
 				var n: Vector2i = tile + off
@@ -402,6 +441,83 @@ func _map_walkable(x: int, y: int) -> bool:
 	if idx < 0 or idx >= tiles.size():
 		return false
 	return int(tiles[idx]) == 0  # 0 == ground
+
+
+# BUG-G4 (gameplay audit): a valid movement DESTINATION must be walkable ground
+# AND free of buildings (buildings never alter terrain, so map walkability alone
+# let goals land on the HQ tile). Used for formation goals + nearest-walkable
+# retargeting. Deterministic: pure read of WorldState.
+func _goal_walkable(x: int, y: int) -> bool:
+	return _map_walkable(x, y) and not _building_on_tile(x, y)
+
+
+# Is any building standing on tile (x, y)?
+func _building_on_tile(x: int, y: int) -> bool:
+	var buildings: Dictionary = nexus.world_state.get_section("buildings").get("list", {})
+	for key in buildings.keys():
+		var b: Dictionary = buildings[key]
+		if int(b.get("x", -1)) == x and int(b.get("y", -1)) == y:
+			return true
+	return false
+
+
+# BUG-G5 (gameplay audit): is a LIVING unit other than `self_id` standing on
+# tile (x, y)? Used by the final-step arrival check in _advance_movement.
+func _tile_occupied_by_other(x: int, y: int, self_id: int) -> bool:
+	var list: Dictionary = _units()
+	for key in list.keys():
+		var u: Dictionary = list[key]
+		if int(u.get("id", -1)) == self_id:
+			continue
+		if int(u.get("x", -1)) == x and int(u.get("y", -1)) == y and int(u.get("health", 1)) > 0:
+			return true
+	return false
+
+
+# BUG-G1 (gameplay audit): is tile (x, y) valid for SPAWNING a unit? It must be
+# walkable ground with no building and no LIVING unit already standing there.
+func _tile_spawn_free(x: int, y: int) -> bool:
+	if not _goal_walkable(x, y):
+		return false
+	var list: Dictionary = _units()
+	for key in list.keys():
+		var u: Dictionary = list[key]
+		if int(u.get("x", -1)) == x and int(u.get("y", -1)) == y and int(u.get("health", 1)) > 0:
+			return false
+	return true
+
+
+# BUG-G1: deterministic BFS from a bad spawn tile to the nearest spawn-free
+# tile (stable ring order, lockstep-safe). Returns the original tile if the
+# whole search budget is exhausted (pathological maps) so the caller never
+# crashes -- the unit may be stuck, but the sim state stays consistent.
+func _nearest_spawn_free(origin: Vector2i) -> Vector2i:
+	var visited: Dictionary = {}
+	var frontier: Array = [origin]
+	visited["%d,%d" % [origin.x, origin.y]] = true
+	var offsets: Array = [
+		Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0),
+	]
+	var guard: int = 0
+	while not frontier.is_empty() and guard < 4096:
+		guard += 1
+		var next_frontier: Array = []
+		for tile in frontier:
+			if _tile_spawn_free(tile.x, tile.y):
+				return tile
+			for off in offsets:
+				var n: Vector2i = tile + off
+				var k: String = "%d,%d" % [n.x, n.y]
+				if visited.has(k):
+					continue
+				visited[k] = true
+				next_frontier.append(n)
+		next_frontier.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			if a.y != b.y:
+				return a.y < b.y
+			return a.x < b.x)
+		frontier = next_frontier
+	return origin
 
 
 func _path_to_pairs(path: Array) -> Array:

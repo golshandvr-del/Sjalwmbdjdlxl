@@ -67,6 +67,11 @@ func init(p_nexus: Object) -> void:
 	nexus.subscribe(CMD_FINISH_BUILDING, self, "_on_bus_event")
 	nexus.subscribe(CMD_UPGRADE, self, "_on_bus_event")
 	nexus.subscribe(CMD_SET_RALLY, self, "_on_bus_event")
+	# BUG-G3 (gameplay audit): CombatModule only EMITS buildings.destroyed when a
+	# building's health reaches zero -- nothing ever removed the corpse. The dead
+	# building kept producing resources, occupying its tile, and rendering. We now
+	# own the removal: listen for the event and erase the entry.
+	nexus.subscribe(EVENT_DESTROYED, self, "_on_bus_event")
 	_ensure_state()
 
 
@@ -164,6 +169,10 @@ func on_tick(_delta_tick: int) -> void:
 	var keys: Array = list.keys()
 	keys.sort()
 	for key in keys:
+		# BUG-G3 guard: an entry can be erased mid-loop (synchronous
+		# buildings.destroyed handling); never touch a removed key.
+		if not list.has(key):
+			continue
 		var building: Dictionary = list[key]
 		_advance_construction(building)
 		# A building still under construction cannot produce units yet.
@@ -318,6 +327,10 @@ func handle_event(event_name: String, payload: Dictionary) -> void:
 		CMD_SET_RALLY:
 			var rp: Dictionary = payload.get("data", {})
 			set_rally_point(int(rp.get("building_id", -1)), int(rp.get("x", 0)), int(rp.get("y", 0)))
+		EVENT_DESTROYED:
+			# BUG-G3: remove the destroyed building from the world. Uses the
+			# no-echo eraser so the event is not re-emitted (loop guard).
+			_remove_destroyed(int(payload.get("id", -1)))
 
 
 # P0.2 (BUG-2): store a rally point on a building. New units produced there will
@@ -434,6 +447,13 @@ func get_building(building_id: int) -> Dictionary:
 
 func count() -> int:
 	return _buildings().size()
+
+
+# BUG-G3: erase a building that combat reported destroyed. Unlike
+# destroy_building() this does NOT emit EVENT_DESTROYED again (the event that
+# triggered us already announced it -- re-emitting would loop).
+func _remove_destroyed(building_id: int) -> void:
+	_buildings().erase(str(building_id))
 
 
 func destroy_building(building_id: int) -> void:
