@@ -150,6 +150,22 @@ func _handle_build_unit(data: Dictionary) -> void:
 		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "unknown_unit" })
 		return
 	var a: Dictionary = archetype
+	# BUG-G6 (gameplay audit): validate the WHOLE order BEFORE spending. The old
+	# flow charged the cost first and only then issued queue_unit; when queueing
+	# failed (building gone, wrong owner, unit not in the building's
+	# buildable_units) the money silently burned with no unit and no refund.
+	var building: Dictionary = _building_record(building_id)
+	if building.is_empty():
+		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "unknown_building" })
+		return
+	if int(building.get("owner", -1)) != owner:
+		# Paying for units that would spawn under ANOTHER owner is never a
+		# legitimate order (it was also a resource-drain exploit vector).
+		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "not_owner" })
+		return
+	if not (building.get("buildable_units", []) as Array).has(unit_type):
+		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "not_buildable_here" })
+		return
 	var cost: Dictionary = a.get("cost", {})
 	var build_time: int = int(a.get("build_time_ticks", 60))
 	if not try_spend(owner, cost):
@@ -160,6 +176,12 @@ func _handle_build_unit(data: Dictionary) -> void:
 		"unit_type": unit_type,
 		"build_time_ticks": build_time,
 	}, 1)
+
+
+# BUG-G6: read a building record straight from WorldState (no module coupling).
+func _building_record(building_id: int) -> Dictionary:
+	var list: Dictionary = nexus.world_state.get_section("buildings").get("list", {})
+	return list.get(str(building_id), {})
 
 
 # --- Helpers / save-load ----------------------------------------------------

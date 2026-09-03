@@ -129,7 +129,7 @@ func _manage_economy(owner: int, diff: Dictionary) -> void:
 	# MD8.5: pick the best-fit unit via the utility pipeline instead of the old
 	# hard-coded "soldier". Backward compatible: with a single-unit catalog (or
 	# no profile) the selector returns that unit / the same defensive default.
-	var unit_type: String = _choose_unit_type(owner, diff)
+	var unit_type: String = _choose_unit_type(owner, diff, hq.get("buildable_units", []))
 	nexus.issue_command("build_unit", owner, {
 		"owner": owner,
 		"building_id": int(hq["id"]),
@@ -142,10 +142,18 @@ func _manage_economy(owner: int, diff: Dictionary) -> void:
 # vector, then delegates the pure scoring to UnitCandidateUtil. Deterministic:
 # every input (catalog, seed, tick, owner, context) is stable, so all peers pick
 # the same unit. Falls back to "soldier" on any missing data (resilience).
-func _choose_unit_type(owner: int, diff: Dictionary) -> String:
+#
+# BUG-G6 companion: the chooser is now restricted to the PRODUCING building's
+# buildable_units. Without this the pipeline could pick a unit the HQ cannot
+# build; the order was rejected (or, before G6, silently burned the cost) and
+# the AI kept retrying the same doomed order forever.
+func _choose_unit_type(owner: int, diff: Dictionary, allowed: Array = []) -> String:
 	var catalog: Dictionary = nexus.data_loader.get_catalog("units")
 	if catalog.is_empty():
 		return "soldier"
+	var fallback: String = "soldier"
+	if not allowed.is_empty() and not allowed.has(fallback):
+		fallback = str(allowed[0])
 	var weights: Dictionary = AiWeightDerivationUtil.derive_weights(_profile_for(owner))
 	var context: Dictionary = AiContextUtil.build_context(summarize(owner), owner)
 	var seed_value: int = int(nexus.world_state.random_seed)
@@ -153,7 +161,7 @@ func _choose_unit_type(owner: int, diff: Dictionary) -> String:
 	var noise_q: int = int(diff.get("noise_q", DEFAULT_NOISE_Q))
 	return UnitCandidateUtil.choose_unit(
 		catalog, weights, context, seed_value, tick, owner, noise_q,
-		null, null, [], "soldier")
+		null, null, allowed, fallback)
 
 
 # The AiProfile object backing `owner`, or null for a legacy named AI (in which

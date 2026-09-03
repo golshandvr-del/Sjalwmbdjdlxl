@@ -667,6 +667,7 @@ func _init() -> void:
 	test_g3_destroyed_building_is_removed()
 	test_g4_goals_never_land_on_buildings()
 	test_g5_final_step_diverts_from_occupied_tile()
+	test_g6_build_unit_never_burns_resources()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -11832,3 +11833,34 @@ func test_g5_final_step_diverts_from_occupied_tile() -> void:
 	var stacked: bool = int(m["x"]) == int(sq["x"]) and int(m["y"]) == int(sq["y"])
 	_check(not stacked, "mover did not finish on top of the squatter")
 	_check((m.get("path", []) as Array).is_empty(), "mover settled cleanly")
+
+
+# BUG-G6: an invalid build_unit order must be rejected BEFORE the cost is
+# spent -- the old flow charged first and burned the money when queueing failed
+# (dead building / foreign building / unit not buildable there).
+func test_g6_build_unit_never_burns_resources() -> void:
+	print("test_g6_build_unit_never_burns_resources")
+	var nexus: TickHarness = _make_phase2_harness()
+	var economy: Object = nexus.get_module("economy")
+	var my_hq: int = _first_building_of(nexus, 0)
+	var enemy_hq: int = _first_building_of(nexus, 1)
+	var start: int = economy.get_resource(0, "resource_basic")
+	# 1) Unknown building id: rejected, nothing spent.
+	nexus.issue_command("build_unit", 0, { "owner": 0, "building_id": 999999, "unit_type": "soldier" }, 1)
+	nexus.run_ticks(3)
+	_check(economy.get_resource(0, "resource_basic") == start, "unknown building spends nothing")
+	# 2) Enemy-owned building: rejected, nothing spent.
+	nexus.issue_command("build_unit", 0, { "owner": 0, "building_id": enemy_hq, "unit_type": "soldier" }, 1)
+	nexus.run_ticks(3)
+	_check(economy.get_resource(0, "resource_basic") == start, "foreign building spends nothing")
+	# 3) Unit type the HQ cannot build (tank is not in hq.buildable_units).
+	nexus.issue_command("build_unit", 0, { "owner": 0, "building_id": my_hq, "unit_type": "tank" }, 1)
+	nexus.run_ticks(3)
+	_check(economy.get_resource(0, "resource_basic") == start, "non-buildable unit spends nothing")
+	# 4) A VALID order still charges and queues (regression guard).
+	nexus.issue_command("build_unit", 0, { "owner": 0, "building_id": my_hq, "unit_type": "soldier" }, 1)
+	nexus.run_ticks(3)
+	_check(economy.get_resource(0, "resource_basic") < start, "valid order still charges the cost")
+	var buildings: Object = nexus.get_module("buildings")
+	var hq: Dictionary = buildings.get_building(my_hq)
+	_check((hq.get("build_queue", []) as Array).size() == 1, "valid order queued at the HQ")
