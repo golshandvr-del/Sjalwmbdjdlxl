@@ -84,7 +84,10 @@ func _handle_fuse(data: Dictionary) -> void:
 	var selected: Array = []
 	for raw_id in unit_ids:
 		var key: String = str(int(raw_id))
-		if units.has(key) and int(units[key].get("owner", -1)) == owner:
+		# Gameplay audit: only LIVING units are valid ingredients. A unit whose
+		# health hit zero this tick (corpse not yet removed) could otherwise be
+		# fused, effectively resurrecting its value into a hero.
+		if units.has(key) and int(units[key].get("owner", -1)) == owner and int(units[key].get("health", 0)) > 0:
 			selected.append(units[key])
 	if selected.is_empty():
 		nexus.emit_event(EVENT_REJECTED, { "owner": owner, "reason": "no_valid_units" })
