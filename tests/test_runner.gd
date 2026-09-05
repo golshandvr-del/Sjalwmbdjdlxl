@@ -668,6 +668,7 @@ func _init() -> void:
 	test_g4_goals_never_land_on_buildings()
 	test_g5_final_step_diverts_from_occupied_tile()
 	test_g6_build_unit_never_burns_resources()
+	test_g7_base_textures_resolve_and_terrain_is_textured()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -3666,7 +3667,8 @@ func test_phase_b_texture_service_cache_and_fallback() -> void:
 	print("test_phase_b_texture_service_cache_and_fallback")
 	var svc: TextureService = TextureService.new()
 	# A shipped base texture resolves.
-	_check_or_skip(svc.has_texture("textures/soldier.png"), "base soldier texture resolves")
+	# BUG-G7: this used to be _check_or_skip -- the skip hid a broken DEFAULT_ROOT.
+	_check(svc.has_texture("textures/soldier.png"), "base soldier texture resolves")
 	var t1: Texture2D = svc.get_texture("textures/soldier.png")
 	_check(t1 != null, "soldier texture loads")
 	var t2: Texture2D = svc.get_texture("textures/soldier.png")
@@ -3698,7 +3700,8 @@ func test_phase_b_style_sprite_draws_textures() -> void:
 		"owner": 0, "x": 0, "y": 0, "health": 80, "max_health": 100,
 		"visual": {"texture": "textures/soldier.png", "color": "#4CB0F2", "size_scale": 1.0},
 	}, false)
-	_check_or_skip(canvas.textures_drawn >= 1, "sprite style drew at least one texture")
+	# BUG-G7: strict now -- base textures MUST resolve in --script mode too.
+	_check(canvas.textures_drawn >= 1, "sprite style drew at least one texture")
 	# A unit with NO texture falls back to a shape (no extra texture call).
 	var before: int = canvas.textures_drawn
 	style.draw_unit(canvas, rect, {
@@ -11864,3 +11867,46 @@ func test_g6_build_unit_never_burns_resources() -> void:
 	var buildings: Object = nexus.get_module("buildings")
 	var hq: Dictionary = buildings.get_building(my_hq)
 	_check((hq.get("build_queue", []) as Array).size() == 1, "valid order queued at the HQ")
+
+
+# BUG-G7 (GUI audit): every texture referenced by the shipped catalogs must
+# resolve through TextureService (the root pointed one level too deep, so the
+# whole sprite-style map rendered as the magenta/black "missing" checker), and
+# the sprite style must draw terrain art instead of flat rectangles.
+func test_g7_base_textures_resolve_and_terrain_is_textured() -> void:
+	print("test_g7_base_textures_resolve_and_terrain_is_textured")
+	var svc: TextureService = TextureService.new()
+	var loader: DataLoader = DataLoader.new()
+	loader.load_catalog("units", "res://data/units")
+	loader.load_catalog("buildings", "res://data/buildings")
+	var referenced: int = 0
+	for catalog_name in ["units", "buildings"]:
+		var catalog: Dictionary = loader.get_catalog(catalog_name)
+		var ids: Array = catalog.keys()
+		ids.sort()
+		for id in ids:
+			var entry: Dictionary = catalog[id]
+			var tex: String = str((entry.get("visual", {}) as Dictionary).get("texture", ""))
+			if tex == "":
+				continue
+			referenced += 1
+			_check(svc.has_texture(tex), "catalog texture resolves: %s -> %s" % [str(id), tex])
+	_check(referenced >= 5, "catalogs reference base textures (%d)" % referenced)
+	for terrain_tex in ["textures/ground.png", "textures/wall.png", "textures/water.png"]:
+		_check(svc.has_texture(terrain_tex), "terrain texture resolves: " + terrain_tex)
+	# Sprite style draws textured terrain for all three terrain ids.
+	var style: StyleSprite = StyleSprite.new()
+	style.texture_service = svc
+	var canvas: RecordingCanvas = RecordingCanvas.new()
+	style.draw_tile(canvas, Rect2(0, 0, 24, 24), 0)
+	style.draw_tile(canvas, Rect2(24, 0, 24, 24), 1)
+	style.draw_tile(canvas, Rect2(48, 0, 24, 24), 2)
+	_check(canvas.textures_drawn == 3, "sprite style draws textured terrain (3 tiles -> 3 textures)")
+	# Without a texture service the flat fallback still works (no crash).
+	var bare: StyleSprite = StyleSprite.new()
+	var canvas2: RecordingCanvas = RecordingCanvas.new()
+	bare.draw_tile(canvas2, Rect2(0, 0, 24, 24), 1)
+	_check(canvas2.textures_drawn == 0, "no texture service -> flat fallback")
+	# Authored-color art is drawn untinted; owner-colored art keeps a soft tint.
+	_check(style._tint_color({ "color": "#8855AA" }, 1) == Color.WHITE, "authored color art is untinted")
+	_check(style._tint_color({}, 1) != Color.WHITE, "owner-colored art keeps faction tint")

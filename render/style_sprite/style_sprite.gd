@@ -56,7 +56,26 @@ func owner_color(owner: int) -> Color:
 
 # --- Tiles ------------------------------------------------------------------
 
+# GUI audit (BUG-G7 companion): the base game SHIPS terrain art
+# (textures/ground.png, wall.png, water.png) but the sprite style never used
+# it -- it painted flat rectangles like StyleSimple, so switching to "sprite"
+# changed units only and the map stayed a raw flat grid. Terrain textures are
+# now drawn when they resolve (mods can override them by relative path); the
+# flat palette remains the fallback for packs that ship no terrain art.
+const TERRAIN_TEXTURES: Dictionary = {
+	0: "textures/ground.png",
+	1: "textures/wall.png",
+	2: "textures/water.png",
+}
+
 func draw_tile(canvas, rect: Rect2, terrain_id: int) -> void:
+	var tex_path: String = str(TERRAIN_TEXTURES.get(terrain_id, TERRAIN_TEXTURES[0]))
+	if texture_service != null and texture_service.has_texture(tex_path):
+		var tex: Texture2D = texture_service.get_texture(tex_path)
+		if tex != null:
+			canvas.draw_texture_rect(tex, rect, false)
+			canvas.draw_rect(rect, COLOR_GRID, false, 1.0)
+			return
 	var color: Color = COLOR_GROUND
 	match terrain_id:
 		1:
@@ -137,9 +156,16 @@ func _fill_color(visual: Dictionary, owner: int) -> Color:
 
 # A texture tint that blends the visual color toward white so the art keeps its
 # detail but still carries a hint of faction/color identity.
+#
+# GUI audit: when the visual declares its OWN color the art is authored in that
+# palette already -- multiplying it by the same hue again just darkens and
+# muddies it (the "dirty purple" look). Authored-color art is drawn untinted;
+# owner-colored art keeps the soft faction tint so teams stay distinguishable.
 func _tint_color(visual: Dictionary, owner: int) -> Color:
-	var base: Color = _fill_color(visual, owner)
-	return base.lerp(Color.WHITE, 0.55)
+	var raw: String = str(visual.get("color", ""))
+	if raw != "" and Color.html_is_valid(raw):
+		return Color.WHITE
+	return owner_color(owner).lerp(Color.WHITE, 0.55)
 
 
 # --- Shared health bar ------------------------------------------------------

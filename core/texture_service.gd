@@ -24,7 +24,14 @@ class_name TextureService
 extends RefCounted
 
 # Default search root for base-game textures (shipped inside the PCK on export).
-const DEFAULT_ROOT: String = "res://assets/textures/"
+#
+# GUI audit (BUG-G7): catalog entries reference textures as "textures/<name>.png"
+# (the same layout mod packs use: <pack_root>/textures/<name>). The root was
+# "res://assets/textures/", so every base texture resolved to the non-existent
+# "res://assets/textures/textures/x.png" -> has_texture() false everywhere and
+# the magenta/black checker placeholder painted the whole sprite-style map.
+# The root is the folder that CONTAINS "textures/", i.e. "res://assets/".
+const DEFAULT_ROOT: String = "res://assets/"
 
 # Ordered list of root directories to resolve relative texture paths against.
 # Earlier entries are searched first; callers append mod roots at runtime.
