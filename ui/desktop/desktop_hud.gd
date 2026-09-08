@@ -483,11 +483,17 @@ func _apply_static_labels() -> void:
 
 
 func _refresh_top_bar() -> void:
+	# GUI audit (BUG-G9): after Menu/Restart calls shutdown_simulation() the
+	# modules are gone but _process still runs until the scene swap lands ->
+	# "Nonexistent function 'count' in base 'Nil'" every frame. Bail out early.
+	var units_module: Object = Nexus.get_module("units")
+	if units_module == null:
+		return
 	var economy: Object = Nexus.get_module("economy")
 	var gold: int = economy.get_resource(LOCAL_PLAYER, "resource_basic") if economy != null else 0
 	_resource_label.text = "%s: %d" % [_loc.t("ui.game.resources"), gold]
 	var paused: bool = Nexus.sim_clock.is_paused()
-	var units: int = Nexus.get_module("units").count()
+	var units: int = units_module.count()
 	var tech: Object = Nexus.get_module("tech_tree")
 	var researched: int = 0
 	if tech != null:
@@ -804,11 +810,13 @@ func _on_lang_pressed() -> void:
 
 
 func _on_menu_pressed() -> void:
+	set_process(false)  # BUG-G9: no per-frame refresh against a torn-down sim
 	Nexus.shutdown_simulation()
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 
 func _on_restart_pressed() -> void:
+	set_process(false)  # BUG-G9
 	Nexus.shutdown_simulation()
 	get_tree().reload_current_scene()
 

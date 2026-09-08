@@ -669,6 +669,7 @@ func _init() -> void:
 	test_g5_final_step_diverts_from_occupied_tile()
 	test_g6_build_unit_never_burns_resources()
 	test_g7_base_textures_resolve_and_terrain_is_textured()
+	test_g8_all_nav_scenes_exist()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -11910,3 +11911,35 @@ func test_g7_base_textures_resolve_and_terrain_is_textured() -> void:
 	# Authored-color art is drawn untinted; owner-colored art keeps a soft tint.
 	_check(style._tint_color({ "color": "#8855AA" }, 1) == Color.WHITE, "authored color art is untinted")
 	_check(style._tint_color({}, 1) != Color.WHITE, "owner-colored art keeps faction tint")
+
+
+# BUG-G8 (GUI audit): every scene NavService routes to must exist on disk. The
+# "Defaults" editor screen was referenced by the hub, NavService and the
+# localization tables but was never created -> pressing it loaded nothing.
+func test_g8_all_nav_scenes_exist() -> void:
+	print("test_g8_all_nav_scenes_exist")
+	var seen: Dictionary = {}
+	for key in NavService.PARENTS.keys():
+		seen[str(key)] = true
+		seen[str(NavService.PARENTS[key])] = true
+	var paths: Array = seen.keys()
+	paths.sort()
+	for p in paths:
+		var path: String = str(p)
+		if path == "":
+			continue
+		_check(FileAccess.file_exists(path), "nav scene exists on disk: " + path)
+	# The Defaults screen script parses and exposes the expected surface (a
+	# parse error here would surface as a SCRIPT ERROR in the run log).
+	var script: GDScript = load("res://ui/shared/editor_defaults.gd")
+	_check(script != null and script.can_instantiate(), "editor_defaults.gd compiles")
+	# Its discovery + choice pipeline yields the shipped scenarios when run
+	# against the base catalog (no live Nexus needed).
+	var loader: DataLoader = DataLoader.new()
+	loader.load_catalog("scenarios", "res://data/scenarios")
+	var raw: Array = []
+	for id in loader.get_catalog("scenarios").keys():
+		raw.append({ "id": str(id), "name": str(id) })
+	var choices: Array = EditorDefaultsUtil.build_choices(raw)
+	_check(EditorDefaultsUtil.has_choice(choices, "skirmish_basic"), "defaults screen would list skirmish_basic")
+	_check(EditorDefaultsUtil.resolve_default("deleted_map", choices) == "", "stale default collapses to none")

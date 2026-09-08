@@ -70,12 +70,15 @@ var _is_host_setup: bool = false
 # multiplayer). It still routes straight into the game like single-player, but
 # opens with a hot-seat title + defaults and tags match_config.hot_seat = true.
 var _is_hotseat_setup: bool = false
+# BUG-G8: kept so _populate_scenarios can honour the persisted default map.
+var _settings: GameSettings = null
 
 
 func _ready() -> void:
 	_loc.load_all("res://localization")
 	var settings: GameSettings = GameSettings.new(Nexus.world_state)
 	settings.load_from_file()
+	_settings = settings
 	UiScale.apply_with_settings(self, settings)
 	var saved: String = str(Nexus.world_state.get_section("ui_prefs").get("locale", ""))
 	if saved != "":
@@ -307,6 +310,13 @@ func _populate_scenarios() -> void:
 		_scenario_option.add_item(label)
 	if _scenario_option.item_count > 0:
 		_scenario_option.selected = 0
+	# BUG-G8 (GUI audit): honour the player's DEFAULT MAP (Editors > Defaults).
+	# The preference was persisted but nothing ever read it, so the choice had
+	# no effect. A stale id (map deleted) simply keeps the first entry.
+	var default_map: String = _settings.get_default_map() if _settings != null else ""
+	var default_index: int = _scenario_ids.find(default_map)
+	if default_map != "" and default_index >= 0:
+		_scenario_option.selected = default_index
 
 
 func _populate_difficulties(default_difficulty: String) -> void:

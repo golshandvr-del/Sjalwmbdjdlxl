@@ -379,11 +379,16 @@ func _process(_delta: float) -> void:
 
 
 func _refresh_top_bar() -> void:
+	# GUI audit (BUG-G9): modules are gone after shutdown_simulation() while
+	# _process may still run a frame -> null.count() error. Bail out early.
+	var units_module: Object = Nexus.get_module("units")
+	if units_module == null:
+		return
 	var economy: Object = Nexus.get_module("economy")
 	var gold: int = economy.get_resource(LOCAL_PLAYER, "resource_basic") if economy != null else 0
 	_resource_label.text = "%s: %d" % [_local_text("ui.game.resources"), gold]
 	var paused: bool = Nexus.sim_clock.is_paused()
-	var units: int = Nexus.get_module("units").count()
+	var units: int = units_module.count()
 	# Phase 2: surface researched-tech count so the player sees progress.
 	var tech: Object = Nexus.get_module("tech_tree")
 	var researched: int = 0
@@ -879,6 +884,7 @@ func _next_research_node(tech: Object) -> String:
 
 func _on_restart_pressed() -> void:
 	# Tear the match down and reload the scene for a fresh skirmish.
+	set_process(false)  # BUG-G9: no per-frame refresh against a torn-down sim
 	Nexus.shutdown_simulation()
 	get_tree().reload_current_scene()
 
