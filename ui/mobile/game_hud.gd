@@ -280,12 +280,39 @@ func _apply_responsive_layout() -> void:
 		group_pos = ResponsiveLayoutUtil.control_group_pos(vp, group_size)
 		_control_group_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		_control_group_panel.position = group_pos
+	var select_pos: Vector2 = group_pos
 	if _select_button != null:
 		# MA2/MA5: keep the Select toggle just above the control-group panel in
 		# both orientations so it is always thumb-reachable and never off-screen.
 		_select_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
-		_select_button.position = ResponsiveLayoutUtil.select_button_pos(
+		select_pos = ResponsiveLayoutUtil.select_button_pos(
 			vp, _widget_size(_select_button), group_pos, group_size)
+		_select_button.position = select_pos
+	# BUG-G10 (GUI audit): the Move-mode toggle and the Messages toggle join
+	# the same left-edge stack (above Select) instead of keeping stale
+	# hard-coded offsets that overlapped the control-group panel. Confirm /
+	# Cancel sit in a row beside the Move toggle.
+	var stack: Array = []
+	var sizes: Array = []
+	if _move_mode_button != null:
+		stack.append(_move_mode_button)
+		sizes.append(_widget_size(_move_mode_button))
+	if _msg_button != null:
+		stack.append(_msg_button)
+		sizes.append(_widget_size(_msg_button))
+	var placed: Array = ResponsiveLayoutUtil.stack_above(vp, select_pos, sizes)
+	for i in range(stack.size()):
+		var widget: Control = stack[i]
+		widget.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		widget.position = placed[i]
+	if _move_mode_button != null and _move_confirm_button != null and _move_cancel_button != null:
+		var row: Array = ResponsiveLayoutUtil.row_right_of(
+			vp, _move_mode_button.position, _widget_size(_move_mode_button),
+			[_widget_size(_move_confirm_button), _widget_size(_move_cancel_button)])
+		_move_confirm_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_move_confirm_button.position = row[0]
+		_move_cancel_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_move_cancel_button.position = row[1]
 
 
 # MB4.5 (bug16): pick the number of columns for the bottom action grid. Portrait
@@ -822,6 +849,13 @@ func _on_style_pressed() -> void:
 	# touches the simulation (Logic/Render Separation).
 	var active: String = _render_adapter.toggle_style()
 	_style_button.text = "%s: %s" % [_local_text("ui.game.style"), _style_label(active)]
+	# BUG-G11 (GUI audit): the in-game Style toggle changed the renderer for
+	# THIS match only; the next match silently reverted to the saved style.
+	# Persist the choice so it behaves like the Options screen.
+	var settings: GameSettings = GameSettings.new(Nexus.world_state)
+	settings.load_from_file()
+	if settings.set_render_style(active):
+		settings.save_to_file()
 
 
 # Map a render-style id to a short localized label for the Style button.
@@ -1055,8 +1089,14 @@ func _build_message_panel() -> void:
 	_msg_panel = PanelContainer.new()
 	_msg_panel.name = "MessagesPanel"
 	_msg_panel.visible = false
-	_msg_panel.set_anchors_preset(Control.PRESET_CENTER)
+	# BUG-G10 (GUI audit): PRESET_CENTER anchors the panel's TOP-LEFT corner to
+	# the screen centre, so the 360x400 panel hung down-right off the bottom of
+	# the map (its tabs / send button were unreachable on phones). Anchor the
+	# centre of the panel to the centre of the screen instead.
 	_msg_panel.custom_minimum_size = Vector2(360, 400)
+	_msg_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	_msg_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_msg_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	add_child(_msg_panel)
 
 	var tabs: TabContainer = TabContainer.new()

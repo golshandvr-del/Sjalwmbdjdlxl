@@ -128,6 +128,40 @@ static func select_button_pos(viewport: Vector2, widget_size: Vector2, group_pos
 	return clamp_into_safe_area(Vector2(x, y), widget_size, viewport)
 
 
+# GUI audit (BUG-G10): the left-edge TOOL STACK. The Move-mode toggle, its
+# Confirm/Cancel pair and the Messages toggle were added in later phases with
+# hard-coded BOTTOM_LEFT offsets and were never part of the responsive flow, so
+# they landed ON TOP of the control-group panel / Select button (overlapping,
+# unreadable, sometimes off-screen after rotation). This helper stacks any
+# number of widgets upward from an anchor rect (the Select button), sharing its
+# left edge, each clamped into the safe area. `sizes` is ordered bottom-to-top;
+# the returned Array holds one position per entry in the same order.
+static func stack_above(viewport: Vector2, anchor_pos: Vector2, sizes: Array, gap: float = 8.0) -> Array:
+	var out: Array = []
+	var next_bottom: float = anchor_pos.y - gap
+	for raw in sizes:
+		var widget_size: Vector2 = raw
+		var desired: Vector2 = Vector2(anchor_pos.x, next_bottom - widget_size.y)
+		var placed: Vector2 = clamp_into_safe_area(desired, widget_size, viewport)
+		out.append(placed)
+		next_bottom = placed.y - gap
+	return out
+
+
+# Widgets placed in a horizontal ROW to the right of `left_pos` (same top edge),
+# each clamped into the safe area. Used for the Confirm / Cancel pair that sits
+# beside the Move-mode toggle. `sizes` ordered left-to-right.
+static func row_right_of(viewport: Vector2, left_pos: Vector2, left_size: Vector2, sizes: Array, gap: float = 8.0) -> Array:
+	var out: Array = []
+	var next_left: float = left_pos.x + left_size.x + gap
+	for raw in sizes:
+		var widget_size: Vector2 = raw
+		var placed: Vector2 = clamp_into_safe_area(Vector2(next_left, left_pos.y), widget_size, viewport)
+		out.append(placed)
+		next_left = placed.x + widget_size.x + gap
+	return out
+
+
 # --- MB4.5: multi-column action-button flow (bug 16) ------------------------
 #
 # In PORTRAIT the action bar is a single horizontal row (wide + short screen,

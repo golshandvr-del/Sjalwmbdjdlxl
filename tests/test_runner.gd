@@ -670,6 +670,8 @@ func _init() -> void:
 	test_g6_build_unit_never_burns_resources()
 	test_g7_base_textures_resolve_and_terrain_is_textured()
 	test_g8_all_nav_scenes_exist()
+	test_g10_tool_stack_never_overlaps()
+	test_g12_main_menu_label_localized()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -11943,3 +11945,44 @@ func test_g8_all_nav_scenes_exist() -> void:
 	var choices: Array = EditorDefaultsUtil.build_choices(raw)
 	_check(EditorDefaultsUtil.has_choice(choices, "skirmish_basic"), "defaults screen would list skirmish_basic")
 	_check(EditorDefaultsUtil.resolve_default("deleted_map", choices) == "", "stale default collapses to none")
+
+
+# BUG-G10 (GUI audit): the left-edge tool stack (Move / Messages toggles) is
+# placed by the responsive helper instead of stale hard-coded offsets, so the
+# widgets never overlap the Select button / control-group panel and always stay
+# inside the safe area. Confirm/Cancel form a row beside the Move toggle.
+func test_g10_tool_stack_never_overlaps() -> void:
+	print("test_g10_tool_stack_never_overlaps")
+	for vp in [Vector2(1280, 720), Vector2(720, 1280), Vector2(640, 360), Vector2(360, 640)]:
+		var group_size: Vector2 = Vector2(150, 200)
+		var group_pos: Vector2 = ResponsiveLayoutUtil.control_group_pos(vp, group_size)
+		var select_size: Vector2 = Vector2(70, 34)
+		var select_pos: Vector2 = ResponsiveLayoutUtil.select_button_pos(vp, select_size, group_pos, group_size)
+		var sizes: Array = [Vector2(110, 34), Vector2(100, 34)]
+		var placed: Array = ResponsiveLayoutUtil.stack_above(vp, select_pos, sizes)
+		_check(placed.size() == 2, "stack returns one position per widget (%s)" % str(vp))
+		var area: Rect2 = ResponsiveLayoutUtil.safe_area(vp)
+		var prev_top: float = select_pos.y
+		for i in range(placed.size()):
+			var p: Vector2 = placed[i]
+			var s: Vector2 = sizes[i]
+			_check(area.encloses(Rect2(p, s)) or area.size.y < s.y, "stacked widget %d inside safe area (%s)" % [i, str(vp)])
+			_check(p.y + s.y <= prev_top + 0.001 or area.size.y < 300.0, "stacked widget %d sits above the previous one (%s)" % [i, str(vp)])
+			prev_top = p.y
+		_check(is_equal_approx(placed[0].x, select_pos.x), "stack shares the Select button's left edge (%s)" % str(vp))
+		var row: Array = ResponsiveLayoutUtil.row_right_of(vp, placed[0], sizes[0], [Vector2(90, 34), Vector2(90, 34)])
+		_check(row.size() == 2 and row[0].x > placed[0].x and row[1].x > row[0].x, "row flows to the right (%s)" % str(vp))
+		_check(is_equal_approx(row[0].y, placed[0].y), "row shares the anchor's top edge (%s)" % str(vp))
+
+
+# BUG-G12 (GUI audit): the in-game "leave to menu" label must be a real action
+# label present in both locales (it used to show the app title).
+func test_g12_main_menu_label_localized() -> void:
+	print("test_g12_main_menu_label_localized")
+	var loc: Localization = Localization.new()
+	loc.load_all("res://localization")
+	for locale in ["en", "fa"]:
+		loc.set_locale(locale)
+		var text: String = loc.t("ui.game.main_menu")
+		_check(text != "" and text != "ui.game.main_menu", "ui.game.main_menu resolves in %s" % locale)
+		_check(text != loc.t("ui.menu.title"), "main-menu action label differs from the app title in %s" % locale)

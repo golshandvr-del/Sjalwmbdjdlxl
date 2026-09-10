@@ -39,15 +39,15 @@ const GESTURE_PAN_SPEED: float = 40.0
 @onready var _resource_label: Label = $TopBar/Margin/Row/ResourceLabel
 @onready var _status_label: Label = $TopBar/Margin/Row/StatusLabel
 @onready var _hint_label: Label = $TopBar/Margin/Row/HintLabel
-@onready var _pause_button: Button = $BottomBar/Margin/Row/PauseButton
-@onready var _build_button: Button = $BottomBar/Margin/Row/BuildButton
-@onready var _speed_button: Button = $BottomBar/Margin/Row/SpeedButton
-@onready var _research_button: Button = $BottomBar/Margin/Row/ResearchButton
-@onready var _upgrade_button: Button = $BottomBar/Margin/Row/UpgradeButton
-@onready var _fuse_button: Button = $BottomBar/Margin/Row/FuseButton
-@onready var _style_button: Button = $BottomBar/Margin/Row/StyleButton
-@onready var _lang_button: Button = $BottomBar/Margin/Row/LangButton
-@onready var _menu_button: Button = $BottomBar/Margin/Row/MenuButton
+@onready var _pause_button: Button = $BottomBar/Margin/Scroll/Row/PauseButton
+@onready var _build_button: Button = $BottomBar/Margin/Scroll/Row/BuildButton
+@onready var _speed_button: Button = $BottomBar/Margin/Scroll/Row/SpeedButton
+@onready var _research_button: Button = $BottomBar/Margin/Scroll/Row/ResearchButton
+@onready var _upgrade_button: Button = $BottomBar/Margin/Scroll/Row/UpgradeButton
+@onready var _fuse_button: Button = $BottomBar/Margin/Scroll/Row/FuseButton
+@onready var _style_button: Button = $BottomBar/Margin/Scroll/Row/StyleButton
+@onready var _lang_button: Button = $BottomBar/Margin/Scroll/Row/LangButton
+@onready var _menu_button: Button = $BottomBar/Margin/Scroll/Row/MenuButton
 @onready var _selection_box: ColorRect = $SelectionBox
 @onready var _overlay: ColorRect = $EndOverlay
 @onready var _overlay_label: Label = $EndOverlay/CenterContainer/Box/ResultLabel
@@ -146,7 +146,7 @@ func _build_move_mode_widget() -> void:
 	_move_mode_button.toggle_mode = true
 	_move_mode_button.tooltip_text = _loc.t("ui.move.toggle_hint")
 	_move_mode_button.pressed.connect(_on_move_mode_pressed)
-	var row: Node = get_node_or_null("BottomBar/Margin/Row")
+	var row: Node = get_node_or_null("BottomBar/Margin/Scroll/Row")
 	if row != null:
 		row.add_child(_move_mode_button)
 	else:
@@ -162,7 +162,7 @@ func _build_message_panel() -> void:
 	_msg_button.name = "MessagesButton"
 	_msg_button.text = _loc.t("ui.msg.title")
 	_msg_button.pressed.connect(_on_messages_pressed)
-	var row: Node = get_node_or_null("BottomBar/Margin/Row")
+	var row: Node = get_node_or_null("BottomBar/Margin/Scroll/Row")
 	if row != null:
 		row.add_child(_msg_button)
 	else:
@@ -171,8 +171,12 @@ func _build_message_panel() -> void:
 	_msg_panel = PanelContainer.new()
 	_msg_panel.name = "MessagesPanel"
 	_msg_panel.visible = false
-	_msg_panel.set_anchors_preset(Control.PRESET_CENTER)
+	# BUG-G10 (GUI audit): PRESET_CENTER pins the panel's top-left to the screen
+	# centre so it hung down-right over the bottom bar; centre the panel itself.
 	_msg_panel.custom_minimum_size = Vector2(380, 420)
+	_msg_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	_msg_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_msg_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	add_child(_msg_panel)
 
 	var tabs: TabContainer = TabContainer.new()
@@ -475,8 +479,10 @@ func _apply_static_labels() -> void:
 	_research_button.text = _loc.t("ui.game.research")
 	_upgrade_button.text = _loc.t("ui.game.upgrade_hq")
 	_fuse_button.text = _loc.t("ui.game.fuse_hero")
-	_menu_button.text = _loc.t("ui.menu.title")
-	_menu_overlay_button.text = _loc.t("ui.menu.title")
+	# BUG-G12 (GUI audit): both "leave to menu" buttons showed the APP TITLE
+	# ("Project Nexus") instead of describing the action.
+	_menu_button.text = _loc.t("ui.game.main_menu")
+	_menu_overlay_button.text = _loc.t("ui.game.main_menu")
 	_restart_button.text = _loc.t("ui.game.play_again")
 	_lang_button.text = "%s: %s" % [_loc.t("ui.game.language"), _loc.active_locale()]
 	_hint_label.text = _loc.t("ui.game.desktop_hint")
@@ -790,6 +796,13 @@ func _on_fuse_pressed() -> void:
 func _on_style_pressed() -> void:
 	var active: String = _render_adapter.toggle_style()
 	_style_button.text = "%s: %s" % [_loc.t("ui.game.style"), _style_label(active)]
+	# BUG-G11 (GUI audit): the in-game Style toggle changed the renderer for
+	# THIS match only; the next match silently reverted to the saved style.
+	# Persist the choice so it behaves like the Options screen.
+	var settings: GameSettings = GameSettings.new(Nexus.world_state)
+	settings.load_from_file()
+	if settings.set_render_style(active):
+		settings.save_to_file()
 
 
 # Map a render-style id to its localized label (simple / detailed / sprite).
