@@ -43,5 +43,9 @@ pointing/emulate_touch_from_mouse=true
 
 [rendering]
 
+; GUI audit: the engine default clear color is a flat grey that showed through
+; any screen without an explicit background (e.g. Match Setup). Match the theme.
+environment/defaults/default_clear_color=Color(0.0627451, 0.0745098, 0.105882, 1)
+
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

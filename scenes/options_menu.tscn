@@ -24,123 +24,129 @@ grow_vertical = 2
 color = Color(0.0627451, 0.0745098, 0.105882, 1)
 script = SubResource("GDScript_bg")
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="Scroll" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+horizontal_scroll_mode = 0
 
-[node name="Box" type="VBoxContainer" parent="Center"]
+[node name="Center" type="CenterContainer" parent="Scroll"]
 layout_mode = 2
-theme_override_constants/separation = 12
+size_flags_horizontal = 3
+size_flags_vertical = 3
 
-[node name="Title" type="Label" parent="Center/Box"]
+[node name="Box" type="VBoxContainer" parent="Scroll/Center"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Scroll/Center/Box"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.882353, 0.745098, 0.341176, 1)
 theme_override_font_sizes/font_size = 40
 horizontal_alignment = 1
 text = "Options"
 
-[node name="LocaleRow" type="HBoxContainer" parent="Center/Box"]
+[node name="LocaleRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="LocaleButton" type="Button" parent="Center/Box/LocaleRow"]
+[node name="LocaleButton" type="Button" parent="Scroll/Center/Box/LocaleRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Language: en"
 
-[node name="StyleRow" type="HBoxContainer" parent="Center/Box"]
+[node name="StyleRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="StyleButton" type="Button" parent="Center/Box/StyleRow"]
+[node name="StyleButton" type="Button" parent="Scroll/Center/Box/StyleRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Style: Simple"
 
-[node name="DifficultyRow" type="HBoxContainer" parent="Center/Box"]
+[node name="DifficultyRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="DifficultyButton" type="Button" parent="Center/Box/DifficultyRow"]
+[node name="DifficultyButton" type="Button" parent="Scroll/Center/Box/DifficultyRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Difficulty: normal"
 
-[node name="ZoomRow" type="HBoxContainer" parent="Center/Box"]
+[node name="ZoomRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="ZoomButton" type="Button" parent="Center/Box/ZoomRow"]
+[node name="ZoomButton" type="Button" parent="Scroll/Center/Box/ZoomRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Zoom: 1.00x"
 
-[node name="UiScaleAutoRow" type="HBoxContainer" parent="Center/Box"]
+[node name="UiScaleAutoRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="UiScaleAutoButton" type="Button" parent="Center/Box/UiScaleAutoRow"]
+[node name="UiScaleAutoButton" type="Button" parent="Scroll/Center/Box/UiScaleAutoRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Auto GUI Scale: On"
 
-[node name="UiScaleRow" type="HBoxContainer" parent="Center/Box"]
+[node name="UiScaleRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="UiScaleButton" type="Button" parent="Center/Box/UiScaleRow"]
+[node name="UiScaleButton" type="Button" parent="Scroll/Center/Box/UiScaleRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "GUI Scale: Auto"
 
-[node name="OrientationRow" type="HBoxContainer" parent="Center/Box"]
+[node name="OrientationRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="OrientationButton" type="Button" parent="Center/Box/OrientationRow"]
+[node name="OrientationButton" type="Button" parent="Scroll/Center/Box/OrientationRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Orientation: Auto"
 
-[node name="UiModeRow" type="HBoxContainer" parent="Center/Box"]
+[node name="UiModeRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="UiModeButton" type="Button" parent="Center/Box/UiModeRow"]
+[node name="UiModeButton" type="Button" parent="Scroll/Center/Box/UiModeRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Interface: Auto"
 
-[node name="SfxRow" type="HBoxContainer" parent="Center/Box"]
+[node name="SfxRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="SfxButton" type="Button" parent="Center/Box/SfxRow"]
+[node name="SfxButton" type="Button" parent="Scroll/Center/Box/SfxRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Sound Effects: On"
 
-[node name="MusicRow" type="HBoxContainer" parent="Center/Box"]
+[node name="MusicRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="MusicButton" type="Button" parent="Center/Box/MusicRow"]
+[node name="MusicButton" type="Button" parent="Scroll/Center/Box/MusicRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Music: On"
 
-[node name="ContentPathRow" type="HBoxContainer" parent="Center/Box"]
+[node name="ContentPathRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 
-[node name="ContentPathButton" type="Button" parent="Center/Box/ContentPathRow"]
+[node name="ContentPathButton" type="Button" parent="Scroll/Center/Box/ContentPathRow"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 text = "Content Folder: user://content"
 
-[node name="ButtonRow" type="HBoxContainer" parent="Center/Box"]
+[node name="ButtonRow" type="HBoxContainer" parent="Scroll/Center/Box"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="ResetButton" type="Button" parent="Center/Box/ButtonRow"]
+[node name="ResetButton" type="Button" parent="Scroll/Center/Box/ButtonRow"]
 custom_minimum_size = Vector2(172, 48)
 layout_mode = 2
 text = "Reset"
 
-[node name="BackButton" type="Button" parent="Center/Box/ButtonRow"]
+[node name="BackButton" type="Button" parent="Scroll/Center/Box/ButtonRow"]
 custom_minimum_size = Vector2(172, 48)
 layout_mode = 2
 text = "Back"

@@ -73,6 +73,13 @@ func _smoke_scene(path: String) -> void:
 	add_child(node)
 	for i in range(3):
 		await get_tree().process_frame
+	# Capture the untouched screen (before any button press may navigate).
+	if OS.get_cmdline_user_args().has("--write-png"):
+		await RenderingServer.frame_post_draw
+		var img: Image = get_viewport().get_texture().get_image()
+		var out: String = "user://smoke_%s.png" % path.get_file().get_basename()
+		img.save_png(out)
+		print("SCENE_SMOKE wrote %s" % ProjectSettings.globalize_path(out))
 	var buttons: Array = node.find_children("*", "BaseButton", true, false)
 	var pressed: int = 0
 	for b in buttons:
@@ -110,4 +117,14 @@ func _smoke_scene(path: String) -> void:
 	print("SCENE_SMOKE_OK %s buttons=%d pressed=%d" % [path, buttons.size(), pressed])
 	if is_instance_valid(node):
 		node.queue_free()
+	# A navigating button may have swapped in a NEW current scene (and even
+	# started a match). Tear it down so it cannot pollute the next sweep.
+	var stray: Node = get_tree().current_scene
+	if stray != null and stray != node and is_instance_valid(stray):
+		var nexus: Node = get_tree().root.get_node_or_null("Nexus")
+		if nexus != null and nexus.has_method("shutdown_simulation"):
+			nexus.shutdown_simulation()
+		stray.queue_free()
+		get_tree().current_scene = null
+	await get_tree().process_frame
 	await get_tree().process_frame

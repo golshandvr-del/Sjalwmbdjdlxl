@@ -19,20 +19,20 @@ const MAIN_MENU_SCENE: String = "res://scenes/main_menu.tscn"
 var _settings: GameSettings = null
 var _loc: Localization = null
 
-@onready var _title: Label = $Center/Box/Title
-@onready var _locale_button: Button = $Center/Box/LocaleRow/LocaleButton
-@onready var _style_button: Button = $Center/Box/StyleRow/StyleButton
-@onready var _difficulty_button: Button = $Center/Box/DifficultyRow/DifficultyButton
-@onready var _zoom_button: Button = $Center/Box/ZoomRow/ZoomButton
-@onready var _ui_scale_auto_button: Button = $Center/Box/UiScaleAutoRow/UiScaleAutoButton
-@onready var _ui_scale_button: Button = $Center/Box/UiScaleRow/UiScaleButton
-@onready var _orientation_button: Button = $Center/Box/OrientationRow/OrientationButton
-@onready var _ui_mode_button: Button = $Center/Box/UiModeRow/UiModeButton
-@onready var _sfx_button: Button = $Center/Box/SfxRow/SfxButton
-@onready var _music_button: Button = $Center/Box/MusicRow/MusicButton
-@onready var _content_path_button: Button = $Center/Box/ContentPathRow/ContentPathButton
-@onready var _reset_button: Button = $Center/Box/ButtonRow/ResetButton
-@onready var _back_button: Button = $Center/Box/ButtonRow/BackButton
+@onready var _title: Label = $Scroll/Center/Box/Title
+@onready var _locale_button: Button = $Scroll/Center/Box/LocaleRow/LocaleButton
+@onready var _style_button: Button = $Scroll/Center/Box/StyleRow/StyleButton
+@onready var _difficulty_button: Button = $Scroll/Center/Box/DifficultyRow/DifficultyButton
+@onready var _zoom_button: Button = $Scroll/Center/Box/ZoomRow/ZoomButton
+@onready var _ui_scale_auto_button: Button = $Scroll/Center/Box/UiScaleAutoRow/UiScaleAutoButton
+@onready var _ui_scale_button: Button = $Scroll/Center/Box/UiScaleRow/UiScaleButton
+@onready var _orientation_button: Button = $Scroll/Center/Box/OrientationRow/OrientationButton
+@onready var _ui_mode_button: Button = $Scroll/Center/Box/UiModeRow/UiModeButton
+@onready var _sfx_button: Button = $Scroll/Center/Box/SfxRow/SfxButton
+@onready var _music_button: Button = $Scroll/Center/Box/MusicRow/MusicButton
+@onready var _content_path_button: Button = $Scroll/Center/Box/ContentPathRow/ContentPathButton
+@onready var _reset_button: Button = $Scroll/Center/Box/ButtonRow/ResetButton
+@onready var _back_button: Button = $Scroll/Center/Box/ButtonRow/BackButton
 
 
 func _ready() -> void:
