@@ -2,8 +2,7 @@
 
 [ext_resource type="Script" path="res://ui/shared/editor_hub.gd" id="1_editorhub"]
 
-[sub_resource type="GDScript" id="GDScript_bg"]
-script/source = "extends ColorRect"
+[ext_resource type="Script" path="res://ui/shared/skin_background.gd" id="skin_bg"]
 
 [node name="EditorHub" type="Control"]
 layout_mode = 3
@@ -14,12 +13,12 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_editorhub")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.0627451, 0.0745098, 0.105882, 1)
-script = SubResource("GDScript_bg")
+script = ExtResource("skin_bg")
+

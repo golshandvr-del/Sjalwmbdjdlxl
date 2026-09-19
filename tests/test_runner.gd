@@ -672,6 +672,8 @@ func _init() -> void:
 	test_g8_all_nav_scenes_exist()
 	test_g10_tool_stack_never_overlaps()
 	test_g12_main_menu_label_localized()
+	test_ui_skin_util_merge_and_resolve()
+	test_ui_skin_base_file_and_theme_build()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -11986,3 +11988,71 @@ func test_g12_main_menu_label_localized() -> void:
 		var text: String = loc.t("ui.game.main_menu")
 		_check(text != "" and text != "ui.game.main_menu", "ui.game.main_menu resolves in %s" % locale)
 		_check(text != loc.t("ui.menu.title"), "main-menu action label differs from the app title in %s" % locale)
+
+
+# GUI overhaul: the moddable UI skin. Pure merge/resolve logic, palette
+# parsing, per-screen background resolution, and the base skin file itself.
+func test_ui_skin_util_merge_and_resolve() -> void:
+	print("test_ui_skin_util_merge_and_resolve")
+	var base: Dictionary = { "a": 1, "nested": { "x": 1, "y": 2 }, "list": [1, 2] }
+	var over: Dictionary = { "nested": { "y": 20, "z": 30 }, "list": [9], "b": 2 }
+	var merged: Dictionary = UiSkinUtil.merge(base, over)
+	_check(int(merged["a"]) == 1 and int(merged["b"]) == 2, "top-level keys merge")
+	_check(int(merged["nested"]["x"]) == 1 and int(merged["nested"]["y"]) == 20 and int(merged["nested"]["z"]) == 30, "nested dictionaries deep-merge")
+	_check((merged["list"] as Array) == [9], "arrays are replaced, not concatenated")
+	_check(int(base["nested"]["y"]) == 2 and not base.has("b"), "inputs are not mutated")
+	# resolve: invalid layers skipped; later layers win.
+	var mod1: Dictionary = { "schema": UiSkinUtil.SCHEMA, "palette": { "accent": "#ff0000" } }
+	var bad: Dictionary = { "palette": { "accent": "#00ff00" } }  # no schema -> ignored
+	var mod2: Dictionary = { "schema": UiSkinUtil.SCHEMA, "backgrounds": { "main_menu": { "vignette": 0.1 } } }
+	var skin: Dictionary = UiSkinUtil.resolve([mod1, bad, mod2])
+	_check(UiSkinUtil.palette_color(skin, "accent", Color.BLACK) == Color("#ff0000"), "mod palette overrides base")
+	_check(UiSkinUtil.palette_color(skin, "text", Color.BLACK) != Color.BLACK, "untouched palette keys keep built-in values")
+	var bg: Dictionary = UiSkinUtil.background_for(skin, "main_menu")
+	_check(is_equal_approx(float(bg["vignette"]), 0.1), "per-screen background override applied")
+	_check(str(bg["top"]) != "", "per-screen background inherits default keys")
+	var unknown: Dictionary = UiSkinUtil.background_for(skin, "no_such_screen")
+	_check(unknown.has("top") and unknown.has("grid"), "unknown screen falls back to default background")
+	# colour parsing never crashes on garbage.
+	_check(UiSkinUtil.color("not a colour", Color.RED) == Color.RED, "garbage colour -> fallback")
+	_check(UiSkinUtil.color("", Color.RED) == Color.RED, "empty colour -> fallback")
+	_check(UiSkinUtil.color("#3d6fb4", Color.RED) == Color("#3d6fb4"), "hex colour parses")
+	_check(UiSkinUtil.int_of({ "r": -5 }, "r", 6, 0, 64) == 0, "int_of clamps low")
+	_check(UiSkinUtil.float_of({ "v": 9.0 }, "v", 0.5) == 1.0, "float_of clamps high")
+	_check(UiSkinUtil.screen_id_for("res://scenes/main_menu.tscn") == "main_menu", "screen id from scene path")
+
+
+func test_ui_skin_base_file_and_theme_build() -> void:
+	print("test_ui_skin_base_file_and_theme_build")
+	_check(FileAccess.file_exists(UiSkinService.BASE_SKIN_PATH), "base skin.json ships")
+	var raw: Variant = JSON.parse_string(FileAccess.get_file_as_string(UiSkinService.BASE_SKIN_PATH))
+	_check(UiSkinUtil.is_valid(raw), "base skin.json is a valid skin document")
+	var skin: Dictionary = UiSkinUtil.resolve([raw])
+	# Every scene NavService knows has a background entry or falls back cleanly.
+	for key in NavService.PARENTS.keys():
+		var id: String = UiSkinUtil.screen_id_for(str(key))
+		var bg: Dictionary = UiSkinUtil.background_for(skin, id)
+		_check(bg.has("top") and bg.has("bottom"), "background resolves for " + id)
+	var theme: Theme = UiSkinService.build_theme(skin)
+	_check(theme != null, "theme builds from skin")
+	_check(theme.has_stylebox("normal", "Button") and theme.has_stylebox("hover", "Button"), "button styleboxes present")
+	_check(theme.has_stylebox("panel", "PanelContainer"), "panel stylebox present")
+	_check(theme.has_stylebox("normal", "LineEdit"), "line edit stylebox present")
+	_check(theme.has_stylebox("tab_selected", "TabContainer"), "tab styleboxes present")
+	var normal: StyleBox = theme.get_stylebox("normal", "Button")
+	_check(normal is StyleBoxFlat and (normal as StyleBoxFlat).bg_color == Color("#3d6fb4"), "button colour comes from the palette")
+	# A broken mod skin cannot break the theme build.
+	var broken: Dictionary = { "schema": UiSkinUtil.SCHEMA, "palette": { "accent": "garbage" }, "button": { "corner_radius": -99, "font_size": "huge" } }
+	var theme2: Theme = UiSkinService.build_theme(UiSkinUtil.resolve([raw, broken]))
+	_check(theme2 != null and theme2.has_stylebox("normal", "Button"), "broken mod skin still yields a usable theme")
+	# Every scene that ships a Background node now uses SkinBackground.
+	var scenes_with_bg: int = 0
+	for key in NavService.PARENTS.keys():
+		var path: String = str(key)
+		if not FileAccess.file_exists(path):
+			continue
+		var text: String = FileAccess.get_file_as_string(path)
+		if text.contains('name="Background"'):
+			scenes_with_bg += 1
+			_check(text.contains("skin_background.gd"), "Background is skinnable in " + path.get_file())
+	_check(scenes_with_bg >= 12, "all nav scenes carry a skinnable background (%d)" % scenes_with_bg)

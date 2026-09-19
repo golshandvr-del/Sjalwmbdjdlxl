@@ -1,0 +1,97 @@
+{
+ "schema": "nexus_ui_skin_v1",
+ "id": "base",
+ "note": "Base UI skin. Mods override any key by shipping <mod>/ui_skin/skin.json (deep-merged, later mods win). Image paths resolve through TextureService roots so a mod may also just drop textures/ui/*.png. Missing images fall back to the procedural gradient+grid+vignette background.",
+ "palette": {
+  "bg": "#0e1219",
+  "panel": "#161c27",
+  "panel_border": "#2a3446",
+  "accent": "#3d6fb4",
+  "accent_hover": "#4d84d4",
+  "accent_pressed": "#2c5290",
+  "accent_disabled": "#2a3140",
+  "text": "#e0e8f2",
+  "text_dim": "#9aa7ba",
+  "title": "#e1be57",
+  "danger": "#c95a4a",
+  "success": "#5fb86a",
+  "field": "#0b0f16"
+ },
+ "button": {
+  "corner_radius": 6,
+  "border_width": 1,
+  "min_height": 44,
+  "font_size": 16
+ },
+ "panel": {
+  "corner_radius": 10,
+  "border_width": 1
+ },
+ "logo": "textures/ui/logo.png",
+ "backgrounds": {
+  "default": {
+   "top": "#141a26",
+   "bottom": "#090c12",
+   "image": "textures/ui/bg_default.png",
+   "overlay": "",
+   "vignette": 0.55,
+   "grid": 48,
+   "grid_alpha": 0.06
+  },
+  "main_menu": {
+   "image": "textures/ui/bg_main_menu.png",
+   "vignette": 0.65
+  },
+  "match_setup": {
+   "image": "textures/ui/bg_match_setup.png"
+  },
+  "custom_games": {
+   "image": "textures/ui/bg_match_setup.png"
+  },
+  "options_menu": {
+   "image": "textures/ui/bg_options.png"
+  },
+  "save_load_menu": {
+   "image": "textures/ui/bg_options.png"
+  },
+  "lobby": {
+   "image": "textures/ui/bg_lobby.png"
+  },
+  "editor_hub": {
+   "image": "textures/ui/bg_editor.png"
+  },
+  "editor_defaults": {
+   "image": "textures/ui/bg_editor.png"
+  },
+  "map_editor": {
+   "image": "textures/ui/bg_editor.png",
+   "vignette": 0.3
+  },
+  "mod_editor": {
+   "image": "textures/ui/bg_editor.png",
+   "vignette": 0.3
+  },
+  "gui_editor": {
+   "image": "textures/ui/bg_editor.png",
+   "vignette": 0.3
+  },
+  "ai_builder": {
+   "image": "textures/ui/bg_editor.png",
+   "vignette": 0.3
+  },
+  "game_main": {
+   "image": "",
+   "top": "#0b0e14",
+   "bottom": "#05070a",
+   "vignette": 0.0,
+   "grid": 0
+  },
+  "game_desktop": {
+   "image": "",
+   "top": "#0b0e14",
+   "bottom": "#05070a",
+   "vignette": 0.0,
+   "grid": 0
+  }
+ }
+}

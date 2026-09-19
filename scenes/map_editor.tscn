@@ -1,10 +1,8 @@
 [gd_scene load_steps=4 format=3 uid="uid://nexusmapeditor1"]
 
 [ext_resource type="Script" path="res://ui/shared/map_editor.gd" id="1_mapeditor"]
+[ext_resource type="Script" path="res://ui/shared/skin_background.gd" id="skin_bg"]
 [ext_resource type="Script" path="res://ui/shared/tile_grid.gd" id="2_tilegrid"]
-
-[sub_resource type="GDScript" id="GDScript_bg"]
-script/source = "extends ColorRect"
 
 [node name="MapEditor" type="Control"]
 layout_mode = 3
@@ -15,15 +13,14 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_mapeditor")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.0627451, 0.0745098, 0.105882, 1)
-script = SubResource("GDScript_bg")
+script = ExtResource("skin_bg")
 
 [node name="Root" type="VBoxContainer" parent="."]
 layout_mode = 1

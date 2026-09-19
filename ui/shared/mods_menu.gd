@@ -229,6 +229,10 @@ func _yes_dash(value: bool) -> String:
 
 func _persist() -> void:
 	_settings.save_to_file()
+	# GUI overhaul: the active-mod set feeds the UI skin; refresh it live.
+	var nexus: Node = get_tree().root.get_node_or_null("Nexus") if is_inside_tree() else null
+	if nexus != null and nexus.has_method("reload_ui_skin"):
+		nexus.reload_ui_skin()
 
 
 func _apply_ui_scale() -> void:

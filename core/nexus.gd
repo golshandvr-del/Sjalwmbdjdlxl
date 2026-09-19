@@ -40,6 +40,11 @@ const EVENT_COMMAND: String = "core.command"
 
 func _ready() -> void:
 	_build_core()
+	# GUI overhaul: build the data-driven UI skin (base skin.json + active
+	# mods) and apply its Theme to the root so every screen inherits it. The
+	# static .tres theme in project.godot remains the pre-skin fallback.
+	# Deferred: autoloads may _ready before the root window is fully sized.
+	_apply_ui_skin.call_deferred()
 	# Process every frame to drive the simulation clock.
 	set_process(true)
 	event_bus.emit(EVENT_BOOT, { "tick_rate": sim_clock.tick_rate })
@@ -260,3 +265,17 @@ func shutdown_simulation() -> void:
 	module_registry.shutdown_all()
 	command_queue.clear()
 	world_state.clear()
+
+
+# GUI overhaul: (re)apply the moddable UI skin. Also called by the Mods menu
+# after the active-mod set changes so a mod's skin shows up without restart.
+func _apply_ui_skin() -> void:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return
+	UiSkinService.current().apply_to_tree(tree)
+
+
+func reload_ui_skin() -> void:
+	UiSkinService.current().reload()
+	_apply_ui_skin()
