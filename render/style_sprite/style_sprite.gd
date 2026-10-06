@@ -141,9 +141,32 @@ func _draw_visual(canvas, rect: Rect2, visual: Dictionary, owner: int, fill: flo
 	var scale: float = float(visual.get("size_scale", 1.0))
 	var draw_size: Vector2 = rect.size * fill * scale
 	var pos: Vector2 = rect.position + (rect.size - draw_size) * 0.5
+	# BUG-G14 (GUI audit): authored-colour art is drawn untinted (G7), and every
+	# shipped catalog entry declares a colour -- so textured sprites carried NO
+	# team identity at all (red and blue soldiers looked identical). A
+	# team-coloured base plate is drawn UNDER the art: a ring for units
+	# (fill < 1.0 callers are buildings-in-construction etc. -> still framed),
+	# a frame for buildings. Pure render-side; mods inherit it for free.
+	_draw_team_plate(canvas, rect, owner, str(visual.get("shape", "")) == "square")
 	var tint: Color = _tint_color(visual, owner)
 	canvas.draw_texture_rect(tex, Rect2(pos, draw_size), false, tint)
 	return true
+
+
+# BUG-G14: team marker under a textured sprite. `boxy` -> rectangular frame
+# (buildings / vehicles), otherwise a ground ring (infantry-like units).
+func _draw_team_plate(canvas, rect: Rect2, owner: int, boxy: bool) -> void:
+	var team: Color = owner_color(owner)
+	var soft: Color = Color(team.r, team.g, team.b, 0.30)
+	if boxy:
+		var frame: Rect2 = rect.grow(-rect.size.x * 0.06)
+		canvas.draw_rect(frame, soft, true)
+		canvas.draw_rect(frame, team, false, 2.0)
+	else:
+		var center: Vector2 = rect.position + rect.size * 0.5
+		var radius: float = rect.size.x * 0.44
+		canvas.draw_circle(center, radius, soft)
+		canvas.draw_arc(center, radius, 0.0, TAU, 24, team, 2.0, true)
 
 
 # The fill/tint color: explicit `visual.color` if valid, else the owner color.

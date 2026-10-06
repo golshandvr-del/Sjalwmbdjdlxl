@@ -672,6 +672,7 @@ func _init() -> void:
 	test_g8_all_nav_scenes_exist()
 	test_g10_tool_stack_never_overlaps()
 	test_g12_main_menu_label_localized()
+	test_g14_textured_sprites_carry_team_colour()
 	test_ui_skin_util_merge_and_resolve()
 	test_ui_skin_base_file_and_theme_build()
 	_print_summary()
@@ -12056,3 +12057,35 @@ func test_ui_skin_base_file_and_theme_build() -> void:
 			scenes_with_bg += 1
 			_check(text.contains("skin_background.gd"), "Background is skinnable in " + path.get_file())
 	_check(scenes_with_bg >= 12, "all nav scenes carry a skinnable background (%d)" % scenes_with_bg)
+
+
+class ColorRecordingCanvas extends RefCounted:
+	var colors: Array = []
+	func draw_rect(_r: Rect2, c: Color, _f: bool = true, _w: float = -1.0) -> void:
+		colors.append(c)
+	func draw_circle(_p: Vector2, _r: float, c: Color, _f: bool = true, _w: float = -1.0, _aa: bool = true) -> void:
+		colors.append(c)
+	func draw_arc(_p: Vector2, _r: float, _a: float, _b: float, _n: int, c: Color, _w: float = -1.0, _aa: bool = true) -> void:
+		colors.append(c)
+	func draw_texture_rect(_t: Texture2D, _r: Rect2, _tile: bool = false, _m: Color = Color.WHITE, _tr: bool = false) -> void:
+		pass
+	func draw_line(_a: Vector2, _b: Vector2, c: Color, _w: float = -1.0, _aa: bool = false) -> void:
+		colors.append(c)
+
+
+# BUG-G14 (GUI audit): textured units/buildings of different owners must be
+# visually distinguishable (a team-coloured plate is drawn under the art).
+func test_g14_textured_sprites_carry_team_colour() -> void:
+	print("test_g14_textured_sprites_carry_team_colour")
+	var style: StyleSprite = StyleSprite.new()
+	style.texture_service = TextureService.new()
+	var visual: Dictionary = { "shape": "circle", "color": "#4CB0F2", "texture": "textures/soldier.png" }
+	for owner in [0, 1]:
+		var canvas: ColorRecordingCanvas = ColorRecordingCanvas.new()
+		style.draw_unit(canvas, Rect2(0, 0, 32, 32), { "owner": owner, "visual": visual, "health": 10, "max_health": 10 }, false)
+		_check(canvas.colors.has(style.owner_color(owner)), "unit of owner %d draws its team colour" % owner)
+	var bvis: Dictionary = { "shape": "square", "color": "#3E78C8", "texture": "textures/hq.png" }
+	for owner in [0, 1]:
+		var canvas2: ColorRecordingCanvas = ColorRecordingCanvas.new()
+		style.draw_building(canvas2, Rect2(0, 0, 32, 32), { "owner": owner, "visual": bvis, "health": 10, "max_health": 10 })
+		_check(canvas2.colors.has(style.owner_color(owner)), "building of owner %d draws its team colour" % owner)
