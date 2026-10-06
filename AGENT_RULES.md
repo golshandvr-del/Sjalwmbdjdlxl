@@ -1,3 +1,9 @@
+> **AI agents (OpenHands etc.): read `AGENTS.md` first. It takes precedence over this
+> file for AI-driven work.** Corrections to the rules below (decision DEC-003 in
+> `docs/ai/DECISIONS.md`): the git remote is `origin` (not `github`); AI agents commit
+> and push immediately to their task branch `oh/<task-id>-<slug>`, never to `main`;
+> rule 3 (`project-nexus/` folder) is obsolete — the repository root is the project.
+
 # ⛔ قوانین الزامی و غیرقابل نادیده‌گرفتن برای هر عامل/توسعه‌دهنده (AGENT RULES)
 
 > این فایل یک **دستور الزامی** است. هر عامل هوش مصنوعی یا توسعه‌دهنده‌ای که روی این
