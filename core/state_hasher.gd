@@ -41,7 +41,7 @@ const _FLOAT_DECIMALS: int = 6
 # from the lockstep sync checksum -- otherwise two perfectly-synced peers would
 # falsely report a desync. Gameplay state (units, buildings, economy, tech, map,
 # ...) is fully shared and so is always hashed.
-const _LOCAL_SECTIONS: Array = ["lockstep"]
+const _LOCAL_SECTIONS: Array = ["lockstep", "local_selection"]
 
 
 # Hash an entire WorldState into a stable 64-bit integer.
@@ -113,6 +113,11 @@ static func _hash_value(h: int, value: Variant) -> int:
 	elif value is int:
 		return _mix_int(h, int(value))
 	elif value is float:
+		# An integral float (e.g. 3.0) hashes exactly like the int 3, because a JSON
+		# save round-trip turns every int into a float (JSON has one number type).
+		var f: float = float(value)
+		if f == floorf(f) and absf(f) < 9007199254740992.0:
+			return _mix_int(h, int(f))
 		# Quantize to fixed decimals, then hash the integer representation.
 		var scaled: int = int(round(float(value) * pow(10.0, _FLOAT_DECIMALS)))
 		return _mix_int(h, scaled)
