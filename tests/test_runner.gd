@@ -702,6 +702,8 @@ func _init() -> void:
 	test_t004_hud_logic_chat_history_entries()
 	test_t004_hud_logic_build_mission_proposal()
 	test_t004_huds_delegate_wp2_logic()
+	test_t004_two_peer_ai_match_stays_in_sync()
+	test_t004_save_load_mid_battle_is_transparent()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10493,6 +10495,82 @@ func test_t004_hud_logic_build_mission_proposal() -> void:
 	_check(str((d["treaty"] as Dictionary).get("type", "")) == TreatyUtil.REQUEST_DEFENSE, "T004 defend mission -> REQUEST_DEFENSE treaty")
 	_check(HudLogicUtil.build_mission_proposal(0, 0, MissionRequestUtil.ATTACK, 3, 4, 50, 10).is_empty(), "T004 self-target refused")
 	_check(HudLogicUtil.build_mission_proposal(0, 1, MissionRequestUtil.ATTACK, -1, 4, 50, 10).is_empty(), "T004 negative cell refused")
+
+# --- T004 WP3: long-run determinism guards ----------------------------------
+func _t004_battle_scenario(seed_value: int) -> Dictionary:
+	return {
+		"random_seed": seed_value,
+		"map": { "width": 20, "height": 10, "walls": [] },
+		"players": [
+			{ "owner": 0, "is_human": false, "start_resources": { "resource_basic": 600 } },
+			{ "owner": 1, "is_human": false, "start_resources": { "resource_basic": 600 } },
+		],
+		"buildings": [
+			{ "type": "hq", "owner": 0, "x": 0, "y": 5 },
+			{ "type": "hq", "owner": 1, "x": 19, "y": 5 },
+		],
+		"units": [
+			{ "type": "soldier", "owner": 0, "x": 2, "y": 4 },
+			{ "type": "soldier", "owner": 0, "x": 2, "y": 6 },
+			{ "type": "soldier", "owner": 1, "x": 17, "y": 4 },
+			{ "type": "soldier", "owner": 1, "x": 17, "y": 6 },
+		],
+	}
+
+
+func test_t004_two_peer_ai_match_stays_in_sync() -> void:
+	print("test_t004_two_peer_ai_match_stays_in_sync")
+	var transport: LoopbackTransport = LoopbackTransport.new()
+	var peers: Array = []
+	for pid in [0, 1]:
+		var nexus: TickHarness = TickHarness.new()
+		GameBootstrap.setup_for_test(nexus, _t004_battle_scenario(9001))
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		lock.start_session([0, 1], pid, 3)
+		transport.attach(pid, lock, nexus.event_bus)
+		peers.append(nexus)
+	var horizon: int = 600
+	for nexus in peers:
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		for t in range(1, horizon + 1):
+			lock.flush_empty_turn_for(t)
+	var mismatch_tick: int = -1
+	for t in range(1, horizon + 1):
+		for nexus in peers:
+			var lock: LockstepModule = nexus.get_module("multiplayer")
+			lock.inject_commands_for_tick(t)
+			nexus.run_ticks(1)
+		if mismatch_tick < 0 and t % 50 == 0:
+			if StateHasher.hash_world(peers[0].world_state) != StateHasher.hash_world(peers[1].world_state):
+				mismatch_tick = t
+	if mismatch_tick >= 0:
+		print("  first hash mismatch at tick ", mismatch_tick)
+	_check(mismatch_tick < 0, "T004 600-tick AI-vs-AI lockstep match: hashes equal at every 50-tick checkpoint")
+	_check(not (peers[0].get_module("multiplayer") as Object).has_desync(), "T004 long match: no desync on peer 0")
+	_check(not (peers[1].get_module("multiplayer") as Object).has_desync(), "T004 long match: no desync on peer 1")
+
+
+func test_t004_save_load_mid_battle_is_transparent() -> void:
+	print("test_t004_save_load_mid_battle_is_transparent")
+	for seed_value in [11, 222, 3333]:
+		var ref: TickHarness = TickHarness.new()
+		GameBootstrap.setup_for_test(ref, _t004_battle_scenario(seed_value))
+		ref.run_ticks(500)
+		var expected: int = StateHasher.hash_world(ref.world_state)
+		for cut in [1, 120, 333]:
+			var a: TickHarness = TickHarness.new()
+			GameBootstrap.setup_for_test(a, _t004_battle_scenario(seed_value))
+			a.run_ticks(cut)
+			var sa: SaveSystem = SaveSystem.new()
+			sa.setup(a)
+			var text: String = JSON.stringify(sa.build_snapshot())
+			var b: TickHarness = TickHarness.new()
+			GameBootstrap.setup_for_test(b, _t004_battle_scenario(seed_value))
+			var sb: SaveSystem = SaveSystem.new()
+			sb.setup(b)
+			_check(sb.apply_snapshot(JSON.parse_string(text)), "T004 seed %d cut %d snapshot accepted" % [seed_value, cut])
+			b.run_ticks(500 - cut)
+			_check(StateHasher.hash_world(b.world_state) == expected, "T004 seed %d: save/load at tick %d then continue == uninterrupted 500 ticks" % [seed_value, cut])
 
 class TickHarness extends RefCounted:
 	var world_state: WorldState = WorldState.new()
