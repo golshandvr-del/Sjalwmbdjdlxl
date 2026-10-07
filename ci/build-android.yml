@@ -19,7 +19,7 @@ on:
     tags: [ "v*" ]
 
 env:
-  GODOT_VERSION: "4.2.2"
+  GODOT_VERSION: "4.7.2"
   GODOT_RELEASE: "stable"
 
 jobs:
