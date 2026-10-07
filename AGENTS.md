@@ -13,9 +13,11 @@ Deep reference only when needed: `docs/STRUCTURE.md`, `docs/CODE_MAP.md`
 - Branch per task: `oh/<task-id>-<slug>` from latest `main`. Never push to `main`. Never merge.
 - Commit + push after each logical step (anti-loss rule). English commit messages.
 - Stage files by explicit path only. Never `git add -A` / `git add .`.
-- Never commit Godot side effects: modified `*.import`, new `*.uid`, `.godot/`.
-  Cleanup: `git ls-files -m -- '*.import' | xargs -r git checkout --` and
-  `git ls-files -o --exclude-standard -- '*.uid' | xargs -r rm -f`.
+- `.uid` policy (DEC-007, since T002): every `*.gd.uid` is tracked. When you add a
+  new script, commit its generated `.uid` together with it. Never commit `.godot/`.
+- After the editor import the tree must be clean (gate G5). If Godot modifies files
+  you did not intend to touch, revert them:
+  `git ls-files -m -- '*.import' | xargs -r git checkout --`.
 - Never write tokens/credentials into files, remotes, logs or reports.
 
 ## 2. Scope discipline (forbidden unless the task says so)
@@ -24,7 +26,9 @@ Deep reference only when needed: `docs/STRUCTURE.md`, `docs/CODE_MAP.md`
 - New dependencies, plugins, addons, autoloads.
 - Changing internal APIs, event names, command types, WorldState section keys,
   save format (`SAVE_VERSION`), `.nexpack` format, data schemas.
-- Editing `project.godot`, `export_presets.cfg`, `.gitignore`, `ci/`.
+- Editing `project.godot`, `export_presets.cfg`, `.gitignore`, `ci/`, `.github/`.
+- Excluding `tools/*` from export: `tools/` holds RUNTIME classes (StatRegistry,
+  AiProfile, GuiProject ...) used by core/, modules/, ui/ (KI-10).
 - Editing or deleting existing tests to make them pass.
 - Modifying unrelated assets/scenes.
 
@@ -50,11 +54,21 @@ Deep reference only when needed: `docs/STRUCTURE.md`, `docs/CODE_MAP.md`
   - G3 `godot --headless --path . res://tools/scene_smoke.tscn` -> `SCENE_SMOKE_DONE failures=0`
   - G4 `godot --headless --path . res://tools/game_smoke.tscn` -> `GAME_SMOKE_DONE failures=0`
   - Run `godot --headless --editor --quit --path .` (twice on a fresh checkout) before G1.
+  - G5 `git status --porcelain` is empty after G0-G4 (no Godot side effects).
+  - G6 exported pack boots: `godot --headless --path . --export-pack "Android" /tmp/nexus.pck`
+    then (from an empty dir) `godot --headless --main-pack /tmp/nexus.pck --quit-after 300`
+    must print no `SCRIPT ERROR` / `ERROR: Failed to load`.
+  - The same gates run on GitHub Actions (`.github/workflows/ci.yml`) for `main`,
+    `oh/**`, `claude/**` and PRs. A red CI run means the task is not done.
 - Every new test function in `tests/test_runner.gd` MUST also be added to the call list
   in `_init()` (before `_print_summary()`), or it never runs. Use `_check(cond, label)`.
 - Bug fixes come with a regression test that fails before the fix.
 - If a test and code disagree: assume the code is right and the test stale, unless
   evidence says otherwise — and report it; do not silently edit tests.
+
+## 4.1 Known Godot traps for this repo
+See `docs/ai/GODOT_PITFALLS.md` before touching save/load, hashing, export,
+SimClock, signals or localization.
 
 ## 5. Ambiguity policy
 1. Look for the answer in repo code/docs/conventions. 2. If inferable, decide.
