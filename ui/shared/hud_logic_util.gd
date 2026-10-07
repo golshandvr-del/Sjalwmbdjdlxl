@@ -86,3 +86,41 @@ static func style_label_key(style_id: String) -> String:
 			return "ui.game.style_sprite"
 		_:
 			return "ui.game.style_simple"
+
+
+# --- T004 WP2: match result, chat history, mission proposal ------------------
+
+# Localization key of the end-of-match banner for `local_player`.
+static func match_result_key(winner: int, local_player: int) -> String:
+	if winner == local_player:
+		return "ui.game.victory"
+	if winner < 0:
+		return "ui.game.draw"
+	return "ui.game.defeat"
+
+
+# Messages to show in the chat history: everything visible to `viewer` when
+# `recipient` is BROADCAST, otherwise the viewer<->recipient conversation.
+static func chat_history_entries(log: Array, viewer: int, recipient: int) -> Array:
+	if recipient == MessageLogUtil.BROADCAST:
+		return MessageLogUtil.filter_for_owner(log, viewer)
+	return MessageLogUtil.conversation(log, viewer, recipient)
+
+
+# Build the mission + carrying treaty for a strategic request. Returns
+# { "mission": Dictionary, "treaty": Dictionary } or {} when invalid
+# (target == sender, bad type, invalid mission or treaty).
+static func build_mission_proposal(sender: int, target: int, mission_type: String,
+		cell_x: int, cell_y: int, commitment: int, tick: int) -> Dictionary:
+	if target == sender:
+		return {}
+	var mission: Dictionary = MissionRequestUtil.make_mission(
+		sender, target, mission_type, cell_x, cell_y, commitment)
+	if not MissionRequestUtil.is_valid(mission):
+		return {}
+	var treaty_type: String = TreatyUtil.REQUEST_DEFENSE if mission_type == MissionRequestUtil.DEFEND else TreatyUtil.REQUEST_ATTACK
+	var treaty: Dictionary = TreatyUtil.make_treaty(
+		treaty_type, sender, target, { "mission": mission }, {}, 0, tick)
+	if not TreatyUtil.is_valid(treaty):
+		return {}
+	return { "mission": mission, "treaty": treaty }

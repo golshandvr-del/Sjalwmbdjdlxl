@@ -915,14 +915,7 @@ func _on_restart_pressed() -> void:
 
 func _on_match_over(_event_name: String, payload: Dictionary) -> void:
 	var winner: int = int(payload.get("winner", -1))
-	var text: String = ""
-	if winner == LOCAL_PLAYER:
-		text = _local_text("ui.game.victory")
-	elif winner < 0:
-		text = _local_text("ui.game.draw")
-	else:
-		text = _local_text("ui.game.defeat")
-	_overlay_label.text = text
+	_overlay_label.text = _local_text(HudLogicUtil.match_result_key(winner, LOCAL_PLAYER))
 	_overlay.visible = true
 	# Stop the simulation so nothing moves behind the overlay.
 	Nexus.sim_clock.pause()
@@ -1306,11 +1299,7 @@ func _refresh_chat_history() -> void:
 	if _msg_history == null:
 		return
 	var recipient: int = _selected_owner(_msg_recipient, MessageLogUtil.BROADCAST)
-	var shown: Array
-	if recipient == MessageLogUtil.BROADCAST:
-		shown = MessageLogUtil.filter_for_owner(_msg_log, LOCAL_PLAYER)
-	else:
-		shown = MessageLogUtil.conversation(_msg_log, LOCAL_PLAYER, recipient)
+	var shown: Array = HudLogicUtil.chat_history_entries(_msg_log, LOCAL_PLAYER, recipient)
 	if shown.is_empty():
 		_msg_history.text = _local_text("ui.msg.no_messages")
 		return
@@ -1359,22 +1348,15 @@ func _on_mission_send_pressed() -> void:
 	if diplomacy == null:
 		return
 	var target: int = _selected_owner(_mission_target_opt, LOCAL_PLAYER)
-	if target == LOCAL_PLAYER:
-		return
 	var mtype: String = str(MissionRequestUtil.TYPES[max(0, _mission_type_opt.selected)])
-	var mission: Dictionary = MissionRequestUtil.make_mission(
+	var proposal: Dictionary = HudLogicUtil.build_mission_proposal(
 		LOCAL_PLAYER, target, mtype,
 		int(_mission_cell_x.value), int(_mission_cell_y.value),
-		int(_mission_commit.value))
-	if not MissionRequestUtil.is_valid(mission):
+		int(_mission_commit.value), int(Nexus.world_state.current_tick))
+	if proposal.is_empty():
 		return
-	var treaty_type: String = TreatyUtil.REQUEST_DEFENSE if mtype == MissionRequestUtil.DEFEND else TreatyUtil.REQUEST_ATTACK
-	var treaty: Dictionary = TreatyUtil.make_treaty(
-		treaty_type, LOCAL_PLAYER, target, { "mission": mission }, {}, 0,
-		int(Nexus.world_state.current_tick))
-	if not TreatyUtil.is_valid(treaty):
-		return
-	diplomacy.issue_propose(LOCAL_PLAYER, treaty)
+	var mission: Dictionary = proposal["mission"]
+	diplomacy.issue_propose(LOCAL_PLAYER, proposal["treaty"])
 	MessageLogUtil.append_message(_msg_log, MessageLogUtil.make_message(
 		LOCAL_PLAYER, target,
 		_local_text("ui.msg.mission_send") + ": " + mtype,

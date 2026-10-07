@@ -698,6 +698,10 @@ func _init() -> void:
 	test_t004_huds_delegate_to_shared_logic()
 	test_t004_dynamic_localization_keys_exist()
 	test_t004_save_manager_slot_cycle()
+	test_t004_hud_logic_match_result_key()
+	test_t004_hud_logic_chat_history_entries()
+	test_t004_hud_logic_build_mission_proposal()
+	test_t004_huds_delegate_wp2_logic()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10448,6 +10452,47 @@ func test_t004_save_manager_slot_cycle() -> void:
 		if str(e.get("slot_id", "")) == slot:
 			still = true
 	_check(not still, "T004 deleted slot no longer listed")
+
+# --- T004 WP2: match result / chat history / mission proposal ---------------
+func test_t004_hud_logic_match_result_key() -> void:
+	print("test_t004_hud_logic_match_result_key")
+	_check(HudLogicUtil.match_result_key(0, 0) == "ui.game.victory", "T004 winner == local -> victory")
+	_check(HudLogicUtil.match_result_key(-1, 0) == "ui.game.draw", "T004 winner < 0 -> draw")
+	_check(HudLogicUtil.match_result_key(1, 0) == "ui.game.defeat", "T004 other winner -> defeat")
+
+
+func test_t004_hud_logic_chat_history_entries() -> void:
+	print("test_t004_hud_logic_chat_history_entries")
+	var log: Array = []
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(0, 1, "a", 1))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(1, 2, "b", 2))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(2, MessageLogUtil.BROADCAST, "c", 3))
+	var all_for_0: Array = HudLogicUtil.chat_history_entries(log, 0, MessageLogUtil.BROADCAST)
+	_check(all_for_0 == MessageLogUtil.filter_for_owner(log, 0), "T004 broadcast view == filter_for_owner")
+	var conv: Array = HudLogicUtil.chat_history_entries(log, 0, 1)
+	_check(conv == MessageLogUtil.conversation(log, 0, 1), "T004 recipient view == conversation")
+	_check(conv.size() == 2, "T004 0<->1 conversation = private message + broadcast")
+
+
+func test_t004_huds_delegate_wp2_logic() -> void:
+	print("test_t004_huds_delegate_wp2_logic")
+	for path in ["res://ui/mobile/game_hud.gd", "res://ui/desktop/desktop_hud.gd"]:
+		var text: String = FileAccess.get_file_as_string(path)
+		for call in ["HudLogicUtil.match_result_key(", "HudLogicUtil.chat_history_entries(",
+				"HudLogicUtil.build_mission_proposal("]:
+			_check(text.contains(str(call)), "T004 %s calls %s" % [path.get_file(), str(call)])
+		_check(not text.contains("TreatyUtil.REQUEST_DEFENSE"), "T004 %s no longer picks the mission treaty type itself" % path.get_file())
+
+
+func test_t004_hud_logic_build_mission_proposal() -> void:
+	print("test_t004_hud_logic_build_mission_proposal")
+	var p: Dictionary = HudLogicUtil.build_mission_proposal(0, 1, MissionRequestUtil.ATTACK, 3, 4, 50, 10)
+	_check(p.has("mission") and p.has("treaty"), "T004 valid request builds mission + treaty")
+	_check(str((p["treaty"] as Dictionary).get("type", "")) == TreatyUtil.REQUEST_ATTACK, "T004 attack mission -> REQUEST_ATTACK treaty")
+	var d: Dictionary = HudLogicUtil.build_mission_proposal(0, 1, MissionRequestUtil.DEFEND, 3, 4, 50, 10)
+	_check(str((d["treaty"] as Dictionary).get("type", "")) == TreatyUtil.REQUEST_DEFENSE, "T004 defend mission -> REQUEST_DEFENSE treaty")
+	_check(HudLogicUtil.build_mission_proposal(0, 0, MissionRequestUtil.ATTACK, 3, 4, 50, 10).is_empty(), "T004 self-target refused")
+	_check(HudLogicUtil.build_mission_proposal(0, 1, MissionRequestUtil.ATTACK, -1, 4, 50, 10).is_empty(), "T004 negative cell refused")
 
 class TickHarness extends RefCounted:
 	var world_state: WorldState = WorldState.new()
