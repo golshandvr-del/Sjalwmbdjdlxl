@@ -57,6 +57,7 @@ static, deterministic, no SceneTree).
 - `render/render_adapter.gd` (Node2D under WorldLayer) + styles simple/detailed/sprite.
 - HUDs: `ui/mobile/game_hud.gd` (`scenes/game_main.tscn`), `ui/desktop/desktop_hud.gd`
   (`scenes/game_desktop.tscn`); choice by `ui_mode` setting. Shared screens in `ui/shared/`.
+  Shared pure HUD decisions: `ui/shared/hud_logic_util.gd` (HudLogicUtil, DEC-015).
 - Text: `Localization.t(key)`; files `localization/en.json`, `localization/fa.json`.
 
 ## AI pipeline (modules/ai_commander/, fixed-point SCALE=1000)

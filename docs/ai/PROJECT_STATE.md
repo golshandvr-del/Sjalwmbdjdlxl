@@ -1,9 +1,9 @@
 # Project state (agent reference)
 Update at the end of every approved task (Claude provides the text).
 
-## Baseline (after T003)
+## Baseline (after T004)
 - Version 0.6.0. Engine Godot 4.7 (verified with 4.7.2). Roadmap P0-P9 complete.
-- Gates: G1 lint 246 files no violations; G2 tests Total 4409 / Passed 4409 /
+- Gates: G1 lint 246 files no violations; G2 tests Total 4506 / Passed 4506 /
   Failed 0 / Skipped 0; G3 scene smoke failures=0 navigations=11; G4 game smoke
   failures=0; G5 clean tree after import; G6 exported Android pack boots with 0
   script errors. GitHub Actions CI runs G1-G6.
@@ -30,8 +30,10 @@ Update at the end of every approved task (Claude provides the text).
 ## Open known issues
 - KI-5 First editor import on a fresh checkout logs Vazirmatn font/theme errors
   (second import clean). Cosmetic; CI imports twice.
-- KI-7 Mobile/desktop HUD logic partly duplicated (`ui/mobile/game_hud.gd`,
-  `ui/desktop/desktop_hud.gd`). Refactor only via a dedicated task.
+- KI-7 (partly resolved T004) Pure HUD decisions now live in `ui/shared/hud_logic_util.gd`
+  (HudLogicUtil): local HQ, next research node, controlled owners, owner count,
+  speed cycle, style label key, match result key, chat history, mission proposal.
+  Remaining duplication is node-building/UI code (tab builders, input handlers) -> T005.
 - KI-11 `docs/STRUCTURE.md` history still describes `docs/BUG_REPORT.md` (historical
   text, intentionally kept).
 - Device-only confirmations pending: see docs/PLAN_ANDROID_FIXES_V2.md (bottom).
@@ -42,7 +44,8 @@ Update at the end of every approved task (Claude provides the text).
 | T001 | AI workflow bootstrap | merged (PR #1) | oh/T001-ai-workflow-bootstrap | APPROVED |
 | T002 | Hardening: determinism, export, CI, docs | merged (PR #2) | claude/T002-hardening | done by Claude |
 | T003 | Hardening 2: save validation, ui_prefs hash, app pause, l10n guard | merged (PR #3) | claude/T003-hardening | done by Claude |
-| T004 | Shared HUD controller (KI-7) + QA | assigned to OpenHands | oh/T004-hud-shared-controller | - |
+| T004 | HudLogicUtil (KI-7 part 1) + save/QA + long-run determinism tests | merged (PR #4) | claude/T004-reference | done by Claude |
+| T005 | HUD dedup part 2 + scenario determinism matrix + docs | assigned to OpenHands | oh/T005-hud-dedup-scenarios | - |
 
 ## Candidate next tasks (Claude decides)
 - T005 Android device QA checklist automation (what can be tested headless).
