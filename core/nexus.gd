@@ -170,6 +170,26 @@ func toggle_pause() -> void:
 	set_paused(not sim_clock.is_paused())
 
 
+# T003 (KI-15): Android/iOS send APPLICATION_PAUSED when the app goes to the
+# background (home button, incoming call, screen off). A single-player match is
+# paused so the player does not come back to a lost battle. Networked lockstep
+# sessions are NOT paused locally (one peer cannot stop the shared clock); the
+# SimClock delta clamp (KI-9) already prevents a catch-up burst on resume. The
+# game stays paused after resume: the player resumes it explicitly.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		handle_app_backgrounded()
+
+
+func handle_app_backgrounded() -> bool:
+	if sim_clock == null or not sim_clock.running or sim_clock.is_paused():
+		return false
+	if _networked_lockstep() != null:
+		return false
+	set_paused(true)
+	return true
+
+
 # Godot main loop: convert real time into discrete simulation ticks.
 #
 # Two paths:
