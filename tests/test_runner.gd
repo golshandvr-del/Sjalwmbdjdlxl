@@ -675,6 +675,15 @@ func _init() -> void:
 	test_g14_textured_sprites_carry_team_colour()
 	test_ui_skin_util_merge_and_resolve()
 	test_ui_skin_base_file_and_theme_build()
+	test_t002_local_selection_does_not_desync_peers()
+	test_t002_hasher_excludes_local_selection()
+	test_t002_hash_integral_float_equals_int()
+	test_t002_json_round_trip_preserves_world_hash()
+	test_t002_json_reload_then_continue_matches_uninterrupted_run()
+	test_t002_sim_sources_have_no_wallclock_or_unseeded_rng()
+	test_t002_sim_clock_clamps_huge_delta()
+	test_t002_export_filter_keeps_runtime_tool_classes()
+	test_t002_ui_bus_subscribers_unsubscribe_on_exit()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -9910,6 +9919,247 @@ func _first_building_of(nexus: Object, owner: int) -> int:
 # Implements the subset of the Nexus surface the modules + bootstrap need, and
 # actually advances ticks: dispatching due commands then ticking modules, just
 # like Nexus._run_single_tick(). No real-time clock, no autoload.
+# --- T002: local selection must never affect the lockstep checksum (KI-6) ----
+func _t002_two_peer_harnesses(seed_value: int) -> Array:
+	var transport: LoopbackTransport = LoopbackTransport.new()
+	var peers: Array = []
+	for pid in [0, 1]:
+		var nexus: TickHarness = TickHarness.new()
+		var scenario: Dictionary = {
+			"random_seed": seed_value,
+			"map": { "width": 12, "height": 5, "walls": [] },
+			"players": [
+				{ "owner": 0, "is_human": true, "start_resources": { "resource_basic": 200 } },
+				{ "owner": 1, "is_human": true, "start_resources": { "resource_basic": 200 } },
+			],
+			"buildings": [
+				{ "type": "hq", "owner": 0, "x": 0, "y": 2 },
+				{ "type": "hq", "owner": 1, "x": 11, "y": 2 },
+			],
+			"units": [
+				{ "type": "soldier", "owner": 0, "x": 1, "y": 2 },
+				{ "type": "soldier", "owner": 1, "x": 10, "y": 2 },
+			],
+		}
+		GameBootstrap.setup_for_test(nexus, scenario)
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		lock.start_session([0, 1], pid, 3)
+		transport.attach(pid, lock, nexus.event_bus)
+		peers.append(nexus)
+	return peers
+
+
+func test_t002_local_selection_does_not_desync_peers() -> void:
+	print("test_t002_local_selection_does_not_desync_peers")
+	var peers: Array = _t002_two_peer_harnesses(4242)
+	# Only peer 0 selects a unit (local presentation command, never networked).
+	(peers[0] as TickHarness).issue_command("select_units", 0, { "owner": 0, "unit_ids": [1] })
+	var horizon: int = 20
+	for nexus in peers:
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		for t in range(1, horizon + 1):
+			lock.flush_empty_turn_for(t)
+	for t in range(1, horizon + 1):
+		for nexus in peers:
+			var lock: LockstepModule = nexus.get_module("multiplayer")
+			lock.inject_commands_for_tick(t)
+			nexus.run_ticks(1)
+	var h0: int = StateHasher.hash_world(peers[0].world_state)
+	var h1: int = StateHasher.hash_world(peers[1].world_state)
+	_check(h0 == h1, "T002 local-only selection keeps both peers' sim hashes identical")
+	_check(not (peers[0].get_module("multiplayer") as Object).has_desync(), "T002 local-only selection reports no desync on peer 0")
+	_check(not (peers[1].get_module("multiplayer") as Object).has_desync(), "T002 local-only selection reports no desync on peer 1")
+	var sel: Dictionary = peers[0].world_state.get_section("local_selection")
+	_check(sel.get("0", []) == [1], "T002 selection stored in local_selection section")
+	_check(not peers[0].world_state.get_section("units").has("selected"), "T002 units section no longer carries selection")
+
+
+func test_t002_hasher_excludes_local_selection() -> void:
+	print("test_t002_hasher_excludes_local_selection")
+	var w: WorldState = WorldState.new()
+	w.get_section("units")["list"] = { "1": { "id": 1, "x": 2, "y": 3 } }
+	var before: int = StateHasher.hash_world(w)
+	w.get_section("local_selection")["0"] = [1]
+	_check(StateHasher.hash_world(w) == before, "T002 local_selection excluded from sim hash")
+	_check(StateHasher.hash_world(w, true) != before, "T002 local_selection included when include_local = true")
+
+
+# --- T002: integral floats hash like ints (JSON save round-trip, KI-8) -------
+func test_t002_hash_integral_float_equals_int() -> void:
+	print("test_t002_hash_integral_float_equals_int")
+	_check(StateHasher.hash_variant({ "a": 1 }) == StateHasher.hash_variant({ "a": 1.0 }), "T002 1 and 1.0 hash identically")
+	_check(StateHasher.hash_variant([0, -7]) == StateHasher.hash_variant([0.0, -7.0]), "T002 0/-7 and 0.0/-7.0 hash identically")
+	_check(StateHasher.hash_variant({ "a": 1.5 }) == StateHasher.hash_variant({ "a": 1.5 }), "T002 fractional float hash stable")
+	_check(StateHasher.hash_variant({ "a": 1.5 }) != StateHasher.hash_variant({ "a": 1 }), "T002 1.5 and 1 still differ")
+
+
+func _t002_small_scenario(seed_value: int, w: int, h: int, human0: bool, res: int) -> Dictionary:
+	var mid: int = h / 2
+	return {
+		"random_seed": seed_value,
+		"map": { "width": w, "height": h, "walls": [] },
+		"players": [
+			{ "owner": 0, "is_human": human0, "start_resources": { "resource_basic": res } },
+			{ "owner": 1, "is_human": false, "start_resources": { "resource_basic": res } },
+		],
+		"buildings": [
+			{ "type": "hq", "owner": 0, "x": 0, "y": mid },
+			{ "type": "hq", "owner": 1, "x": w - 1, "y": mid },
+		],
+		"units": [
+			{ "type": "soldier", "owner": 0, "x": 1, "y": mid },
+			{ "type": "soldier", "owner": 1, "x": w - 2, "y": mid },
+		],
+	}
+
+
+func test_t002_json_round_trip_preserves_world_hash() -> void:
+	print("test_t002_json_round_trip_preserves_world_hash")
+	var scenario: Dictionary = _t002_small_scenario(77, 12, 5, true, 200)
+	var a: TickHarness = TickHarness.new()
+	GameBootstrap.setup_for_test(a, scenario)
+	a.run_ticks(30)
+	var b: TickHarness = TickHarness.new()
+	GameBootstrap.setup_for_test(b, scenario)
+	# Same path SaveSystem uses: JSON.stringify -> JSON.parse_string (ints become floats).
+	b.world_state.deserialize(JSON.parse_string(JSON.stringify(a.world_state.serialize())))
+	_check(StateHasher.hash_world(b.world_state) == StateHasher.hash_world(a.world_state), "T002 sim hash survives JSON save round-trip")
+	_check(StateHasher.hash_world(b.world_state, true) == StateHasher.hash_world(a.world_state, true), "T002 full hash survives JSON save round-trip")
+
+
+func test_t002_json_reload_then_continue_matches_uninterrupted_run() -> void:
+	print("test_t002_json_reload_then_continue_matches_uninterrupted_run")
+	var scenario: Dictionary = _t002_small_scenario(77, 16, 8, false, 400)
+	var a: TickHarness = TickHarness.new()
+	GameBootstrap.setup_for_test(a, scenario)
+	a.run_ticks(40)
+	var b: TickHarness = TickHarness.new()
+	GameBootstrap.setup_for_test(b, scenario)
+	b.world_state.deserialize(JSON.parse_string(JSON.stringify(a.world_state.serialize())))
+	b.module_registry.deserialize_all(JSON.parse_string(JSON.stringify(a.module_registry.serialize_all())))
+	a.run_ticks(400)
+	b.run_ticks(400)
+	_check(StateHasher.hash_world(a.world_state) == StateHasher.hash_world(b.world_state), "T002 reloaded match continues bit-identical to the uninterrupted run")
+
+
+# --- T002: static determinism guard over simulation sources ------------------
+const _T002_SIM_SCAN_DIRS: Array = ["res://core", "res://modules"]
+# Files that legitimately use wall-clock time or OS randomness OUTSIDE the
+# simulation (save slot timestamps, LAN beacon instance id).
+const _T002_SIM_SCAN_ALLOW: Array = [
+	"res://core/save_manager.gd",
+	"res://modules/multiplayer/lan_discovery.gd",
+]
+const _T002_SIM_FORBIDDEN: Array = [
+	"randi(", "randf(", "randomize(", "randi_range(", "randf_range(",
+	"Time.get_", "OS.get_ticks",
+]
+
+
+func _t002_collect_gd(dir_path: String, out: Array) -> void:
+	var dir: DirAccess = DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var name: String = dir.get_next()
+	while name != "":
+		var full: String = dir_path + "/" + name
+		if dir.current_is_dir():
+			if not name.begins_with("."):
+				_t002_collect_gd(full, out)
+		elif name.ends_with(".gd"):
+			out.append(full)
+		name = dir.get_next()
+	dir.list_dir_end()
+
+
+func test_t002_sim_sources_have_no_wallclock_or_unseeded_rng() -> void:
+	print("test_t002_sim_sources_have_no_wallclock_or_unseeded_rng")
+	var files: Array = []
+	for d in _T002_SIM_SCAN_DIRS:
+		_t002_collect_gd(str(d), files)
+	files.sort()
+	var offenders: Array = []
+	for path in files:
+		if _T002_SIM_SCAN_ALLOW.has(path):
+			continue
+		var text: String = FileAccess.get_file_as_string(path)
+		var line_no: int = 0
+		for raw_line in text.split("\n"):
+			line_no += 1
+			var code: String = raw_line.strip_edges()
+			if code.begins_with("#"):
+				continue
+			var hash_pos: int = code.find("#")
+			if hash_pos >= 0:
+				code = code.substr(0, hash_pos)
+			for token in _T002_SIM_FORBIDDEN:
+				if code.contains(str(token)):
+					offenders.append("%s:%d %s" % [path, line_no, str(token)])
+	if not offenders.is_empty():
+		print("  offenders: ", offenders)
+	_check(files.size() > 50, "T002 determinism guard scanned the sim sources")
+	_check(offenders.is_empty(), "T002 no wall-clock time / unseeded RNG in core/ or modules/ (outside allowlist)")
+
+
+# --- T002: SimClock clamps huge frame deltas (Android resume, KI-9) ----------
+func test_t002_sim_clock_clamps_huge_delta() -> void:
+	print("test_t002_sim_clock_clamps_huge_delta")
+	var clock: SimClock = SimClock.new()
+	clock.tick_rate = 20
+	clock.start()
+	_check(clock.advance(30.0) == 10, "T002 30s frame delta at 20hz is clamped to 0.5s -> 10 ticks")
+	clock.time_scale = 4.0
+	_check(clock.advance(30.0) == 40, "T002 clamp applies before time_scale (0.5s * 4 * 20hz = 40 ticks)")
+	clock.time_scale = 1.0
+	_check(clock.advance(-1.0) == 0, "T002 negative delta never produces ticks")
+	_check(clock.advance(0.05) == 1, "T002 normal deltas are unaffected by the clamp")
+
+
+# --- T002: export presets must ship runtime classes that live in tools/ (KI-10)
+func test_t002_export_filter_keeps_runtime_tool_classes() -> void:
+	print("test_t002_export_filter_keeps_runtime_tool_classes")
+	var text: String = FileAccess.get_file_as_string("res://export_presets.cfg")
+	_check(text.length() > 0, "T002 export_presets.cfg readable")
+	var filters: Array = []
+	for raw_line in text.split("\n"):
+		var line: String = raw_line.strip_edges()
+		if line.begins_with("exclude_filter="):
+			filters.append(line)
+	_check(filters.size() >= 4, "T002 every export preset declares an exclude_filter")
+	for f in filters:
+		var body: String = str(f).trim_prefix("exclude_filter=").trim_prefix("\"").trim_suffix("\"")
+		var tokens: Array = []
+		for tok in body.split(","):
+			tokens.append(tok.strip_edges())
+		# tools/stat_registry.gd (StatRegistry), tools/ai_profile.gd (AiProfile) ...
+		# are referenced by core/ and modules/; excluding tools/* breaks exported builds.
+		_check(not tokens.has("tools/*") and not tokens.has("tools/*.gd"), "T002 exclude_filter does not drop tools/* (runtime classes live there)")
+		_check(tokens.has("tests/*"), "T002 exclude_filter still drops tests/*")
+
+
+# --- T002: UI nodes that subscribe to the bus must unsubscribe (pitfall P10) --
+func test_t002_ui_bus_subscribers_unsubscribe_on_exit() -> void:
+	print("test_t002_ui_bus_subscribers_unsubscribe_on_exit")
+	var files: Array = []
+	_t002_collect_gd("res://ui", files)
+	_t002_collect_gd("res://render", files)
+	files.sort()
+	var subscribers: int = 0
+	var offenders: Array = []
+	for path in files:
+		var text: String = FileAccess.get_file_as_string(path)
+		if not text.contains("Nexus.subscribe("):
+			continue
+		subscribers += 1
+		if not text.contains("unsubscribe_all(self)"):
+			offenders.append(path)
+	if not offenders.is_empty():
+		print("  offenders: ", offenders)
+	_check(subscribers >= 4, "T002 found the UI files that subscribe to the bus")
+	_check(offenders.is_empty(), "T002 every UI bus subscriber calls unsubscribe_all(self)")
+
+
 class TickHarness extends RefCounted:
 	var world_state: WorldState = WorldState.new()
 	var event_bus: EventBus = EventBus.new()
