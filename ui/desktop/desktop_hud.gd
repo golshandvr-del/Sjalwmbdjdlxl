@@ -359,11 +359,7 @@ func _owner_label(owner: int) -> String:
 
 
 func _owner_count() -> int:
-	var teams: Dictionary = Nexus.world_state.get_section("match").get("teams", {})
-	var maxo: int = LOCAL_PLAYER
-	for k in teams.keys():
-		maxo = max(maxo, int(str(k)))
-	return max(2, maxo + 1)
+	return HudLogicUtil.owner_count(Nexus.world_state.get_section("match").get("teams", {}), LOCAL_PLAYER)
 
 
 func _selected_owner(opt: OptionButton, fallback: int) -> int:
@@ -398,11 +394,7 @@ func _refresh_chat_history() -> void:
 	if _msg_history == null:
 		return
 	var recipient: int = _selected_owner(_msg_recipient, MessageLogUtil.BROADCAST)
-	var shown: Array
-	if recipient == MessageLogUtil.BROADCAST:
-		shown = MessageLogUtil.filter_for_owner(_msg_log, LOCAL_PLAYER)
-	else:
-		shown = MessageLogUtil.conversation(_msg_log, LOCAL_PLAYER, recipient)
+	var shown: Array = HudLogicUtil.chat_history_entries(_msg_log, LOCAL_PLAYER, recipient)
 	if shown.is_empty():
 		_msg_history.text = _loc.t("ui.msg.no_messages")
 		return
@@ -444,22 +436,15 @@ func _on_mission_send_pressed() -> void:
 	if diplomacy == null:
 		return
 	var target: int = _selected_owner(_mission_target_opt, LOCAL_PLAYER)
-	if target == LOCAL_PLAYER:
-		return
 	var mtype: String = str(MissionRequestUtil.TYPES[max(0, _mission_type_opt.selected)])
-	var mission: Dictionary = MissionRequestUtil.make_mission(
+	var proposal: Dictionary = HudLogicUtil.build_mission_proposal(
 		LOCAL_PLAYER, target, mtype,
 		int(_mission_cell_x.value), int(_mission_cell_y.value),
-		int(_mission_commit.value))
-	if not MissionRequestUtil.is_valid(mission):
+		int(_mission_commit.value), int(Nexus.world_state.current_tick))
+	if proposal.is_empty():
 		return
-	var treaty_type: String = TreatyUtil.REQUEST_DEFENSE if mtype == MissionRequestUtil.DEFEND else TreatyUtil.REQUEST_ATTACK
-	var treaty: Dictionary = TreatyUtil.make_treaty(
-		treaty_type, LOCAL_PLAYER, target, { "mission": mission }, {}, 0,
-		int(Nexus.world_state.current_tick))
-	if not TreatyUtil.is_valid(treaty):
-		return
-	diplomacy.issue_propose(LOCAL_PLAYER, treaty)
+	var mission: Dictionary = proposal["mission"]
+	diplomacy.issue_propose(LOCAL_PLAYER, proposal["treaty"])
 	MessageLogUtil.append_message(_msg_log, MessageLogUtil.make_message(
 		LOCAL_PLAYER, target,
 		_loc.t("ui.msg.mission_send") + ": " + mtype,
@@ -765,11 +750,8 @@ func _on_build_pressed() -> void:
 
 
 func _on_speed_pressed() -> void:
-	var s: float = Nexus.sim_clock.time_scale
-	if s >= 4.0:
-		Nexus.sim_clock.time_scale = 1.0
-	else:
-		Nexus.sim_clock.time_scale = s * 2.0
+	# T004: shared logic in HudLogicUtil (1x -> 2x -> 4x -> 1x).
+	Nexus.sim_clock.time_scale = HudLogicUtil.next_time_scale(Nexus.sim_clock.time_scale)
 
 
 func _on_research_pressed() -> void:
@@ -814,13 +796,7 @@ func _on_style_pressed() -> void:
 
 # Map a render-style id to its localized label (simple / detailed / sprite).
 func _style_label(style_id: String) -> String:
-	match style_id:
-		RenderAdapter.STYLE_DETAILED:
-			return _loc.t("ui.game.style_detailed")
-		RenderAdapter.STYLE_SPRITE:
-			return _loc.t("ui.game.style_sprite")
-		_:
-			return _loc.t("ui.game.style_simple")
+	return _loc.t(HudLogicUtil.style_label_key(style_id))
 
 
 func _on_lang_pressed() -> void:
@@ -845,14 +821,7 @@ func _on_restart_pressed() -> void:
 
 func _on_match_over(_event_name: String, payload: Dictionary) -> void:
 	var winner: int = int(payload.get("winner", -1))
-	var text: String = ""
-	if winner == LOCAL_PLAYER:
-		text = _loc.t("ui.game.victory")
-	elif winner < 0:
-		text = _loc.t("ui.game.draw")
-	else:
-		text = _loc.t("ui.game.defeat")
-	_overlay_label.text = text
+	_overlay_label.text = _loc.t(HudLogicUtil.match_result_key(winner, LOCAL_PLAYER))
 	_overlay.visible = true
 	Nexus.sim_clock.pause()
 
@@ -860,16 +829,7 @@ func _on_match_over(_event_name: String, payload: Dictionary) -> void:
 # --- Helpers ----------------------------------------------------------------
 
 func _next_research_node(tech: Object) -> String:
-	var catalog: Dictionary = Nexus.data_loader.get_catalog("tech")
-	var tree_ids: Array = catalog.keys()
-	tree_ids.sort()
-	for tree_id in tree_ids:
-		var tree: Dictionary = catalog[tree_id]
-		for node in tree.get("nodes", []):
-			var node_id: String = str(node.get("id", ""))
-			if node_id != "" and tech.research_blocked_reason(LOCAL_PLAYER, node_id) == "":
-				return node_id
-	return ""
+	return HudLogicUtil.next_research_node(Nexus.data_loader.get_catalog("tech"), tech, LOCAL_PLAYER)
 
 
 func _unit_at_tile(tile: Vector2i, owner_filter: int) -> int:
@@ -883,27 +843,13 @@ func _unit_at_tile(tile: Vector2i, owner_filter: int) -> int:
 # MB1.2 (bug 1): owner ids the human at THIS device may command, derived from
 # Nexus.is_locally_controlled. Parallels the mobile HUD helper so both agree.
 func _locally_controlled_owners() -> Array:
-	var owners: Array = []
 	var units: Dictionary = Nexus.world_state.get_section("units").get("list", {})
-	for key in units.keys():
-		var owner: int = int((units[key] as Dictionary).get("owner", -1))
-		if owner >= 0 and not owners.has(owner) and Nexus.is_locally_controlled(owner):
-			owners.append(owner)
-	if owners.is_empty() and Nexus.is_locally_controlled(LOCAL_PLAYER):
-		owners.append(LOCAL_PLAYER)
-	owners.sort()
-	return owners
+	return HudLogicUtil.locally_controlled_owners(units, LOCAL_PLAYER, Nexus.is_locally_controlled)
 
 
 func _find_local_hq() -> int:
 	var buildings: Dictionary = Nexus.world_state.get_section("buildings").get("list", {})
-	var keys: Array = buildings.keys()
-	keys.sort()
-	for key in keys:
-		var b: Dictionary = buildings[key]
-		if int(b["owner"]) == LOCAL_PLAYER:
-			return int(b["id"])
-	return -1
+	return HudLogicUtil.find_local_hq(buildings, LOCAL_PLAYER)
 
 
 # Read a locale chosen on the main menu (stored on the Nexus world state under a

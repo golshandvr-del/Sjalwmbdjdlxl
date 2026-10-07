@@ -62,3 +62,8 @@ is only the menu default; the difficulty module owns the match value).
 ## DEC-014 App background pause (T003)
 Single-player matches pause on NOTIFICATION_APPLICATION_PAUSED and stay paused on
 resume. Networked sessions never pause locally.
+
+## DEC-015 Shared HUD logic lives in HudLogicUtil (T004)
+`ui/shared/hud_logic_util.gd` holds static, pure, headless-testable HUD decisions.
+Both HUDs delegate to it; they keep only node/Localization code. New HUD logic that
+both HUDs need goes there first, with a unit test, never duplicated into both HUDs.

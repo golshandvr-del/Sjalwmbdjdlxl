@@ -691,6 +691,19 @@ func _init() -> void:
 	test_t003_hasher_excludes_ui_prefs()
 	test_t003_app_background_pauses_single_player()
 	test_t003_code_localization_keys_exist_in_all_locales()
+	test_t004_hud_logic_find_local_hq()
+	test_t004_hud_logic_next_research_node()
+	test_t004_hud_logic_locally_controlled_owners()
+	test_t004_hud_logic_owner_count_speed_style()
+	test_t004_huds_delegate_to_shared_logic()
+	test_t004_dynamic_localization_keys_exist()
+	test_t004_save_manager_slot_cycle()
+	test_t004_hud_logic_match_result_key()
+	test_t004_hud_logic_chat_history_entries()
+	test_t004_hud_logic_build_mission_proposal()
+	test_t004_huds_delegate_wp2_logic()
+	test_t004_two_peer_ai_match_stays_in_sync()
+	test_t004_save_load_mid_battle_is_transparent()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10322,6 +10335,242 @@ func test_t003_code_localization_keys_exist_in_all_locales() -> void:
 		print("  missing: ", missing)
 	_check(keys.size() >= 200, "T003 localization audit found the literal keys used in code")
 	_check(missing.is_empty(), "T003 every literal localization key exists in en.json and fa.json")
+
+# --- T004: shared HUD logic (KI-7) ------------------------------------------
+class _T004FakeTech extends RefCounted:
+	var allowed: Array = []
+	func research_blocked_reason(_owner: int, node_id: String) -> String:
+		return "" if allowed.has(node_id) else "blocked"
+
+
+func test_t004_hud_logic_find_local_hq() -> void:
+	print("test_t004_hud_logic_find_local_hq")
+	var list: Dictionary = {
+		"7": { "id": 7, "owner": 1 },
+		"3": { "id": 3, "owner": 0 },
+		"5": { "id": 5, "owner": 0 },
+	}
+	_check(HudLogicUtil.find_local_hq(list, 0) == 3, "T004 local HQ is the lowest-key building of the owner")
+	_check(HudLogicUtil.find_local_hq(list, 1) == 7, "T004 local HQ for owner 1")
+	_check(HudLogicUtil.find_local_hq(list, 2) == -1, "T004 no building -> -1")
+	_check(HudLogicUtil.find_local_hq({}, 0) == -1, "T004 empty list -> -1")
+
+
+func test_t004_hud_logic_next_research_node() -> void:
+	print("test_t004_hud_logic_next_research_node")
+	var catalog: Dictionary = {
+		"b_tree": { "nodes": [ { "id": "b1" }, { "id": "b2" } ] },
+		"a_tree": { "nodes": [ { "id": "a1" }, { "id": "a2" } ] },
+	}
+	var tech: _T004FakeTech = _T004FakeTech.new()
+	tech.allowed = ["a2", "b1"]
+	_check(HudLogicUtil.next_research_node(catalog, tech, 0) == "a2", "T004 first researchable node in sorted tree order")
+	tech.allowed = []
+	_check(HudLogicUtil.next_research_node(catalog, tech, 0) == "", "T004 nothing researchable -> empty")
+	_check(HudLogicUtil.next_research_node(catalog, null, 0) == "", "T004 null tech module -> empty")
+
+
+func test_t004_hud_logic_locally_controlled_owners() -> void:
+	print("test_t004_hud_logic_locally_controlled_owners")
+	var units: Dictionary = {
+		"1": { "owner": 2 }, "2": { "owner": 0 }, "3": { "owner": 2 }, "4": { "owner": 1 },
+	}
+	var only_0_2: Callable = func(o: int) -> bool: return o == 0 or o == 2
+	_check(HudLogicUtil.locally_controlled_owners(units, 0, only_0_2) == [0, 2], "T004 controlled owners sorted, de-duplicated")
+	var only_0: Callable = func(o: int) -> bool: return o == 0
+	_check(HudLogicUtil.locally_controlled_owners({}, 0, only_0) == [0], "T004 no units -> fallback owner when controlled")
+	var none: Callable = func(_o: int) -> bool: return false
+	_check(HudLogicUtil.locally_controlled_owners(units, 0, none) == [], "T004 nothing controlled -> empty")
+
+
+func test_t004_hud_logic_owner_count_speed_style() -> void:
+	print("test_t004_hud_logic_owner_count_speed_style")
+	_check(HudLogicUtil.owner_count({}, 0) == 2, "T004 owner_count never below 2")
+	_check(HudLogicUtil.owner_count({ "0": 0, "3": 1 }, 0) == 4, "T004 owner_count = highest key + 1")
+	_check(HudLogicUtil.next_time_scale(1.0) == 2.0, "T004 speed 1x -> 2x")
+	_check(HudLogicUtil.next_time_scale(2.0) == 4.0, "T004 speed 2x -> 4x")
+	_check(HudLogicUtil.next_time_scale(4.0) == 1.0, "T004 speed 4x -> 1x")
+	_check(HudLogicUtil.style_label_key(RenderAdapter.STYLE_DETAILED) == "ui.game.style_detailed", "T004 detailed style label key")
+	_check(HudLogicUtil.style_label_key(RenderAdapter.STYLE_SPRITE) == "ui.game.style_sprite", "T004 sprite style label key")
+	_check(HudLogicUtil.style_label_key("unknown") == "ui.game.style_simple", "T004 unknown style -> simple label key")
+
+
+func test_t004_huds_delegate_to_shared_logic() -> void:
+	print("test_t004_huds_delegate_to_shared_logic")
+	for path in ["res://ui/mobile/game_hud.gd", "res://ui/desktop/desktop_hud.gd"]:
+		var text: String = FileAccess.get_file_as_string(path)
+		for call in ["HudLogicUtil.find_local_hq(", "HudLogicUtil.next_research_node(",
+				"HudLogicUtil.locally_controlled_owners(", "HudLogicUtil.owner_count(",
+				"HudLogicUtil.next_time_scale(", "HudLogicUtil.style_label_key("]:
+			_check(text.contains(str(call)), "T004 %s calls %s" % [path.get_file(), str(call)])
+		_check(not text.contains("tree_ids.sort()"), "T004 %s no longer duplicates research-node search" % path.get_file())
+
+
+# --- T004: dynamic localization keys exist in both locales (KI-16 follow-up) --
+func test_t004_dynamic_localization_keys_exist() -> void:
+	print("test_t004_dynamic_localization_keys_exist")
+	var en: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://localization/en.json")) as Dictionary).get("strings", {})
+	var fa: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://localization/fa.json")) as Dictionary).get("strings", {})
+	var keys: Array = []
+	for m in MissionRequestUtil.TYPES:
+		keys.append("ui.msg.mission_" + str(m))
+	var editor: String = FileAccess.get_file_as_string("res://ui/shared/map_editor.gd")
+	var rx: RegEx = RegEx.new()
+	rx.compile("_after_edit\\(\"([a-z_]+)\"\\)")
+	for m in rx.search_all(editor):
+		keys.append("ui.mapeditor.status." + m.get_string(1))
+	_check(keys.size() >= MissionRequestUtil.TYPES.size() + 3, "T004 dynamic key audit collected keys")
+	for k in keys:
+		_check(en.has(k) and fa.has(k), "T004 dynamic key '%s' exists in en and fa" % str(k))
+
+
+# --- T004: SaveManager full slot cycle on user:// (QA) -----------------------
+func test_t004_save_manager_slot_cycle() -> void:
+	print("test_t004_save_manager_slot_cycle")
+	var a: TickHarness = _t003_harness()
+	var mgr: SaveManager = SaveManager.new()
+	mgr.setup(a)
+	var slot: String = mgr.save_game("T004 QA Slot", "t004_qa_slot")
+	_check(slot == "t004_qa_slot", "T004 save_game returns the explicit slot id")
+	var found: bool = false
+	for e in mgr.list_saves():
+		if str(e.get("slot_id", "")) == slot:
+			found = true
+			_check(int(e.get("tick", -1)) == 5, "T004 listed save carries the saved tick")
+	_check(found, "T004 saved slot appears in list_saves()")
+	var b: TickHarness = _t003_harness()
+	b.run_ticks(9)
+	var mgr_b: SaveManager = SaveManager.new()
+	mgr_b.setup(b)
+	_check(mgr_b.load_game(slot), "T004 load_game succeeds")
+	_check(StateHasher.hash_world(b.world_state) == StateHasher.hash_world(a.world_state), "T004 loaded slot restores the saved sim hash")
+	var bad_path: String = "user://t004_bad_import.nexsave"
+	_check(SafeFileUtil.write_text(bad_path, "{\"save_version\": 1, \"world_state\": \"garbage\"}"), "T004 wrote malformed import file")
+	_check(mgr_b.import_save(bad_path) == "", "T004 malformed file is refused by import_save")
+	DirAccess.remove_absolute(bad_path)
+	_check(mgr.delete_game(slot), "T004 delete_game removes the slot")
+	var still: bool = false
+	for e in mgr.list_saves():
+		if str(e.get("slot_id", "")) == slot:
+			still = true
+	_check(not still, "T004 deleted slot no longer listed")
+
+# --- T004 WP2: match result / chat history / mission proposal ---------------
+func test_t004_hud_logic_match_result_key() -> void:
+	print("test_t004_hud_logic_match_result_key")
+	_check(HudLogicUtil.match_result_key(0, 0) == "ui.game.victory", "T004 winner == local -> victory")
+	_check(HudLogicUtil.match_result_key(-1, 0) == "ui.game.draw", "T004 winner < 0 -> draw")
+	_check(HudLogicUtil.match_result_key(1, 0) == "ui.game.defeat", "T004 other winner -> defeat")
+
+
+func test_t004_hud_logic_chat_history_entries() -> void:
+	print("test_t004_hud_logic_chat_history_entries")
+	var log: Array = []
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(0, 1, "a", 1))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(1, 2, "b", 2))
+	MessageLogUtil.append_message(log, MessageLogUtil.make_message(2, MessageLogUtil.BROADCAST, "c", 3))
+	var all_for_0: Array = HudLogicUtil.chat_history_entries(log, 0, MessageLogUtil.BROADCAST)
+	_check(all_for_0 == MessageLogUtil.filter_for_owner(log, 0), "T004 broadcast view == filter_for_owner")
+	var conv: Array = HudLogicUtil.chat_history_entries(log, 0, 1)
+	_check(conv == MessageLogUtil.conversation(log, 0, 1), "T004 recipient view == conversation")
+	_check(conv.size() == 2, "T004 0<->1 conversation = private message + broadcast")
+
+
+func test_t004_huds_delegate_wp2_logic() -> void:
+	print("test_t004_huds_delegate_wp2_logic")
+	for path in ["res://ui/mobile/game_hud.gd", "res://ui/desktop/desktop_hud.gd"]:
+		var text: String = FileAccess.get_file_as_string(path)
+		for call in ["HudLogicUtil.match_result_key(", "HudLogicUtil.chat_history_entries(",
+				"HudLogicUtil.build_mission_proposal("]:
+			_check(text.contains(str(call)), "T004 %s calls %s" % [path.get_file(), str(call)])
+		_check(not text.contains("TreatyUtil.REQUEST_DEFENSE"), "T004 %s no longer picks the mission treaty type itself" % path.get_file())
+
+
+func test_t004_hud_logic_build_mission_proposal() -> void:
+	print("test_t004_hud_logic_build_mission_proposal")
+	var p: Dictionary = HudLogicUtil.build_mission_proposal(0, 1, MissionRequestUtil.ATTACK, 3, 4, 50, 10)
+	_check(p.has("mission") and p.has("treaty"), "T004 valid request builds mission + treaty")
+	_check(str((p["treaty"] as Dictionary).get("type", "")) == TreatyUtil.REQUEST_ATTACK, "T004 attack mission -> REQUEST_ATTACK treaty")
+	var d: Dictionary = HudLogicUtil.build_mission_proposal(0, 1, MissionRequestUtil.DEFEND, 3, 4, 50, 10)
+	_check(str((d["treaty"] as Dictionary).get("type", "")) == TreatyUtil.REQUEST_DEFENSE, "T004 defend mission -> REQUEST_DEFENSE treaty")
+	_check(HudLogicUtil.build_mission_proposal(0, 0, MissionRequestUtil.ATTACK, 3, 4, 50, 10).is_empty(), "T004 self-target refused")
+	_check(HudLogicUtil.build_mission_proposal(0, 1, MissionRequestUtil.ATTACK, -1, 4, 50, 10).is_empty(), "T004 negative cell refused")
+
+# --- T004 WP3: long-run determinism guards ----------------------------------
+func _t004_battle_scenario(seed_value: int) -> Dictionary:
+	return {
+		"random_seed": seed_value,
+		"map": { "width": 20, "height": 10, "walls": [] },
+		"players": [
+			{ "owner": 0, "is_human": false, "start_resources": { "resource_basic": 600 } },
+			{ "owner": 1, "is_human": false, "start_resources": { "resource_basic": 600 } },
+		],
+		"buildings": [
+			{ "type": "hq", "owner": 0, "x": 0, "y": 5 },
+			{ "type": "hq", "owner": 1, "x": 19, "y": 5 },
+		],
+		"units": [
+			{ "type": "soldier", "owner": 0, "x": 2, "y": 4 },
+			{ "type": "soldier", "owner": 0, "x": 2, "y": 6 },
+			{ "type": "soldier", "owner": 1, "x": 17, "y": 4 },
+			{ "type": "soldier", "owner": 1, "x": 17, "y": 6 },
+		],
+	}
+
+
+func test_t004_two_peer_ai_match_stays_in_sync() -> void:
+	print("test_t004_two_peer_ai_match_stays_in_sync")
+	var transport: LoopbackTransport = LoopbackTransport.new()
+	var peers: Array = []
+	for pid in [0, 1]:
+		var nexus: TickHarness = TickHarness.new()
+		GameBootstrap.setup_for_test(nexus, _t004_battle_scenario(9001))
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		lock.start_session([0, 1], pid, 3)
+		transport.attach(pid, lock, nexus.event_bus)
+		peers.append(nexus)
+	var horizon: int = 600
+	for nexus in peers:
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		for t in range(1, horizon + 1):
+			lock.flush_empty_turn_for(t)
+	var mismatch_tick: int = -1
+	for t in range(1, horizon + 1):
+		for nexus in peers:
+			var lock: LockstepModule = nexus.get_module("multiplayer")
+			lock.inject_commands_for_tick(t)
+			nexus.run_ticks(1)
+		if mismatch_tick < 0 and t % 50 == 0:
+			if StateHasher.hash_world(peers[0].world_state) != StateHasher.hash_world(peers[1].world_state):
+				mismatch_tick = t
+	if mismatch_tick >= 0:
+		print("  first hash mismatch at tick ", mismatch_tick)
+	_check(mismatch_tick < 0, "T004 600-tick AI-vs-AI lockstep match: hashes equal at every 50-tick checkpoint")
+	_check(not (peers[0].get_module("multiplayer") as Object).has_desync(), "T004 long match: no desync on peer 0")
+	_check(not (peers[1].get_module("multiplayer") as Object).has_desync(), "T004 long match: no desync on peer 1")
+
+
+func test_t004_save_load_mid_battle_is_transparent() -> void:
+	print("test_t004_save_load_mid_battle_is_transparent")
+	for seed_value in [11, 222, 3333]:
+		var ref: TickHarness = TickHarness.new()
+		GameBootstrap.setup_for_test(ref, _t004_battle_scenario(seed_value))
+		ref.run_ticks(500)
+		var expected: int = StateHasher.hash_world(ref.world_state)
+		for cut in [1, 120, 333]:
+			var a: TickHarness = TickHarness.new()
+			GameBootstrap.setup_for_test(a, _t004_battle_scenario(seed_value))
+			a.run_ticks(cut)
+			var sa: SaveSystem = SaveSystem.new()
+			sa.setup(a)
+			var text: String = JSON.stringify(sa.build_snapshot())
+			var b: TickHarness = TickHarness.new()
+			GameBootstrap.setup_for_test(b, _t004_battle_scenario(seed_value))
+			var sb: SaveSystem = SaveSystem.new()
+			sb.setup(b)
+			_check(sb.apply_snapshot(JSON.parse_string(text)), "T004 seed %d cut %d snapshot accepted" % [seed_value, cut])
+			b.run_ticks(500 - cut)
+			_check(StateHasher.hash_world(b.world_state) == expected, "T004 seed %d: save/load at tick %d then continue == uninterrupted 500 ticks" % [seed_value, cut])
 
 class TickHarness extends RefCounted:
 	var world_state: WorldState = WorldState.new()
