@@ -44,8 +44,13 @@ func apply_snapshot(snapshot: Dictionary) -> bool:
 	if _nexus == null:
 		push_error("SaveSystem: nexus not set up")
 		return false
+	# T003 (KI-13): validate the whole snapshot first; never half-apply.
+	var reason: String = SaveSnapshotUtil.validate(snapshot, SAVE_VERSION)
+	if reason != "":
+		push_warning("SaveSystem: rejected snapshot (%s)" % reason)
+		return false
 	if int(snapshot.get("save_version", -1)) != SAVE_VERSION:
-		push_warning("SaveSystem: save version mismatch, attempting best-effort load")
+		push_warning("SaveSystem: older save version, attempting best-effort load")
 	_nexus.world_state.deserialize(snapshot.get("world_state", {}))
 	_nexus.module_registry.deserialize_all(snapshot.get("modules", {}))
 	_nexus.command_queue.deserialize(snapshot.get("command_queue", {}))

@@ -163,8 +163,9 @@ func import_save(src_path: String) -> String:
 		return ""
 	var text: String = FileAccess.get_file_as_string(src_path)
 	var parsed: Variant = JSON.parse_string(text)
-	if not (parsed is Dictionary) or not (parsed as Dictionary).has("world_state"):
-		push_error("SaveManager: '%s' is not a valid Nexus save" % src_path)
+	var reason: String = SaveSnapshotUtil.validate(parsed, SaveSystem.SAVE_VERSION)
+	if reason != "":
+		push_error("SaveManager: '%s' is not a valid Nexus save (%s)" % [src_path, reason])
 		return ""
 	if not ensure_dir():
 		return ""

@@ -684,6 +684,13 @@ func _init() -> void:
 	test_t002_sim_clock_clamps_huge_delta()
 	test_t002_export_filter_keeps_runtime_tool_classes()
 	test_t002_ui_bus_subscribers_unsubscribe_on_exit()
+	test_t003_snapshot_validator_rejects_malformed()
+	test_t003_rejected_snapshot_leaves_live_game_untouched()
+	test_t003_valid_snapshot_still_round_trips()
+	test_t003_ui_prefs_differences_do_not_desync_peers()
+	test_t003_hasher_excludes_ui_prefs()
+	test_t003_app_background_pauses_single_player()
+	test_t003_code_localization_keys_exist_in_all_locales()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10159,6 +10166,162 @@ func test_t002_ui_bus_subscribers_unsubscribe_on_exit() -> void:
 	_check(subscribers >= 4, "T002 found the UI files that subscribe to the bus")
 	_check(offenders.is_empty(), "T002 every UI bus subscriber calls unsubscribe_all(self)")
 
+
+# --- T003: save snapshots are validated before being applied (KI-13) --------
+func _t003_harness() -> TickHarness:
+	var nexus: TickHarness = TickHarness.new()
+	GameBootstrap.setup_for_test(nexus, {
+		"random_seed": 5,
+		"map": { "width": 10, "height": 5, "walls": [] },
+		"players": [
+			{ "owner": 0, "is_human": true, "start_resources": { "resource_basic": 200 } },
+			{ "owner": 1, "is_human": false, "start_resources": { "resource_basic": 200 } },
+		],
+		"buildings": [
+			{ "type": "hq", "owner": 0, "x": 0, "y": 2 },
+			{ "type": "hq", "owner": 1, "x": 9, "y": 2 },
+		],
+		"units": [ { "type": "soldier", "owner": 0, "x": 1, "y": 2 } ],
+	})
+	nexus.run_ticks(5)
+	return nexus
+
+
+func test_t003_snapshot_validator_rejects_malformed() -> void:
+	print("test_t003_snapshot_validator_rejects_malformed")
+	var v: int = SaveSystem.SAVE_VERSION
+	_check(SaveSnapshotUtil.validate("x", v) == "not_a_dictionary", "T003 non-dictionary rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1 }, v) == "missing_world_state", "T003 missing world_state rejected")
+	_check(SaveSnapshotUtil.validate({ "world_state": {} }, v) == "bad_save_version", "T003 missing save_version rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": v + 1, "world_state": {} }, v) == "newer_save_version", "T003 newer save_version rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1, "world_state": "g" }, v) == "bad_world_state", "T003 non-dict world_state rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1, "world_state": { "sections": [] } }, v) == "bad_world_state_sections", "T003 non-dict sections rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1, "world_state": {}, "modules": [] }, v) == "bad_modules", "T003 non-dict modules rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1, "world_state": {}, "command_queue": 5 }, v) == "bad_command_queue", "T003 non-dict command_queue rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1, "world_state": {}, "command_queue": { "pending": 3 } }, v) == "bad_command_queue_pending", "T003 non-array pending rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1, "world_state": {}, "sim_clock": "x" }, v) == "bad_sim_clock", "T003 non-dict sim_clock rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1, "world_state": {}, "sim_clock": { "tick_rate": 0 } }, v) == "bad_sim_clock_tick_rate", "T003 zero tick_rate rejected")
+	_check(SaveSnapshotUtil.validate({ "save_version": 1.0, "world_state": {} }, v) == "", "T003 JSON float save_version accepted")
+
+
+func test_t003_rejected_snapshot_leaves_live_game_untouched() -> void:
+	print("test_t003_rejected_snapshot_leaves_live_game_untouched")
+	var bad_cases: Array = [
+		{ "save_version": 1, "world_state": "garbage" },
+		{ "save_version": 1, "world_state": {}, "modules": [] },
+		{ "save_version": 1, "world_state": {}, "command_queue": 5 },
+		{ "save_version": 1, "world_state": {}, "sim_clock": "x" },
+		{ "save_version": 999, "world_state": {} },
+		{},
+	]
+	for c in bad_cases:
+		var nexus: TickHarness = _t003_harness()
+		var before: int = StateHasher.hash_world(nexus.world_state, true)
+		var ss: SaveSystem = SaveSystem.new()
+		ss.setup(nexus)
+		_check(not ss.apply_snapshot(c), "T003 malformed snapshot is refused: %s" % str(c).substr(0, 60))
+		_check(StateHasher.hash_world(nexus.world_state, true) == before, "T003 refused snapshot did not mutate the world")
+		_check(nexus.world_state.current_tick == 5, "T003 refused snapshot kept current_tick")
+
+
+func test_t003_valid_snapshot_still_round_trips() -> void:
+	print("test_t003_valid_snapshot_still_round_trips")
+	var a: TickHarness = _t003_harness()
+	var sa: SaveSystem = SaveSystem.new()
+	sa.setup(a)
+	var snap: Variant = JSON.parse_string(JSON.stringify(sa.build_snapshot()))
+	var b: TickHarness = _t003_harness()
+	b.run_ticks(7)
+	var sb: SaveSystem = SaveSystem.new()
+	sb.setup(b)
+	_check(sb.apply_snapshot(snap), "T003 valid JSON snapshot is accepted")
+	_check(StateHasher.hash_world(b.world_state) == StateHasher.hash_world(a.world_state), "T003 accepted snapshot restores the same sim hash")
+
+# --- T003: per-device preferences never affect the lockstep checksum (KI-14) --
+func test_t003_ui_prefs_differences_do_not_desync_peers() -> void:
+	print("test_t003_ui_prefs_differences_do_not_desync_peers")
+	var peers: Array = _t002_two_peer_harnesses(4242)
+	# Each device has its own settings file: different locale / style / zoom.
+	var s0: GameSettings = GameSettings.new(peers[0].world_state)
+	s0.set_render_style("simple")
+	var s1: GameSettings = GameSettings.new(peers[1].world_state)
+	s1.set_render_style("detailed")
+	s1.set_locale("fa")
+	var horizon: int = 20
+	for nexus in peers:
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		for t in range(1, horizon + 1):
+			lock.flush_empty_turn_for(t)
+	for t in range(1, horizon + 1):
+		for nexus in peers:
+			var lock: LockstepModule = nexus.get_module("multiplayer")
+			lock.inject_commands_for_tick(t)
+			nexus.run_ticks(1)
+	_check(StateHasher.hash_world(peers[0].world_state) == StateHasher.hash_world(peers[1].world_state), "T003 different ui_prefs keep both peers' sim hashes identical")
+	_check(not (peers[0].get_module("multiplayer") as Object).has_desync(), "T003 different ui_prefs report no desync on peer 0")
+	_check(not (peers[1].get_module("multiplayer") as Object).has_desync(), "T003 different ui_prefs report no desync on peer 1")
+
+
+func test_t003_hasher_excludes_ui_prefs() -> void:
+	print("test_t003_hasher_excludes_ui_prefs")
+	var w: WorldState = WorldState.new()
+	w.get_section("units")["list"] = { "1": { "id": 1, "x": 2, "y": 3 } }
+	var before: int = StateHasher.hash_world(w)
+	w.get_section("ui_prefs")["locale"] = "fa"
+	_check(StateHasher.hash_world(w) == before, "T003 ui_prefs excluded from sim hash")
+	_check(StateHasher.hash_world(w, true) != before, "T003 ui_prefs included when include_local = true")
+
+# --- T003: backgrounding the app pauses a single-player match (KI-15) --------
+func test_t003_app_background_pauses_single_player() -> void:
+	print("test_t003_app_background_pauses_single_player")
+	var core: Node = load("res://core/nexus.gd").new()
+	core._build_core()
+	core.sim_clock.start()
+	_check(not core.sim_clock.is_paused(), "T003 clock running before backgrounding")
+	core._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	_check(core.sim_clock.is_paused(), "T003 APPLICATION_PAUSED pauses a running single-player match")
+	_check(not core.handle_app_backgrounded(), "T003 already-paused match is left alone")
+	core.sim_clock.stop()
+	core.sim_clock.resume()
+	_check(not core.handle_app_backgrounded(), "T003 stopped clock (menus) is not paused")
+	core.free()
+
+# --- T003: every literal localization key used in code exists (KI-16) -------
+# Dynamic keys built by concatenation (e.g. "ui.msg.mission_" + id) are not
+# literal and are skipped: only complete keys ending in a letter/digit count.
+func _t003_literal_loc_keys(text: String) -> Array:
+	var out: Array = []
+	var rx: RegEx = RegEx.new()
+	rx.compile("\\bt\\(\"((?:ui|ai|game|msg|menu|unit|building|tech)\\.[a-z0-9_.]*[a-z0-9])\"\\)")
+	for m in rx.search_all(text):
+		out.append(m.get_string(1))
+	return out
+
+
+func test_t003_code_localization_keys_exist_in_all_locales() -> void:
+	print("test_t003_code_localization_keys_exist_in_all_locales")
+	var files: Array = []
+	for d in ["res://ui", "res://render", "res://core", "res://modules", "res://tools"]:
+		_t002_collect_gd(str(d), files)
+	files.sort()
+	var keys: Dictionary = {}
+	for path in files:
+		for k in _t003_literal_loc_keys(FileAccess.get_file_as_string(path)):
+			keys[k] = path
+	var en: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://localization/en.json")) as Dictionary).get("strings", {})
+	var fa: Dictionary = (JSON.parse_string(FileAccess.get_file_as_string("res://localization/fa.json")) as Dictionary).get("strings", {})
+	var missing: Array = []
+	var sorted_keys: Array = keys.keys()
+	sorted_keys.sort()
+	for k in sorted_keys:
+		if not en.has(k):
+			missing.append("en:%s (%s)" % [k, keys[k]])
+		if not fa.has(k):
+			missing.append("fa:%s (%s)" % [k, keys[k]])
+	if not missing.is_empty():
+		print("  missing: ", missing)
+	_check(keys.size() >= 200, "T003 localization audit found the literal keys used in code")
+	_check(missing.is_empty(), "T003 every literal localization key exists in en.json and fa.json")
 
 class TickHarness extends RefCounted:
 	var world_state: WorldState = WorldState.new()

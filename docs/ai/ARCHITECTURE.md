@@ -26,6 +26,10 @@ Verified against commit 98a8866. Update only via a Claude-approved task.
 `_run_single_tick()`: `current_tick += 1`; due commands emitted ONCE as
 `command.<type>`; `module_registry.tick_all(1)`; emit `core.tick`.
 
+## App lifecycle
+- `Nexus._notification(NOTIFICATION_APPLICATION_PAUSED)` -> `handle_app_backgrounded()`:
+  pauses a running single-player match; never pauses a networked lockstep session.
+
 ## Commands
 - HUD sim commands: `Nexus.player_command(type, data)` (lockstep-aware).
 - Local presentation: `Nexus.issue_command("select_units", LOCAL_PLAYER, ...)`.
@@ -41,7 +45,11 @@ static, deterministic, no SceneTree).
 
 ## State, hashing, saving
 - `WorldState`: named Dictionary sections + `current_tick` + `random_seed`.
-- `StateHasher.hash_world`: FNV-1a 64 over sorted keys; excludes only section `lockstep`.
+- `StateHasher.hash_world`: FNV-1a 64 over sorted keys; excludes LOCAL sections
+  `lockstep`, `local_selection`, `ui_prefs` (`_LOCAL_SECTIONS`). Integral floats hash as ints.
+- `SaveSystem.apply_snapshot` first runs `SaveSnapshotUtil.validate` (all-or-nothing;
+  rejects malformed/newer saves without touching the live game). Same check in
+  `SaveManager.import_save`.
 - `SaveSystem` (SAVE_VERSION=1): world_state + modules.serialize_all + command_queue +
   sim_clock. `SaveManager`: user:// slots, export/import. `SafeFileUtil`: atomic writes.
 

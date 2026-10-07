@@ -1,9 +1,9 @@
 # Project state (agent reference)
 Update at the end of every approved task (Claude provides the text).
 
-## Baseline (after T002)
+## Baseline (after T003)
 - Version 0.6.0. Engine Godot 4.7 (verified with 4.7.2). Roadmap P0-P9 complete.
-- Gates: G1 lint 246 files no violations; G2 tests Total 4366 / Passed 4366 /
+- Gates: G1 lint 246 files no violations; G2 tests Total 4409 / Passed 4409 /
   Failed 0 / Skipped 0; G3 scene smoke failures=0 navigations=11; G4 game smoke
   failures=0; G5 clean tree after import; G6 exported Android pack boots with 0
   script errors. GitHub Actions CI runs G1-G6.
@@ -19,6 +19,14 @@ Update at the end of every approved task (Claude provides the text).
 - KI-10 exported builds broken (tools/* excluded, StatRegistry missing) -> filter fixed.
 - KI-12 HUD/main menu left dead EventBus listeners -> `_exit_tree` unsubscribe_all.
 
+## Resolved in T003
+- KI-13 Malformed/newer save files were half-applied (world wiped, script errors) ->
+  `SaveSnapshotUtil.validate` gate in SaveSystem.apply_snapshot + SaveManager.import_save.
+- KI-14 Per-device `ui_prefs` (locale/style/zoom) were hashed -> false desync between
+  peers with different settings -> `ui_prefs` added to `_LOCAL_SECTIONS`.
+- KI-15 App backgrounded on Android kept the match running -> single-player auto-pause.
+- KI-16 No guard that literal `t("...")` keys exist in both locales -> test added.
+
 ## Open known issues
 - KI-5 First editor import on a fresh checkout logs Vazirmatn font/theme errors
   (second import clean). Cosmetic; CI imports twice.
@@ -32,8 +40,9 @@ Update at the end of every approved task (Claude provides the text).
 | ID | Title | Status | Branch | Result |
 |---|---|---|---|---|
 | T001 | AI workflow bootstrap | merged (PR #1) | oh/T001-ai-workflow-bootstrap | APPROVED |
-| T002 | Hardening: determinism, export, CI, docs | in progress | oh/T002-hardening | - |
+| T002 | Hardening: determinism, export, CI, docs | merged (PR #2) | claude/T002-hardening | done by Claude |
+| T003 | Hardening 2: save validation, ui_prefs hash, app pause, l10n guard | merged (PR #3) | claude/T003-hardening | done by Claude |
+| T004 | Shared HUD controller (KI-7) + QA | assigned to OpenHands | oh/T004-hud-shared-controller | - |
 
 ## Candidate next tasks (Claude decides)
-- T004 Android device QA checklist automation (what can be tested headless).
-- T005 HUD duplication (KI-7) analysis document only.
+- T005 Android device QA checklist automation (what can be tested headless).

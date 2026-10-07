@@ -81,6 +81,22 @@ Verified with Godot 4.7.2 headless. Update only via a Claude-approved task.
   cache and imports do not exist yet. Always run the import twice; only the second
   run counts.
 
+## P13 Typed function args crash on bad JSON [AFFECTED -> fixed T003, KI-13]
+- Trap: `JSON.parse_string` can return any shape. Passing a String/Array to a
+  `func f(d: Dictionary)` raises a SCRIPT ERROR mid-operation; earlier steps have
+  already mutated state (half-applied load).
+- Evidence: `apply_snapshot({"save_version":1,"modules":[]})` wiped the world, then
+  errored in `deserialize_all`.
+- Rule: validate the full shape first (`SaveSnapshotUtil`), then apply.
+
+## P14 Settings stored in WorldState [AFFECTED -> fixed T003, KI-14]
+- Evidence: two peers with different render style/locale reported `has_desync()`.
+- Rule: per-device sections go in `StateHasher._LOCAL_SECTIONS`.
+
+## P15 Mobile app lifecycle [AFFECTED -> fixed T003, KI-15]
+- Trap: Android sends `NOTIFICATION_APPLICATION_PAUSED` / `_RESUMED`; nothing paused
+  the match. Rule: single-player auto-pause in `Nexus._notification`.
+
 ## Sources
 - awesome-godot (https://github.com/godotengine/awesome-godot): GUT, GdUnit4,
   godot-gdscript-toolkit (gdlint/gdformat), godot-ci, Netfox were reviewed. DEC-010:

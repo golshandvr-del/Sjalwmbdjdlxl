@@ -41,7 +41,7 @@ const _FLOAT_DECIMALS: int = 6
 # from the lockstep sync checksum -- otherwise two perfectly-synced peers would
 # falsely report a desync. Gameplay state (units, buildings, economy, tech, map,
 # ...) is fully shared and so is always hashed.
-const _LOCAL_SECTIONS: Array = ["lockstep", "local_selection"]
+const _LOCAL_SECTIONS: Array = ["lockstep", "local_selection", "ui_prefs"]
 
 
 # Hash an entire WorldState into a stable 64-bit integer.
