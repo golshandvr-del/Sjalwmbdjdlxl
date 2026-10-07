@@ -33,6 +33,9 @@ var total_ticks: int = 0
 # Internal accumulator of real time (seconds) not yet converted to ticks.
 var _accumulator: float = 0.0
 
+# Upper bound (seconds) of real time a single advance() call may consume.
+const MAX_FRAME_DELTA: float = 0.5
+
 
 func start() -> void:
 	running = true
@@ -81,7 +84,10 @@ func seconds_per_tick() -> float:
 func advance(real_delta: float) -> int:
 	if not running or paused:
 		return 0
-	_accumulator += real_delta * time_scale
+	# Clamp one frame's real time so a huge delta (Android app resumed from the
+	# background, debugger break, long load hitch) cannot trigger a burst of
+	# hundreds of catch-up ticks in a single frame ("spiral of death").
+	_accumulator += minf(maxf(real_delta, 0.0), MAX_FRAME_DELTA) * time_scale
 	var spt: float = seconds_per_tick()
 	# Small epsilon guards against floating-point accumulation error (e.g.
 	# 0.05 + 0.05 landing a hair below 0.1). Without it the tick count would

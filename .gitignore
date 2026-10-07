@@ -40,7 +40,7 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
-.github/workflows/
+# .github/workflows/ is committed (DEC-009); ci/ keeps a mirror.
 
 # Web template cruft (not part of the Godot project)
 node_modules/

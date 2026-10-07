@@ -105,6 +105,13 @@ var _panel: int = MenuPanel.MAIN
 var _quit_armed: bool = false
 
 
+# T002 (pitfall P10): drop every EventBus subscription of this node when it leaves
+# the tree, so freed screens do not leave dead listeners on the shared bus.
+func _exit_tree() -> void:
+	if Nexus != null and Nexus.event_bus != null:
+		Nexus.event_bus.unsubscribe_all(self)
+
+
 func _ready() -> void:
 	_loc.load_all("res://localization")
 	# Load persisted player settings (locale, style, GUI scale...) from disk so

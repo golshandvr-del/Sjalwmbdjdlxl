@@ -33,6 +33,9 @@ class_name UnitsModule
 extends IModule
 
 const SECTION: String = "units"
+# Local, per-peer selection (owner String -> Array of unit ids). Excluded from
+# the lockstep checksum by StateHasher._LOCAL_SECTIONS.
+const LOCAL_SELECTION_SECTION: String = "local_selection"
 const CATALOG: String = "units"
 
 # Commands this module reacts to.
@@ -71,8 +74,6 @@ func _ensure_state() -> void:
 	var section: Dictionary = nexus.world_state.get_section(SECTION)
 	if not section.has("list"):
 		section["list"] = {}        # id (as String key) -> unit dict
-	if not section.has("selected"):
-		section["selected"] = {}    # owner (String) -> Array of unit ids
 	# Per-owner, per-category permanent stat bonuses from researched tech.
 	# upgrades[owner(String)][category(String)][stat(String)] -> total amount.
 	if not section.has("upgrades"):
@@ -382,8 +383,10 @@ func _nearest_walkable(goal: Vector2i) -> Vector2i:
 func _handle_select_command(data: Dictionary) -> void:
 	var owner: int = int(data.get("owner", 0))
 	var ids: Array = data.get("unit_ids", [])
-	var selected: Dictionary = nexus.world_state.get_section(SECTION).get("selected", {})
-	selected[str(owner)] = ids.duplicate()
+	# Selection is LOCAL presentation state (each peer selects independently), so
+	# it lives in its own section that StateHasher excludes from the sim checksum.
+	var selection: Dictionary = nexus.world_state.get_section(LOCAL_SELECTION_SECTION)
+	selection[str(owner)] = ids.duplicate()
 
 
 # --- Pathfinding bridge (no direct module reference) ------------------------

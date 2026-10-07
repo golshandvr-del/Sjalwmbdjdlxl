@@ -29,17 +29,17 @@ requirements `R#`, and the executable phase plan `P0`..`P8`). For a fast
 > and the match-setup menu, save/load, export/import, LAN multiplayer with auto
 > mod-sync, control groups, minimap, portrait/landscape layout, HQ/flag
 > placement, and the fully-rewritten Mod Editor UI (tree / multi-part / graphic
-> upload / object editor) are all wired. The last QA pass (`docs/BUG_REPORT.md`)
-> found 11 issues; **all 11 (plus one sibling finding) have since been fixed**.
+> upload / object editor) are all wired. The P9 QA pass found 11 issues; **all 11
+> (plus one sibling finding) have since been fixed** (the standalone bug report was
+> retired in commit 7dc53a6; its history lives in `docs/STRUCTURE.md`).
 >
-> Latest headless run:
-> - **Tests:** `Total: 1301 | Passed: 1301 | Failed: 0 | Skipped: 2 | Exit: 0` ✅
-> - **CODE_POLICY linter:** `142 files scanned | No violations | Exit: 0` ✅
+> Latest headless run (Godot 4.7.2, also enforced by GitHub Actions CI):
+> - **Tests:** `Total: 4366 | Passed: 4366 | Failed: 0 | Skipped: 0 | Exit: 0` ✅
+> - **CODE_POLICY linter:** `246 files scanned | No violations | Exit: 0` ✅
+> - **Smoke:** scene smoke `failures=0`, game smoke `failures=0`, exported pack boots.
 >
-> (The 2 skips are intentional: two texture/autoload tests that only make sense
-> inside a full SceneTree are recorded as SKIP in `--script` mode instead of a
-> false FAIL.) See `docs/STRUCTURE.md` sections 3 (bugs), 4 (requirements), 5-8
-> (phases) and `docs/BUG_REPORT.md` for the full fix log.
+> See `docs/STRUCTURE.md` sections 3 (bugs), 4 (requirements), 5-8 (phases), and
+> `docs/ai/PROJECT_STATE.md` for the current verified state.
 
 > **Android fix rounds (MA + MB) — COMPLETE.** After the v0.6.0 QA pass, the
 > user reported two rounds of Android-specific bugs, tracked in
@@ -108,7 +108,7 @@ through `Nexus.event_bus` and `Nexus.world_state`.
 > This repository is a real Godot project. Open it in the Godot Editor; the
 > sandbox that generated it does not run Godot itself.
 
-1. Install **Godot 4.2+**.
+1. Install **Godot 4.7+** (verified with 4.7.2).
 2. Open `project.godot` in the Godot Editor.
 3. Press **Play** (F5). The main scene is now `scenes/main_menu.tscn` -- the
    **Main Menu / Lobby** (Phase 5). From it you can:
@@ -149,8 +149,9 @@ Exit code `0` = clean, `1` = a non-ASCII character was found outside the allowed
 ```bash
 godot --headless --path . --script res://tests/test_runner.gd
 ```
-Exit code `0` = all tests passed, `1` = some failed. Current suite: **207
-tests** covering EventBus, ModuleRegistry, SimClock, CommandQueue, WorldState,
+Exit code `0` = all tests passed, `1` = some failed. Current suite: **4366
+checks in 584 test functions** (Godot 4.7.2; the phase notes below keep their
+historical counts) covering EventBus, ModuleRegistry, SimClock, CommandQueue, WorldState,
 PathService, Map, Economy, Combat, Units movement, the AI commander, the
 victory rule, and full deterministic battle replays (human-vs-AI and AI-vs-AI),
 **the full Phase 2 strategic layer** (tech-tree research + prerequisites +
@@ -175,11 +176,10 @@ registry. If you run a fresh checkout and see `Could not find base class
 --editor --quit`) so Godot writes `.godot/global_script_class_cache.cfg`, then
 re-run the command above.
 
-> **Current CI status (v0.6.0 / P9-FIX): GREEN.** Verified headless with Godot
-> v4.3.stable: the test suite reports `Total: 763 | Passed: 763 | Failed: 0 |
-> Skipped: 2 | Exit: 0`, and the CODE_POLICY linter reports `No violations |
-> Exit: 0`. The 2 skips are intentional (`--script`-mode texture/autoload tests;
-> see `docs/BUG_REPORT.md`). Both CI gates pass.
+> **Current CI status: GREEN.** GitHub Actions (`.github/workflows/ci.yml`, Godot
+> 4.7.2) runs six gates: lint, tests (`Total: 4366 | Passed: 4366 | Failed: 0`),
+> scene smoke, game smoke, clean-tree check and exported-pack boot. Gate details:
+> `AGENTS.md` section 4.
 
 ---
 

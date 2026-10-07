@@ -145,6 +145,13 @@ var _mission_cell_y: SpinBox = null
 var _mission_commit: HSlider = null
 
 
+# T002 (pitfall P10): drop every EventBus subscription of this node when it leaves
+# the tree, so freed screens do not leave dead listeners on the shared bus.
+func _exit_tree() -> void:
+	if Nexus != null and Nexus.event_bus != null:
+		Nexus.event_bus.unsubscribe_all(self)
+
+
 func _ready() -> void:
 	# BUG-FIX (mobile zoom + move): the root HUD Control defaults to
 	# MOUSE_FILTER_STOP, which would SWALLOW every tap/drag in the GUI pass so it
