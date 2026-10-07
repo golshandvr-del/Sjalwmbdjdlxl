@@ -48,3 +48,17 @@ zero-dependency in-repo runner/linter/smoke tools cover current needs.
 The owner can only message every ~12h, so each OpenHands run carries several work
 packages (WP) in strict order, each with its own commit(s) and gates. A failed WP
 stops the run; completed WPs stay committed.
+
+## DEC-012 Saves are validated before apply (T003)
+`SaveSnapshotUtil.validate(snapshot, SAVE_VERSION)` returns "" or a reason. Any
+reason => apply_snapshot/import_save refuse and the live game is untouched. Newer
+`save_version` is refused; older is loaded best-effort.
+
+## DEC-013 ui_prefs is local (T003)
+`ui_prefs` is per-device preference state and is excluded from the sim hash.
+Gameplay must never read `ui_prefs` inside simulation code (difficulty in ui_prefs
+is only the menu default; the difficulty module owns the match value).
+
+## DEC-014 App background pause (T003)
+Single-player matches pause on NOTIFICATION_APPLICATION_PAUSED and stay paused on
+resume. Networked sessions never pause locally.
