@@ -27,7 +27,7 @@
 ```bash
 git add <changed_file>
 git commit -m "<short-desc of the single change>"
-git push github main
+git push origin <your-task-branch>   # AI agents: never main (see AGENTS.md)
 ```
 
 ---
@@ -37,12 +37,12 @@ git push github main
 بعد از هر مجموعه تغییر معنادار، فایل‌های زیر باید به‌روز شوند (و طبق قانون ۱ commit شوند):
 - `docs/STRUCTURE.md` (سند مرجع فازبندی و وضعیت)
 - `README.md`
-- `docs/BUG_REPORT.md` (وضعیت باگ‌ها)
+- `docs/ai/PROJECT_STATE.md` (وضعیت تأییدشده و Known Issues)
 - سایر فایل‌های `docs/*.md` مرتبط
 
 ## 🟠 قانون شماره ۳ — کل پروژه در یک پوشه واحد
 
-کل کد پروژه باید در یک پوشه‌ی واحد (`project-nexus/`) نگهداری شود.
+کل کد پروژه در ریشه‌ی همین repository نگهداری می‌شود (پوشه‌ی جداگانه‌ی `project-nexus/` منسوخ است — DEC-003).
 
 ## 🟠 قانون شماره ۴ — سیاست کد
 
