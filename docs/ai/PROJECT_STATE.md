@@ -1,9 +1,9 @@
 # Project state (agent reference)
 Update at the end of every approved task (Claude provides the text).
 
-## Baseline (after T004)
+## Baseline (after T005)
 - Version 0.6.0. Engine Godot 4.7 (verified with 4.7.2). Roadmap P0-P9 complete.
-- Gates: G1 lint 246 files no violations; G2 tests Total 4506 / Passed 4506 /
+- Gates: G1 lint 246 files no violations; G2 tests Total 4544 / Passed 4544 /
   Failed 0 / Skipped 0; G3 scene smoke failures=0 navigations=11; G4 game smoke
   failures=0; G5 clean tree after import; G6 exported Android pack boots with 0
   script errors. GitHub Actions CI runs G1-G6.
@@ -33,7 +33,7 @@ Update at the end of every approved task (Claude provides the text).
 - KI-7 (partly resolved T004) Pure HUD decisions now live in `ui/shared/hud_logic_util.gd`
   (HudLogicUtil): local HQ, next research node, controlled owners, owner count,
   speed cycle, style label key, match result key, chat history, mission proposal.
-  Remaining duplication is node-building/UI code (tab builders, input handlers) -> T005.
+  Remaining duplication is node-building/UI code (tab builders, input handlers) -> T005. T005 moved treaty proposal and target-owner pickers too; remaining duplication = node-building code only.
 - KI-11 `docs/STRUCTURE.md` history still describes `docs/BUG_REPORT.md` (historical
   text, intentionally kept).
 - Device-only confirmations pending: see docs/PLAN_ANDROID_FIXES_V2.md (bottom).
@@ -45,7 +45,7 @@ Update at the end of every approved task (Claude provides the text).
 | T002 | Hardening: determinism, export, CI, docs | merged (PR #2) | claude/T002-hardening | done by Claude |
 | T003 | Hardening 2: save validation, ui_prefs hash, app pause, l10n guard | merged (PR #3) | claude/T003-hardening | done by Claude |
 | T004 | HudLogicUtil (KI-7 part 1) + save/QA + long-run determinism tests | merged (PR #4) | claude/T004-reference | done by Claude |
-| T005 | HUD dedup part 2 + scenario determinism matrix + docs | assigned to OpenHands | oh/T005-hud-dedup-scenarios | - |
+| T005 | HUD dedup part 2 + scenario determinism matrix + docs | PR open (OpenHands) | oh/T005-hud-dedup-scenarios | awaiting Claude review |
 
 ## Candidate next tasks (Claude decides)
-- T005 Android device QA checklist automation (what can be tested headless).
+- T006 Android device QA checklist (docs/ai/DEVICE_QA.md) — Claude decides.

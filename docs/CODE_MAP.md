@@ -164,6 +164,8 @@ scenes/       صحنه‌های Godot (.tscn)
 | `ui/shared/map_editor.gd` + `tile_grid.gd` | ادیتور نقشه (پایه) | **ارتقا در P6.7 (زوم/دریا/ساحل/آبجکت)** |
 | `ui/shared/custom_games.gd` | لیست بازی‌های سفارشی | `list_scenarios` |
 | `ui/shared/ui_scale.gd` | مقیاس GUI | `apply_from_settings` |
+| `ui/shared/hud_logic_util.gd` | (T004/T005) منطقِ خالص و مشترکِ دو HUD (DEC-015) | HQ محلی، تحقیقِ بعدی، مالکانِ قابل‌کنترل، سرعت، برچسبِ سبک، نتیجه‌ی مسابقه، تاریخچه‌ی چت، پیشنهادِ مأموریت/پیمان، فهرستِ هدف‌ها |
+| `core/save_snapshot_util.gd` | (T003) اعتبارسنجیِ کاملِ snapshot پیش از load/import (DEC-012) | `SaveSnapshotUtil.validate` — all-or-nothing |
 
 ---
 

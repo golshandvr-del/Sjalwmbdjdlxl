@@ -1240,11 +1240,9 @@ func _populate_recipient_options(opt: OptionButton) -> void:
 # mission targets, which must name a single counterpart.
 func _populate_owner_options(opt: OptionButton) -> void:
 	opt.clear()
-	for o in range(_owner_count()):
-		if o == LOCAL_PLAYER:
-			continue
-		opt.add_item(_owner_label(o))
-		opt.set_item_metadata(opt.item_count - 1, o)
+	for o in HudLogicUtil.target_owner_choices(_owner_count(), LOCAL_PLAYER):
+		opt.add_item(_owner_label(int(o)))
+		opt.set_item_metadata(opt.item_count - 1, int(o))
 
 
 # A localized label for an owner id (BROADCAST => "Everyone").
@@ -1323,13 +1321,10 @@ func _on_propose_treaty_pressed() -> void:
 		return
 	var type_id: String = str(TreatyUtil.TYPES[max(0, _treaty_type_opt.selected)])
 	var target: int = _selected_owner(_treaty_target_opt, LOCAL_PLAYER)
-	if target == LOCAL_PLAYER:
-		return
-	var duration: int = int(_treaty_duration.value)
-	var treaty: Dictionary = TreatyUtil.make_treaty(
-		type_id, LOCAL_PLAYER, target, {}, {}, duration,
+	var treaty: Dictionary = HudLogicUtil.build_treaty_proposal(
+		type_id, LOCAL_PLAYER, target, int(_treaty_duration.value),
 		int(Nexus.world_state.current_tick))
-	if not TreatyUtil.is_valid(treaty):
+	if treaty.is_empty():
 		return
 	diplomacy.issue_propose(LOCAL_PLAYER, treaty)
 	# Echo a cosmetic line into the transcript so the player sees what was sent.
