@@ -34,7 +34,7 @@ requirements `R#`, and the executable phase plan `P0`..`P8`). For a fast
 > retired in commit 7dc53a6; its history lives in `docs/STRUCTURE.md`).
 >
 > Latest headless run (Godot 4.7.2, also enforced by GitHub Actions CI):
-> - **Tests:** `Total: 4366 | Passed: 4366 | Failed: 0 | Skipped: 0 | Exit: 0` ✅
+> - **Tests:** `Total: 4544 | Passed: 4544 | Failed: 0 | Skipped: 0 | Exit: 0` ✅
 > - **CODE_POLICY linter:** `246 files scanned | No violations | Exit: 0` ✅
 > - **Smoke:** scene smoke `failures=0`, game smoke `failures=0`, exported pack boots.
 >
@@ -149,8 +149,8 @@ Exit code `0` = clean, `1` = a non-ASCII character was found outside the allowed
 ```bash
 godot --headless --path . --script res://tests/test_runner.gd
 ```
-Exit code `0` = all tests passed, `1` = some failed. Current suite: **4366
-checks in 584 test functions** (Godot 4.7.2; the phase notes below keep their
+Exit code `0` = all tests passed, `1` = some failed. Current suite: **4544
+checks in 610 test functions** (Godot 4.7.2; the phase notes below keep their
 historical counts) covering EventBus, ModuleRegistry, SimClock, CommandQueue, WorldState,
 PathService, Map, Economy, Combat, Units movement, the AI commander, the
 victory rule, and full deterministic battle replays (human-vs-AI and AI-vs-AI),
@@ -177,7 +177,7 @@ registry. If you run a fresh checkout and see `Could not find base class
 re-run the command above.
 
 > **Current CI status: GREEN.** GitHub Actions (`.github/workflows/ci.yml`, Godot
-> 4.7.2) runs six gates: lint, tests (`Total: 4366 | Passed: 4366 | Failed: 0`),
+> 4.7.2) runs six gates: lint, tests (`Total: 4544 | Passed: 4544 | Failed: 0`),
 > scene smoke, game smoke, clean-tree check and exported-pack boot. Gate details:
 > `AGENTS.md` section 4.
 

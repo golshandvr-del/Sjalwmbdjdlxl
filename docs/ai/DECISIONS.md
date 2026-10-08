@@ -67,3 +67,9 @@ resume. Networked sessions never pause locally.
 `ui/shared/hud_logic_util.gd` holds static, pure, headless-testable HUD decisions.
 Both HUDs delegate to it; they keep only node/Localization code. New HUD logic that
 both HUDs need goes there first, with a unit test, never duplicated into both HUDs.
+
+## DEC-016 Scenario determinism matrix (T005)
+Every scenario in `data/scenarios/` must (a) produce identical hashes on two fresh
+300-tick runs, (b) survive save@150 -> JSON -> load -> +150 bit-identically, and the
+four-player scenario must stay in sync across four lockstep peers. New shipped
+scenarios are covered automatically (the test enumerates the catalog).
