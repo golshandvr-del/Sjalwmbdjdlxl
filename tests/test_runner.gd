@@ -704,6 +704,12 @@ func _init() -> void:
 	test_t004_huds_delegate_wp2_logic()
 	test_t004_two_peer_ai_match_stays_in_sync()
 	test_t004_save_load_mid_battle_is_transparent()
+	test_t005_hud_logic_build_treaty_proposal()
+	test_t005_hud_logic_target_owner_choices()
+	test_t005_huds_delegate_wp1_logic()
+	test_t005_every_shipped_scenario_is_deterministic()
+	test_t005_every_shipped_scenario_survives_save_load()
+	test_t005_four_peer_lockstep_four_corners()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -10571,6 +10577,112 @@ func test_t004_save_load_mid_battle_is_transparent() -> void:
 			_check(sb.apply_snapshot(JSON.parse_string(text)), "T004 seed %d cut %d snapshot accepted" % [seed_value, cut])
 			b.run_ticks(500 - cut)
 			_check(StateHasher.hash_world(b.world_state) == expected, "T004 seed %d: save/load at tick %d then continue == uninterrupted 500 ticks" % [seed_value, cut])
+
+# --- T005 WP1: treaty proposal + target owner choices -----------------------
+func test_t005_hud_logic_build_treaty_proposal() -> void:
+	print("test_t005_hud_logic_build_treaty_proposal")
+	var t: Dictionary = HudLogicUtil.build_treaty_proposal(str(TreatyUtil.TYPES[0]), 0, 1, 100, 7)
+	_check(not t.is_empty(), "T005 valid treaty proposal built")
+	_check(str(t.get("type", "")) == str(TreatyUtil.TYPES[0]), "T005 treaty carries the requested type")
+	_check(HudLogicUtil.build_treaty_proposal(str(TreatyUtil.TYPES[0]), 0, 0, 100, 7).is_empty(), "T005 self-target treaty refused")
+	_check(HudLogicUtil.build_treaty_proposal("not_a_treaty_type", 0, 1, 100, 7).is_empty(), "T005 unknown treaty type refused")
+
+
+func test_t005_hud_logic_target_owner_choices() -> void:
+	print("test_t005_hud_logic_target_owner_choices")
+	_check(HudLogicUtil.target_owner_choices(4, 0) == [1, 2, 3], "T005 targets exclude the local player")
+	_check(HudLogicUtil.target_owner_choices(4, 2) == [0, 1, 3], "T005 targets exclude a non-zero local player")
+	_check(HudLogicUtil.target_owner_choices(1, 0) == [], "T005 single owner -> no targets")
+
+
+func test_t005_huds_delegate_wp1_logic() -> void:
+	print("test_t005_huds_delegate_wp1_logic")
+	for path in ["res://ui/mobile/game_hud.gd", "res://ui/desktop/desktop_hud.gd"]:
+		var text: String = FileAccess.get_file_as_string(path)
+		_check(text.contains("HudLogicUtil.build_treaty_proposal("), "T005 %s calls build_treaty_proposal" % path.get_file())
+		_check(text.contains("HudLogicUtil.target_owner_choices("), "T005 %s calls target_owner_choices" % path.get_file())
+		_check(not text.contains("TreatyUtil.make_treaty("), "T005 %s builds no treaty itself" % path.get_file())
+
+
+# --- T005 WP2: determinism matrix over every shipped scenario ---------------
+func _t005_scenario_ids() -> Array:
+	var probe: TickHarness = TickHarness.new()
+	GameBootstrap.register_modules(probe)
+	GameBootstrap.load_catalogs(probe)
+	var ids: Array = probe.data_loader.get_catalog("scenarios").keys()
+	ids.sort()
+	return ids
+
+
+func _t005_harness_for(scenario_id: String) -> TickHarness:
+	var nexus: TickHarness = TickHarness.new()
+	GameBootstrap.register_modules(nexus)
+	GameBootstrap.load_catalogs(nexus)
+	var entry: Dictionary = nexus.data_loader.get_entry("scenarios", scenario_id)
+	ScenarioLoader.apply_scenario(nexus, entry)
+	return nexus
+
+
+func test_t005_every_shipped_scenario_is_deterministic() -> void:
+	print("test_t005_every_shipped_scenario_is_deterministic")
+	var ids: Array = _t005_scenario_ids()
+	_check(ids.size() >= 3, "T005 found the shipped scenarios (%d)" % ids.size())
+	for sid in ids:
+		var a: TickHarness = _t005_harness_for(str(sid))
+		var b: TickHarness = _t005_harness_for(str(sid))
+		a.run_ticks(300)
+		b.run_ticks(300)
+		_check(StateHasher.hash_world(a.world_state) == StateHasher.hash_world(b.world_state), "T005 scenario '%s': two fresh runs of 300 ticks hash equal" % str(sid))
+		_check(a.world_state.current_tick == 300, "T005 scenario '%s' advanced 300 ticks" % str(sid))
+
+
+func test_t005_every_shipped_scenario_survives_save_load() -> void:
+	print("test_t005_every_shipped_scenario_survives_save_load")
+	for sid in _t005_scenario_ids():
+		var ref: TickHarness = _t005_harness_for(str(sid))
+		ref.run_ticks(300)
+		var expected: int = StateHasher.hash_world(ref.world_state)
+		var a: TickHarness = _t005_harness_for(str(sid))
+		a.run_ticks(150)
+		var sa: SaveSystem = SaveSystem.new()
+		sa.setup(a)
+		var text: String = JSON.stringify(sa.build_snapshot())
+		var b: TickHarness = _t005_harness_for(str(sid))
+		var sb: SaveSystem = SaveSystem.new()
+		sb.setup(b)
+		_check(sb.apply_snapshot(JSON.parse_string(text)), "T005 scenario '%s' snapshot accepted" % str(sid))
+		b.run_ticks(150)
+		_check(StateHasher.hash_world(b.world_state) == expected, "T005 scenario '%s': save at 150 + load + 150 == 300 uninterrupted" % str(sid))
+
+
+# --- T005 WP3: four-peer lockstep on the four-player shipped scenario --------
+func test_t005_four_peer_lockstep_four_corners() -> void:
+	print("test_t005_four_peer_lockstep_four_corners")
+	var transport: LoopbackTransport = LoopbackTransport.new()
+	var peers: Array = []
+	for pid in [0, 1, 2, 3]:
+		var nexus: TickHarness = _t005_harness_for("skirmish_four_corners")
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		lock.start_session([0, 1, 2, 3], pid, 3)
+		transport.attach(pid, lock, nexus.event_bus)
+		peers.append(nexus)
+	var horizon: int = 150
+	for nexus in peers:
+		var lock: LockstepModule = nexus.get_module("multiplayer")
+		for t in range(1, horizon + 1):
+			lock.flush_empty_turn_for(t)
+	for t in range(1, horizon + 1):
+		for nexus in peers:
+			var lock: LockstepModule = nexus.get_module("multiplayer")
+			lock.inject_commands_for_tick(t)
+			nexus.run_ticks(1)
+	var h0: int = StateHasher.hash_world(peers[0].world_state)
+	for i in range(peers.size()):
+		var nexus: TickHarness = peers[i]
+		_check(StateHasher.hash_world(nexus.world_state) == h0, "T005 four-peer: peer %d hash equals peer 0 after %d ticks" % [i, horizon])
+		_check(not (nexus.get_module("multiplayer") as Object).has_desync(), "T005 four-peer: peer %d reports no desync" % i)
+		_check(nexus.world_state.current_tick == horizon, "T005 four-peer: peer %d reached tick %d" % [i, horizon])
+
 
 class TickHarness extends RefCounted:
 	var world_state: WorldState = WorldState.new()
