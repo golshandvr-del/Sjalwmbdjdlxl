@@ -124,3 +124,27 @@ static func build_mission_proposal(sender: int, target: int, mission_type: Strin
 	if not TreatyUtil.is_valid(treaty):
 		return {}
 	return { "mission": mission, "treaty": treaty }
+
+
+# --- T005 WP1: treaty proposal + owner pickers -------------------------------
+
+# Build a plain treaty proposal (no mission payload). Returns the treaty, or {}
+# when invalid (self-target or TreatyUtil.is_valid() false).
+static func build_treaty_proposal(type_id: String, sender: int, target: int,
+		duration: int, tick: int) -> Dictionary:
+	if target == sender:
+		return {}
+	var treaty: Dictionary = TreatyUtil.make_treaty(
+		type_id, sender, target, {}, {}, duration, tick)
+	if not TreatyUtil.is_valid(treaty):
+		return {}
+	return treaty
+
+
+# Owner ids for treaty/mission target pickers: 0..owner_count-1 except `local_player`.
+static func target_owner_choices(owner_count: int, local_player: int) -> Array:
+	var out: Array = []
+	for o in range(owner_count):
+		if o != local_player:
+			out.append(o)
+	return out
