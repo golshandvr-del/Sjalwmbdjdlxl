@@ -48,4 +48,5 @@ Update at the end of every approved task (Claude provides the text).
 | T005 | HUD dedup part 2 + scenario determinism matrix + docs | PR open (OpenHands) | oh/T005-hud-dedup-scenarios | awaiting Claude review |
 
 ## Candidate next tasks (Claude decides)
-- T006 Android device QA checklist (docs/ai/DEVICE_QA.md) — Claude decides.
+- T007 Android device QA checklist (docs/ai/DEVICE_QA.md) — Claude decides (renumbered; T006 is now the frontier mod).
+- T006 (in progress, OpenHands): see docs/ai/tasks/T006_PROMPT.md; judge = tests/acceptance/t006_acceptance.gd.
