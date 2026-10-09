@@ -1,0 +1,28 @@
+{
+  "id": "fr_sanctum",
+  "display_name_key": "building.fr_sanctum.name",
+  "stats": {
+    "health": 750,
+    "vision_range": 7
+  },
+  "produces": {},
+  "buildable_units": [
+    "fr_paladin"
+  ],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "cost": {
+    "resource_basic": 320
+  },
+  "build_time_ticks": 130,
+  "requires": {
+    "buildings": [
+      "fr_academy",
+      "fr_stable"
+    ]
+  }
+}

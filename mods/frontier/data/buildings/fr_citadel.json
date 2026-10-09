@@ -1,0 +1,22 @@
+{
+  "id": "fr_citadel",
+  "display_name_key": "building.fr_citadel.name",
+  "stats": {
+    "health": 9000,
+    "vision_range": 7
+  },
+  "produces": {
+    "resource_basic": 30
+  },
+  "buildable_units": [
+    "fr_militia",
+    "fr_scout"
+  ],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "buildable": false
+}

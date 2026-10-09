@@ -1,0 +1,22 @@
+{
+  "id": "fr_rider",
+  "display_name_key": "unit.fr_rider.name",
+  "category": "cavalry",
+  "stats": {
+    "health": 140,
+    "move_speed": 3,
+    "attack_damage": 14,
+    "attack_range": 1,
+    "vision_range": 5
+  },
+  "cost": {
+    "resource_basic": 70
+  },
+  "build_time_ticks": 95,
+  "visual": {
+    "shape": "diamond",
+    "color": "#C88F6F",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

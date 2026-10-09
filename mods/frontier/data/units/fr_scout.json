@@ -1,0 +1,22 @@
+{
+  "id": "fr_scout",
+  "display_name_key": "unit.fr_scout.name",
+  "category": "scout",
+  "stats": {
+    "health": 55,
+    "move_speed": 3,
+    "attack_damage": 4,
+    "attack_range": 1,
+    "vision_range": 9
+  },
+  "cost": {
+    "resource_basic": 25
+  },
+  "build_time_ticks": 72,
+  "visual": {
+    "shape": "triangle",
+    "color": "#9BD0A0",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

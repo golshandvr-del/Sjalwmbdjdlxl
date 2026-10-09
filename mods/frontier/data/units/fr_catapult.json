@@ -1,0 +1,23 @@
+{
+  "id": "fr_catapult",
+  "display_name_key": "unit.fr_catapult.name",
+  "category": "siege",
+  "stats": {
+    "health": 100,
+    "move_speed": 1,
+    "attack_damage": 34,
+    "attack_range": 4,
+    "vision_range": 5
+  },
+  "cost": {
+    "resource_basic": 60,
+    "resource_energy": 40
+  },
+  "build_time_ticks": 90,
+  "visual": {
+    "shape": "square",
+    "color": "#8A6A4A",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

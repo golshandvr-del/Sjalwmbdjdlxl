@@ -1,0 +1,26 @@
+{
+  "id": "fr_wall",
+  "display_name_key": "building.fr_wall.name",
+  "stats": {
+    "health": 400,
+    "vision_range": 7
+  },
+  "produces": {},
+  "buildable_units": [],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "cost": {
+    "resource_basic": 40
+  },
+  "build_time_ticks": 30,
+  "requires": {
+    "buildings": [
+      "fr_citadel"
+    ]
+  },
+  "counts_for_survival": false
+}

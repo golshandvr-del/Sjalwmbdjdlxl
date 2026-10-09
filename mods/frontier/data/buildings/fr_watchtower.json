@@ -1,0 +1,28 @@
+{
+  "id": "fr_watchtower",
+  "display_name_key": "building.fr_watchtower.name",
+  "stats": {
+    "health": 500,
+    "vision_range": 9,
+    "attack_damage": 12,
+    "attack_range": 4
+  },
+  "produces": {},
+  "buildable_units": [],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "cost": {
+    "resource_basic": 130
+  },
+  "build_time_ticks": 70,
+  "requires": {
+    "buildings": [
+      "fr_citadel"
+    ]
+  },
+  "attack_cooldown_ticks": 10
+}

@@ -1,0 +1,28 @@
+{
+  "id": "fr_workshop",
+  "display_name_key": "building.fr_workshop.name",
+  "stats": {
+    "health": 800,
+    "vision_range": 7
+  },
+  "produces": {},
+  "buildable_units": [
+    "fr_catapult",
+    "fr_ballista"
+  ],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "cost": {
+    "resource_basic": 300
+  },
+  "build_time_ticks": 130,
+  "requires": {
+    "buildings": [
+      "fr_academy"
+    ]
+  }
+}
