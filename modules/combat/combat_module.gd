@@ -51,6 +51,10 @@ func on_tick(_delta_tick: int) -> void:
 			continue
 		var unit: Dictionary = units[key]
 		_resolve_unit_combat(unit)
+	# T006 WP1: defensive buildings (attack_damage > 0) fire at the nearest enemy
+	# unit in range, exactly like unit combat (deterministic, same diplomacy/team
+	# rules). Runs after units so the tick order is stable.
+	_resolve_building_combat()
 
 
 func _resolve_unit_combat(unit: Dictionary) -> void:
@@ -76,6 +80,70 @@ func _resolve_unit_combat(unit: Dictionary) -> void:
 			"target": int(target["id"]),
 			"damage": damage,
 		})
+
+
+# T006 WP1: every defensive building fires once per attack_cooldown_ticks at the
+# nearest enemy UNIT within attack_range (Manhattan distance, deterministic
+# tie-break by unit id). Damage/death is applied exactly like unit attacks, so
+# buildings.destroyed/units.died flow through the same paths.
+func _resolve_building_combat() -> void:
+	var buildings: Dictionary = _buildings()
+	var bkeys: Array = buildings.keys()
+	bkeys.sort_custom(_compare_int_keys)
+	for key in bkeys:
+		if not buildings.has(key):
+			continue
+		var b: Dictionary = buildings[key]
+		if int(b.get("attack_damage", 0)) <= 0:
+			continue
+		if int(b.get("health", 0)) <= 0:
+			continue
+		if int(b.get("construction_remaining", 0)) > 0:
+			continue
+		# Cooldown gate (default 10 ticks between shots).
+		var cooldown: int = int(b.get("attack_cooldown", 0))
+		if cooldown > 0:
+			b["attack_cooldown"] = cooldown - 1
+			continue
+		var target: Dictionary = _acquire_building_target(b)
+		if target.is_empty():
+			continue
+		_apply_damage(target, int(b.get("attack_damage", 0)), b)
+		b["attack_cooldown"] = max(1, int(b.get("attack_cooldown_ticks", 10)))
+		nexus.emit_event(EVENT_ATTACK, {
+			"attacker": int(b["id"]),
+			"target": int(target["id"]),
+			"damage": int(b.get("attack_damage", 0)),
+			"attacker_kind": "building",
+		})
+
+
+# Nearest hostile, living UNIT within the building's attack_range (Manhattan).
+func _acquire_building_target(b: Dictionary) -> Dictionary:
+	var owner: int = int(b.get("owner", 0))
+	var bx: int = int(b.get("x", 0))
+	var by: int = int(b.get("y", 0))
+	var rng: int = int(b.get("attack_range", 1))
+	var best: Dictionary = {}
+	var best_dist: int = 1 << 30
+	var best_id: int = 1 << 30
+	var units: Dictionary = _units()
+	var ukeys: Array = units.keys()
+	ukeys.sort_custom(_compare_int_keys)
+	for key in ukeys:
+		var other: Dictionary = units[key]
+		if not _is_hostile(owner, int(other.get("owner", 0))):
+			continue
+		if int(other.get("health", 0)) <= 0:
+			continue
+		var d: int = _manhattan(bx, by, int(other["x"]), int(other["y"]))
+		if d <= rng:
+			var oid: int = int(other.get("id", -1))
+			if d < best_dist or (d == best_dist and oid < best_id):
+				best = other
+				best_dist = d
+				best_id = oid
+	return best
 
 
 # P7.5: two owners are hostile unless they share a team. Teams live in the

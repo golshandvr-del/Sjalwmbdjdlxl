@@ -118,6 +118,13 @@ func place_building(type: String, owner: int, x: int, y: int) -> int:
 		# produce or fight; counted down by the build queue tick.
 		"construction_remaining": 0,
 	}
+	# T006 WP1: defensive buildings (attack_damage > 0) carry the extra combat
+	# fields. Non-attacking buildings keep EXACTLY the 13 keys above (check C18).
+	if int(stats.get("attack_damage", 0)) > 0:
+		building["attack_damage"] = int(stats.get("attack_damage", 0))
+		building["attack_range"] = int(stats.get("attack_range", 1))
+		building["attack_cooldown_ticks"] = max(1, int((archetype as Dictionary).get("attack_cooldown_ticks", 10)))
+		building["attack_cooldown"] = 0
 	_buildings()[str(building_id)] = building
 	nexus.emit_event(EVENT_PLACED, { "id": building_id, "owner": owner, "type": type, "x": x, "y": y })
 	return building_id
@@ -131,6 +138,12 @@ func build_building(type: String, owner: int, x: int, y: int) -> int:
 		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "unknown_building" })
 		return -1
 	var a: Dictionary = archetype
+	# T006 WP1: prerequisite gate -- checked BEFORE spending/placing so a
+	# rejection costs nothing and places nothing (checks C11, C12).
+	var missing: Array = _missing_prereqs(a, owner)
+	if not missing.is_empty():
+		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "missing_prerequisite", "type": type, "missing": missing })
+		return -1
 	# Tile must be free and walkable (read map straight from world state).
 	if not _tile_free_for_build(x, y):
 		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "tile_blocked" })
@@ -439,6 +452,21 @@ func _tile_free_for_build(x: int, y: int) -> bool:
 
 func _buildings() -> Dictionary:
 	return nexus.world_state.get_section(SECTION)["list"]
+
+
+# T006 WP1: the unmet prerequisites of an archetype for `owner`, using the
+# shared PrereqUtil. Returns [] when the archetype has no `requires` block.
+func _missing_prereqs(archetype: Dictionary, owner: int) -> Array:
+	var requires: Variant = archetype.get("requires", {})
+	if not (requires is Dictionary) or (requires as Dictionary).is_empty():
+		return []
+	var completed: Array = PrereqUtil.owner_completed_building_types(_buildings(), owner)
+	return PrereqUtil.missing(requires, completed, _researched(owner))
+
+
+# T006 WP1: the tech node ids `owner` has completed (read-only WorldState read).
+func _researched(owner: int) -> Array:
+	return nexus.world_state.get_section("tech").get("players", {}).get(str(owner), {}).get("researched", [])
 
 
 func get_building(building_id: int) -> Dictionary:
