@@ -39,15 +39,20 @@ static func find_path(width: int, height: int, tiles: Array, start: Vector2i, go
 
 	var came_from: Dictionary = {}
 	var g_cost: Dictionary = { start_idx: 0 }
-	var open: Array = [{ "idx": start_idx, "f": _heuristic(start, goal) }]
-
-	while not open.is_empty():
-		open.sort_custom(_compare_open)
-		var current: Dictionary = open.pop_front()
-		var current_idx: int = int(current["idx"])
+	var best_f: Dictionary = { start_idx: _heuristic(start, goal) }
+	var closed: Dictionary = {}
+	# T006 WP0: binary min-heap of [f, idx] ordered by (f, idx). Same pop order as
+	# the previous sorted-array open set (identical paths, identical hashes), in
+	# O(log n) per pop instead of a full sort per pop. Stale entries are skipped.
+	var heap: Array = [[_heuristic(start, goal), start_idx]]
+	while not heap.is_empty():
+		var top: Array = _heap_pop(heap)
+		var current_idx: int = int(top[1])
+		if closed.has(current_idx) or int(top[0]) != int(best_f.get(current_idx, -1)):
+			continue
+		closed[current_idx] = true
 		if current_idx == goal_idx:
 			return _reconstruct(width, came_from, current_idx)
-
 		var cx: int = current_idx % width
 		var cy: int = current_idx / width
 		for neighbour in _neighbours(cx, cy):
@@ -61,8 +66,55 @@ static func find_path(width: int, height: int, tiles: Array, start: Vector2i, go
 				came_from[n_idx] = current_idx
 				g_cost[n_idx] = tentative_g
 				var f: int = tentative_g + _heuristic(Vector2i(nx, ny), goal)
-				_push_open(open, n_idx, f)
+				best_f[n_idx] = f
+				closed.erase(n_idx)
+				_heap_push(heap, [f, n_idx])
 	return []
+
+
+static func _heap_less(a: Array, b: Array) -> bool:
+	if int(a[0]) == int(b[0]):
+		return int(a[1]) < int(b[1])
+	return int(a[0]) < int(b[0])
+
+
+static func _heap_push(heap: Array, item: Array) -> void:
+	heap.append(item)
+	var i: int = heap.size() - 1
+	while i > 0:
+		var parent: int = (i - 1) / 2
+		if _heap_less(heap[i], heap[parent]):
+			var tmp: Array = heap[i]
+			heap[i] = heap[parent]
+			heap[parent] = tmp
+			i = parent
+		else:
+			break
+
+
+static func _heap_pop(heap: Array) -> Array:
+	var top: Array = heap[0]
+	var last: Array = heap.pop_back()
+	if heap.is_empty():
+		return top
+	heap[0] = last
+	var i: int = 0
+	var n: int = heap.size()
+	while true:
+		var l: int = i * 2 + 1
+		var r: int = l + 1
+		var m: int = i
+		if l < n and _heap_less(heap[l], heap[m]):
+			m = l
+		if r < n and _heap_less(heap[r], heap[m]):
+			m = r
+		if m == i:
+			break
+		var tmp: Array = heap[i]
+		heap[i] = heap[m]
+		heap[m] = tmp
+		i = m
+	return top
 
 
 # MC1.2 (request 1): find a path on the viewer's BELIEF grid instead of the real
@@ -100,21 +152,6 @@ static func _neighbours(x: int, y: int) -> Array:
 		Vector2i(x, y + 1),
 		Vector2i(x - 1, y),
 	]
-
-
-static func _compare_open(a: Dictionary, b: Dictionary) -> bool:
-	if a["f"] == b["f"]:
-		return a["idx"] < b["idx"]
-	return a["f"] < b["f"]
-
-
-static func _push_open(open: Array, idx: int, f: int) -> void:
-	for i in range(open.size()):
-		if int(open[i]["idx"]) == idx:
-			if f < int(open[i]["f"]):
-				open[i]["f"] = f
-			return
-	open.append({ "idx": idx, "f": f })
 
 
 static func _reconstruct(width: int, came_from: Dictionary, current_idx: int) -> Array:

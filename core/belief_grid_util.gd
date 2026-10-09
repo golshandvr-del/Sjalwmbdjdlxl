@@ -58,7 +58,13 @@ static func build_belief_grid(width: int, height: int, tiles: Array, fog: Dictio
 	for i in range(out.size()):
 		out[i] = GROUND
 	# viewer < 0 -> no fog: mirror the real grid (clamped to size).
-	if viewer < 0:
+	# T006 WP0 (DEC-017): a viewer that owns NO fog grid (e.g. an AI player, which
+	# is never registered as a fog viewer) also has full knowledge. Before T006
+	# such a viewer saw an all-ground belief, planned straight through walls and
+	# then replanned the identical blocked path every tick (stuck units + one A*
+	# per tick, the dominant CPU cost of every AI match).
+	var has_grid: bool = viewer >= 0 and (fog.get("visible", {}) as Dictionary).has(str(viewer))
+	if viewer < 0 or not has_grid:
 		for i in range(out.size()):
 			out[i] = int(tiles[i]) if i < tiles.size() else GROUND
 		return out
