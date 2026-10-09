@@ -15,6 +15,11 @@ extends Node
 
 const SCENES: Array = ["res://scenes/game_main.tscn", "res://scenes/game_desktop.tscn"]
 
+# T006 WP8: also boot the mod's signature scenario so the frontier content is
+# exercised through the real HUD path (G16). Kept separate from SCENES so the
+# scene list stays about scenes and the scenario id stays explicit.
+const MOD_SCENARIO: String = "fr_river_valley"
+
 var _failures: int = 0
 
 
@@ -37,6 +42,7 @@ func _run() -> void:
 	var write_png: bool = OS.get_cmdline_user_args().has("--write-png")
 	for path in SCENES:
 		await _smoke_game(str(path), write_png)
+	await _smoke_mod_scenario(write_png)
 	print("GAME_SMOKE_DONE failures=%d" % _failures)
 	get_tree().quit(1 if _failures > 0 else 0)
 
@@ -127,6 +133,49 @@ func _smoke_game(path: String, write_png: bool) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
+
+
+
+# T006 WP8: boot the frontier mod's duel scenario through the desktop HUD so the
+# mod's content (citadels, natural map, full AI) is smoke-tested end to end.
+func _smoke_mod_scenario(write_png: bool) -> void:
+	var nexus: Object = get_tree().root.get_node("Nexus")
+	var config: Dictionary = nexus.world_state.get_section("match_config")
+	config["scenario_id"] = MOD_SCENARIO
+	config["difficulty"] = "normal"
+	config["human_players"] = 1
+	config["ai_players"] = 1
+	config["game_mode"] = "annihilation"
+	var ps: PackedScene = load("res://scenes/game_desktop.tscn")
+	if ps == null:
+		print("GAME_SMOKE_FAIL load desktop scene for %s" % MOD_SCENARIO)
+		_failures += 1
+		return
+	var node: Node = ps.instantiate()
+	get_tree().root.add_child(node)
+	get_tree().current_scene = node
+	for i in range(5):
+		await get_tree().process_frame
+	var buildings: Dictionary = nexus.world_state.get_section("buildings").get("list", {})
+	var citadels: int = 0
+	for k in buildings.keys():
+		if str(buildings[k].get("type", "")) == "fr_citadel":
+			citadels += 1
+	print("GAME_SMOKE %s buildings=%d citadels=%d tick=%d" % [MOD_SCENARIO, buildings.size(), citadels, int(nexus.world_state.current_tick)])
+	if citadels < 2:
+		print("GAME_SMOKE_FAIL %s: expected 2 fr_citadel HQs, got %d" % [MOD_SCENARIO, citadels])
+		_failures += 1
+	await get_tree().create_timer(1.0).timeout
+	if int(nexus.world_state.current_tick) <= 0:
+		print("GAME_SMOKE_FAIL %s: simulation did not advance" % MOD_SCENARIO)
+		_failures += 1
+	if write_png:
+		await _capture("user://smoke_%s.png" % MOD_SCENARIO)
+	nexus.shutdown_simulation()
+	if is_instance_valid(node):
+		node.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 func _capture(out: String) -> void:
 	await RenderingServer.frame_post_draw

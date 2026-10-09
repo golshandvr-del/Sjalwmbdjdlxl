@@ -172,7 +172,7 @@ func _draw_map(world: Object) -> void:
 			var idx: int = y * w + x
 			var terrain: int = int(tiles[idx]) if idx < tiles.size() else 0
 			var rect: Rect2 = _tile_rect(x, y)
-			style.draw_tile(self, rect, terrain)
+			style.draw_tile(self, rect, terrain, x, y)
 
 
 func _draw_buildings(world: Object) -> void:

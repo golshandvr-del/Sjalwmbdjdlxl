@@ -203,8 +203,11 @@ func _building_record(building_id: int) -> Dictionary:
 
 # T006 WP1: the scenario's pop_cap rule (0 = unlimited / no rules section).
 func _pop_cap() -> int:
-	var rules: Dictionary = nexus.world_state.get_section("rules")
-	return int(rules.get("pop_cap", 0))
+	# Read WITHOUT get_section(): get_section() CREATES an empty section, which would
+	# add a "rules" section to vanilla matches and change the world hash (A1 lock).
+	if not nexus.world_state.has_section("rules"):
+		return 0
+	return int(nexus.world_state.get_section("rules").get("pop_cap", 0))
 
 
 # T006 WP1: current population of `owner` = living units + items already in that

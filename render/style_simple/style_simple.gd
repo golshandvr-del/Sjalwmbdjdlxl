@@ -24,6 +24,7 @@ extends RefCounted
 const COLOR_GROUND: Color = Color(0.16, 0.20, 0.16, 1.0)
 const COLOR_WALL: Color = Color(0.32, 0.30, 0.28, 1.0)
 const COLOR_WATER: Color = Color(0.12, 0.22, 0.38, 1.0)
+const COLOR_FOREST: Color = Color(0.14, 0.30, 0.15, 1.0)
 const COLOR_GRID: Color = Color(0.0, 0.0, 0.0, 0.18)
 
 # Owner colors (0 = local player, 1 = enemy, others cycle).
@@ -53,16 +54,31 @@ func owner_color(owner: int) -> Color:
 # and a lightweight recorder in the headless tests. This is the Logic/Render
 # Separation contract: a style never assumes a concrete canvas class.
 
-func draw_tile(canvas, rect: Rect2, terrain_id: int) -> void:
-	var color: Color = COLOR_GROUND
+func draw_tile(canvas, rect: Rect2, terrain_id: int, x: int = 0, y: int = 0) -> void:
+	# T006 WP7: tile art is a PURE function of (terrain, x, y). A small deterministic
+	# hash of the tile coordinate nudges the base shade so ground/forest read as
+	# natural patches instead of one flat colour. Never random (lockstep-safe).
+	var base: Color = COLOR_GROUND
 	match terrain_id:
 		1:
-			color = COLOR_WALL
+			base = COLOR_WALL
 		2:
-			color = COLOR_WATER
+			base = COLOR_WATER
+		3:
+			base = COLOR_FOREST
 		_:
-			color = COLOR_GROUND
-	canvas.draw_rect(rect, color, true)
+			base = COLOR_GROUND
+	if terrain_id == 0:
+		var v: float = float((x * 73856093) ^ (y * 19349663) & 7) / 7.0
+		base = COLOR_GROUND.lerp(Color(0.20, 0.27, 0.18, 1.0), v)
+	canvas.draw_rect(rect, base, true)
+	# Forest gets a few darker canopy blobs for a "grown" look.
+	if terrain_id == 3:
+		for i in range(3):
+			var fx: float = float(((x * 31 + y * 17 + i * 13) % 5)) / 5.0
+			var fy: float = float(((x * 19 + y * 41 + i * 7) % 5)) / 5.0
+			var p: Vector2 = rect.position + Vector2(rect.size.x * (0.15 + fx * 0.6), rect.size.y * (0.15 + fy * 0.6))
+			canvas.draw_circle(p, rect.size.x * 0.14, Color(0.09, 0.22, 0.10, 1.0))
 	# Thin grid outline for readability.
 	canvas.draw_rect(rect, COLOR_GRID, false, 1.0)
 

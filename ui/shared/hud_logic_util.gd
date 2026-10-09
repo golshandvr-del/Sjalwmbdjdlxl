@@ -148,3 +148,69 @@ static func target_owner_choices(owner_count: int, local_player: int) -> Array:
 		if o != local_player:
 			out.append(o)
 	return out
+
+
+# --- T006 WP6: build/production menus + resource lines -----------------------
+
+# One build-menu entry per catalog building, id-sorted. Each entry is
+# { "id", "affordable", "missing" }; `missing` comes from PrereqUtil (so a UI can
+# grey an entry and show exactly what is required). `affordable` is true only
+# when every cost resource in `wallet` is covered. Deterministic + headless.
+static func building_menu(building_catalog: Dictionary, completed_types: Array,
+		researched: Array, wallet: Dictionary) -> Array:
+	var out: Array = []
+	var ids: Array = building_catalog.keys()
+	ids.sort_custom(func(a, b): return str(a) < str(b))
+	for raw_id in ids:
+		var id: String = str(raw_id)
+		var entry: Dictionary = building_catalog[raw_id] if building_catalog[raw_id] is Dictionary else {}
+		out.append({
+			"id": id,
+			"affordable": _can_afford(entry.get("cost", {}), wallet),
+			"missing": PrereqUtil.missing(entry.get("requires", {}), completed_types, researched),
+		})
+	return out
+
+
+# Production menu for a building: one entry per buildable unit, sorted by id.
+# Each entry is { "id", "affordable", "missing" } (same shape as building_menu).
+static func production_menu(building: Dictionary, unit_catalog: Dictionary,
+		completed_types: Array, researched: Array, wallet: Dictionary) -> Array:
+	var out: Array = []
+	var buildable: Array = (building.get("buildable_units", []) as Array).duplicate()
+	buildable.sort_custom(func(a, b): return str(a) < str(b))
+	for raw_id in buildable:
+		var id: String = str(raw_id)
+		var entry: Dictionary = unit_catalog[id] if unit_catalog.has(id) and unit_catalog[id] is Dictionary else {}
+		out.append({
+			"id": id,
+			"affordable": _can_afford(entry.get("cost", {}), wallet),
+			"missing": PrereqUtil.missing(entry.get("requires", {}), completed_types, researched),
+		})
+	return out
+
+
+# Display rows for a wallet: [{ "id", "amount" }] with resource_basic FIRST, then
+# the remaining resource ids in sorted order. Pure presentation ordering.
+static func resource_lines(wallet: Dictionary) -> Array:
+	var out: Array = []
+	if wallet.has("resource_basic"):
+		out.append({ "id": "resource_basic", "amount": int(wallet.get("resource_basic", 0)) })
+	var ids: Array = wallet.keys()
+	ids.sort()
+	for raw_id in ids:
+		var id: String = str(raw_id)
+		if id == "resource_basic":
+			continue
+		out.append({ "id": id, "amount": int(wallet.get(id, 0)) })
+	return out
+
+
+# True when every resource in `cost` is covered by `wallet` (empty cost = free).
+static func _can_afford(cost: Variant, wallet: Dictionary) -> bool:
+	if not (cost is Dictionary):
+		return true
+	for resource_id in (cost as Dictionary).keys():
+		if int(wallet.get(str(resource_id), 0)) < int((cost as Dictionary)[resource_id]):
+			return false
+	return true

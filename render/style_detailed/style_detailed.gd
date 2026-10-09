@@ -37,6 +37,8 @@ const COLOR_WALL_A: Color = Color(0.38, 0.36, 0.33, 1.0)
 const COLOR_WALL_B: Color = Color(0.27, 0.25, 0.23, 1.0)
 const COLOR_WATER_A: Color = Color(0.13, 0.26, 0.44, 1.0)
 const COLOR_WATER_B: Color = Color(0.10, 0.20, 0.36, 1.0)
+const COLOR_FOREST_A: Color = Color(0.16, 0.34, 0.17, 1.0)
+const COLOR_FOREST_B: Color = Color(0.11, 0.26, 0.13, 1.0)
 const COLOR_GRID: Color = Color(0.0, 0.0, 0.0, 0.10)
 
 # Owner colors (0 = local player, 1 = enemy, others cycle). Brighter than the
@@ -75,9 +77,10 @@ func _darken(color: Color, amount: float = 0.45) -> Color:
 # works against the live RenderAdapter and any test recorder alike. A detailed
 # style is a drop-in replacement for the simple one (Logic/Render Separation).
 
-func draw_tile(canvas, rect: Rect2, terrain_id: int) -> void:
-	# A stable checkerboard pattern derived from the tile's pixel position gives
-	# a subtle textured look without any per-frame randomness.
+func draw_tile(canvas, rect: Rect2, terrain_id: int, x: int = 0, y: int = 0) -> void:
+	# T006 WP7: art is a pure function of (terrain, x, y). The checkerboard plus a
+	# coordinate hash gives every ground tile one of several natural shades and
+	# forest a layered canopy -- all deterministic, no per-frame randomness.
 	var checker: bool = (int(rect.position.x / max(1.0, rect.size.x)) + int(rect.position.y / max(1.0, rect.size.y))) % 2 == 0
 	var color: Color
 	match terrain_id:
@@ -85,13 +88,25 @@ func draw_tile(canvas, rect: Rect2, terrain_id: int) -> void:
 			color = COLOR_WALL_A if checker else COLOR_WALL_B
 		2:
 			color = COLOR_WATER_A if checker else COLOR_WATER_B
+		3:
+			color = COLOR_FOREST_A if checker else COLOR_FOREST_B
 		_:
 			color = COLOR_GROUND_A if checker else COLOR_GROUND_B
+	if terrain_id == 0:
+		var v: float = float(((x * 73856093) ^ (y * 19349663)) & 3) / 3.0
+		color = color.lerp(Color(0.22, 0.28, 0.20, 1.0), v)
 	canvas.draw_rect(rect, color, true)
 	# Walls get a small highlighted top edge to read as raised blocks.
 	if terrain_id == 1:
 		var top: Rect2 = Rect2(rect.position, Vector2(rect.size.x, max(1.0, rect.size.y * 0.18)))
 		canvas.draw_rect(top, Color(1, 1, 1, 0.10), true)
+	# Forest gets a couple of darker canopy circles (still deterministic art).
+	if terrain_id == 3:
+		for i in range(4):
+			var fx: float = float((x * 29 + y * 53 + i * 11) % 7) / 7.0
+			var fy: float = float((x * 47 + y * 23 + i * 17) % 7) / 7.0
+			var p: Vector2 = rect.position + Vector2(rect.size.x * (0.12 + fx * 0.65), rect.size.y * (0.12 + fy * 0.65))
+			canvas.draw_circle(p, rect.size.x * 0.16, Color(0.07, 0.18, 0.08, 1.0))
 	# Faint grid for readability (lighter than the simple style).
 	canvas.draw_rect(rect, COLOR_GRID, false, 1.0)
 
