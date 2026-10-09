@@ -710,6 +710,36 @@ func _init() -> void:
 	test_t005_every_shipped_scenario_is_deterministic()
 	test_t005_every_shipped_scenario_survives_save_load()
 	test_t005_four_peer_lockstep_four_corners()
+	test_t006_prereq_util_missing_and_owned()
+	test_t006_map_forest_terrain()
+	test_t006_map_ascii_rows()
+	test_t006_scenario_hq_type()
+	test_t006_scenario_rules_section()
+	test_t006_defensive_building_attack_fields()
+	test_t006_non_attacking_building_shape()
+	test_t006_economy_pop_cap()
+	test_t006_economy_multi_resource_spend()
+	test_t006_tech_requires_buildings()
+	test_t006_buildings_prereq_reject()
+	test_t006_units_prereq_reject()
+	test_t006_victory_wall_not_survival()
+	test_t006_mod_manifest()
+	test_t006_mod_units_count()
+	test_t006_mod_buildings_count()
+	test_t006_mod_tech_count()
+	test_t006_mod_scenario_duel()
+	test_t006_mod_scenario_four()
+	test_t006_mod_scenario_rows_natural()
+	test_t006_hud_logic_building_menu()
+	test_t006_hud_logic_production_menu()
+	test_t006_hud_logic_resource_lines()
+	test_t006_huds_use_build_menus()
+	test_t006_render_styles_draw_forest()
+	test_t006_render_adapter_passes_tile_coords()
+	test_t006_minimap_knows_forest()
+	test_t006_localization_keys()
+	test_t006_game_smoke_references_duel()
+	test_t006_ai_duel_is_decisive()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -12863,3 +12893,464 @@ func test_g14_textured_sprites_carry_team_colour() -> void:
 		var canvas2: ColorRecordingCanvas = ColorRecordingCanvas.new()
 		style.draw_building(canvas2, Rect2(0, 0, 32, 32), { "owner": owner, "visual": bvis, "health": 10, "max_health": 10 })
 		_check(canvas2.colors.has(style.owner_color(owner)), "building of owner %d draws its team colour" % owner)
+
+
+# ============================================================================
+# T006 "Frontier" -- mod content, prerequisite engine, maps, HUD, rendering.
+# These mirror the objective acceptance checker tests/acceptance/t006_acceptance.gd
+# so the standard G2 gate also covers the frontier feature.
+# ============================================================================
+
+func _t006_harness() -> TickHarness:
+		var n: TickHarness = TickHarness.new()
+		GameBootstrap.register_modules(n)
+		GameBootstrap.load_catalogs(n)
+		return n
+
+
+func _t006_fr_ids(cat: Dictionary) -> Array:
+		var out: Array = []
+		for k in cat.keys():
+				if str(k).begins_with("fr_"):
+						out.append(str(k))
+		out.sort()
+		return out
+
+
+func _t006_tech_nodes(n: TickHarness) -> Dictionary:
+		var out: Dictionary = {}
+		var cat: Dictionary = n.data_loader.get_catalog("tech")
+		for tree_id in cat.keys():
+				var doc: Variant = cat[tree_id]
+				if not (doc is Dictionary):
+						continue
+				for node in (doc as Dictionary).get("nodes", []):
+						if node is Dictionary and str(node.get("id", "")).begins_with("fr_"):
+								out[str(node["id"])] = node
+		return out
+
+
+func _t006_flat_scenario(w: int, h: int, players: int, rules: Dictionary = {}) -> Dictionary:
+		var rows: Array = []
+		for y in range(h):
+				rows.append(".".repeat(w))
+		var ps: Array = []
+		for o in range(players):
+				ps.append({ "owner": o, "is_human": true, "start_resources": { "resource_basic": 100000, "resource_energy": 100000 } })
+		var sc: Dictionary = { "id": "t006_flat", "random_seed": 7, "hq_type": "fr_citadel",
+				"map": { "rows": rows }, "players": ps,
+				"buildings": [ { "type": "fr_citadel", "owner": 0, "x": 2, "y": 2 },
+						{ "type": "fr_citadel", "owner": 1, "x": w - 3, "y": h - 3 } ], "units": [] }
+		if not rules.is_empty():
+				sc["rules"] = rules
+		return sc
+
+
+func _t006_buildings(n: TickHarness) -> Dictionary:
+		return n.world_state.get_section("buildings").get("list", {})
+
+
+func test_t006_prereq_util_missing_and_owned() -> void:
+		print("test_t006_prereq_util_missing_and_owned")
+		_check(PrereqUtil.missing({ "buildings": ["b2", "b1"], "tech": ["t1"] }, ["b1"], []) == ["building:b2", "tech:t1"],
+				"T006 PrereqUtil.missing returns sorted building:/tech: ids")
+		_check((PrereqUtil.missing({}, [], []) as Array).is_empty(), "T006 missing({}) is empty")
+		_check((PrereqUtil.missing(null, [], []) as Array).is_empty(), "T006 missing(null) is robust")
+		var list: Dictionary = {
+				"5": { "owner": 0, "type": "b", "health": 10, "construction_remaining": 0 },
+				"3": { "owner": 0, "type": "a", "health": 10, "construction_remaining": 0 },
+				"4": { "owner": 0, "type": "c", "health": 10, "construction_remaining": 5 },
+				"6": { "owner": 1, "type": "d", "health": 10, "construction_remaining": 0 },
+				"7": { "owner": 0, "type": "e", "health": 0, "construction_remaining": 0 },
+		}
+		_check(PrereqUtil.owner_completed_building_types(list, 0) == ["a", "b"],
+				"T006 owner_completed_building_types = sorted unique completed alive")
+
+
+func test_t006_map_forest_terrain() -> void:
+		print("test_t006_map_forest_terrain")
+		var s: Script = load("res://modules/map/map_module.gd")
+		_check(int(s.get_script_constant_map().get("TERRAIN_FOREST", -1)) == 3, "T006 MapModule.TERRAIN_FOREST == 3")
+		var n: TickHarness = _t006_harness()
+		var sc: Dictionary = { "id": "t006_rows", "random_seed": 1, "map": { "rows": ["..#~T", "T...."] },
+				"players": [], "buildings": [], "units": [] }
+		ScenarioLoader.apply_scenario(n, sc)
+		var mm: Object = n.get_module("map")
+		_check(not mm.is_walkable(0, 1), "T006 forest tile is not walkable")
+
+
+func test_t006_map_ascii_rows() -> void:
+		print("test_t006_map_ascii_rows")
+		var n: TickHarness = _t006_harness()
+		var sc: Dictionary = { "id": "t006_rows", "random_seed": 1, "map": { "rows": ["..#~T", "T...."] },
+				"players": [], "buildings": [], "units": [] }
+		ScenarioLoader.apply_scenario(n, sc)
+		var ms: Dictionary = n.world_state.get_section("map")
+		_check(int(ms.get("width", 0)) == 5 and int(ms.get("height", 0)) == 2, "T006 map.rows sets width/height")
+		var tl: Array = []
+		for t in ms.get("tiles", []):
+				tl.append(int(t))
+		_check(tl == [0, 0, 1, 2, 3, 3, 0, 0, 0, 0], "T006 rows chars . # ~ T -> 0 1 2 3")
+
+
+func test_t006_scenario_hq_type() -> void:
+		print("test_t006_scenario_hq_type")
+		var n: TickHarness = _t006_harness()
+		var sc: Dictionary = _t006_flat_scenario(20, 14, 2)
+		sc["buildings"] = []
+		ScenarioLoader.apply_scenario(n, sc)
+		var types: Array = []
+		for k in _t006_buildings(n).keys():
+				types.append(str(_t006_buildings(n)[k].get("type", "")))
+		_check(types.size() == 2 and types.count("fr_citadel") == 2, "T006 hq_type places auto-HQs of that type")
+
+
+func test_t006_scenario_rules_section() -> void:
+		print("test_t006_scenario_rules_section")
+		var n: TickHarness = _t006_harness()
+		ScenarioLoader.apply_scenario(n, _t006_flat_scenario(20, 14, 2, { "pop_cap": 5 }))
+		_check(n.world_state.has_section("rules") and int(n.world_state.get_section("rules").get("pop_cap", 0)) == 5,
+				"T006 scenario rules stored in world_state 'rules'")
+		var v: TickHarness = _t006_harness()
+		ScenarioLoader.apply_scenario(v, _t006_flat_scenario(20, 14, 2))
+		_check(not v.world_state.has_section("rules"), "T006 no 'rules' section without rules")
+
+
+func test_t006_defensive_building_attack_fields() -> void:
+		print("test_t006_defensive_building_attack_fields")
+		var n: TickHarness = _t006_harness()
+		var blds: Dictionary = n.data_loader.get_catalog("buildings")
+		var tower: String = ""
+		for id in _t006_fr_ids(blds):
+				if int((blds[id].get("stats", {}) as Dictionary).get("attack_damage", 0)) > 0:
+						tower = id
+						break
+		_check(tower != "", "T006 a fr_ defensive building exists")
+		var rec: Dictionary = n.get_module("buildings").place_building(tower, 0, 8, 7) if tower != "" else {}
+		_check(not (rec as Dictionary).is_empty(), "T006 defensive building places")
+		var list: Dictionary = _t006_buildings(n)
+		var placed: Dictionary = list.get(str(rec.get("id", -1)), {}) if rec is Dictionary else {}
+		_check(placed.has("attack_damage"), "T006 defensive building record carries attack_damage")
+
+
+func test_t006_non_attacking_building_shape() -> void:
+		print("test_t006_non_attacking_building_shape")
+		var n: TickHarness = _t006_harness()
+		ScenarioLoader.apply_scenario(n, _t006_flat_scenario(20, 14, 2))
+		var keys: Array = []
+		for k in _t006_buildings(n).keys():
+				keys = (_t006_buildings(n)[k] as Dictionary).keys()
+				break
+		keys.sort()
+		_check(keys == ["build_queue", "buildable_units", "construction_remaining", "health", "id", "level",
+						"max_health", "owner", "produces", "territory_radius", "type", "x", "y"],
+				"T006 vanilla building record keys unchanged")
+
+
+func test_t006_economy_pop_cap() -> void:
+		print("test_t006_economy_pop_cap")
+		var n: TickHarness = _t006_harness()
+		ScenarioLoader.apply_scenario(n, _t006_flat_scenario(20, 14, 2, { "pop_cap": 2 }))
+		var eco: Object = n.get_module("economy")
+		var hq: Dictionary = {}
+		for k in _t006_buildings(n).keys():
+				var b: Dictionary = _t006_buildings(n)[k]
+				if int(b.get("owner", -1)) == 0 and str(b.get("type", "")) == "fr_citadel":
+						hq = b
+						break
+		var cheap: String = ""
+		for uid in hq.get("buildable_units", []):
+				cheap = str(uid)
+				break
+		n.get_module("units").spawn_unit(cheap, 0, 5, 9)
+		n.get_module("units").spawn_unit(cheap, 0, 6, 9)
+		var before: int = eco.get_resource(0, "resource_basic")
+		n.issue_command("build_unit", 0, { "owner": 0, "building_id": int(hq.get("id", -1)), "unit_type": cheap }, 1)
+		n.run_ticks(3)
+		_check(int(eco.get_resource(0, "resource_basic")) == before, "T006 pop_cap rejects production and costs nothing")
+
+
+func test_t006_economy_multi_resource_spend() -> void:
+		print("test_t006_economy_multi_resource_spend")
+		var n: TickHarness = _t006_harness()
+		ScenarioLoader.apply_scenario(n, _t006_flat_scenario(20, 14, 2))
+		var eco: Object = n.get_module("economy")
+		eco.ensure_player(0)
+		var gold_before: int = eco.get_resource(0, "resource_basic")
+		var energy_before: int = eco.get_resource(0, "resource_energy")
+		_check(eco.try_spend(0, { "resource_basic": 100, "resource_energy": 50 }), "T006 multi-resource spend succeeds when affordable")
+		_check(eco.get_resource(0, "resource_basic") == gold_before - 100 and eco.get_resource(0, "resource_energy") == energy_before - 50,
+				"T006 multi-resource spend deducts every resource")
+		_check(not eco.try_spend(0, { "resource_basic": gold_before, "resource_energy": 1 }),
+				"T006 multi-resource spend refuses when one resource is short")
+		_check(eco.get_resource(0, "resource_energy") == energy_before - 50,
+				"T006 energy deducted atomically (no partial spend)")
+
+
+func test_t006_tech_requires_buildings() -> void:
+		print("test_t006_tech_requires_buildings")
+		var n: TickHarness = _t006_harness()
+		var techs: Dictionary = _t006_tech_nodes(n)
+		var found: bool = false
+		for tid in techs.keys():
+				if not (techs[tid].get("requires_buildings", []) as Array).is_empty():
+						found = true
+						break
+		_check(found, "T006 at least one fr_ tech node requires a building")
+
+
+func test_t006_buildings_prereq_reject() -> void:
+		print("test_t006_buildings_prereq_reject")
+		var n: TickHarness = _t006_harness()
+		var blds: Dictionary = n.data_loader.get_catalog("buildings")
+		var gated: String = ""
+		for id in _t006_fr_ids(blds):
+				var rb: Array = (blds[id].get("requires", {}) as Dictionary).get("buildings", []) if blds[id].get("requires", {}) is Dictionary else []
+				if not rb.is_empty() and not (rb.size() == 1 and str(rb[0]) == "fr_citadel"):
+						gated = id
+						break
+		ScenarioLoader.apply_scenario(n, _t006_flat_scenario(20, 14, 2))
+		var eco: Object = n.get_module("economy")
+		var before: int = eco.get_resource(0, "resource_basic")
+		n.issue_command("build_building", 0, { "type": gated, "owner": 0, "x": 8, "y": 8 }, 1)
+		n.run_ticks(3)
+		_check(gated != "" and int(eco.get_resource(0, "resource_basic")) == before,
+				"T006 building without prerequisite is rejected and costs nothing")
+
+
+func test_t006_units_prereq_reject() -> void:
+		print("test_t006_units_prereq_reject")
+		var n: TickHarness = _t006_harness()
+		var units: Dictionary = n.data_loader.get_catalog("units")
+		var blds: Dictionary = n.data_loader.get_catalog("buildings")
+		var gated_unit: String = ""
+		var producer: String = ""
+		for id in _t006_fr_ids(units):
+				var rt: Array = (units[id].get("requires", {}) as Dictionary).get("tech", []) if units[id].get("requires", {}) is Dictionary else []
+				if not rt.is_empty():
+						for bid in _t006_fr_ids(blds):
+								if (blds[bid].get("buildable_units", []) as Array).has(id):
+										gated_unit = id
+										producer = bid
+										break
+				if gated_unit != "":
+						break
+		_check(gated_unit != "" and producer != "", "T006 a tech-gated fr_ unit has a producer building")
+
+
+func test_t006_victory_wall_not_survival() -> void:
+		print("test_t006_victory_wall_not_survival")
+		var n: TickHarness = _t006_harness()
+		var blds: Dictionary = n.data_loader.get_catalog("buildings")
+		var wall: String = ""
+		for id in _t006_fr_ids(blds):
+				if blds[id].has("counts_for_survival") and not bool(blds[id]["counts_for_survival"]):
+						wall = id
+						break
+		_check(wall != "", "T006 a fr_ building is marked counts_for_survival:false")
+
+
+func test_t006_mod_manifest() -> void:
+		print("test_t006_mod_manifest")
+		var raw: String = FileAccess.get_file_as_string("res://mods/frontier/mod.json")
+		var m: Variant = JSON.parse_string(raw)
+		_check(m is Dictionary, "T006 mods/frontier/mod.json parses")
+		if m is Dictionary:
+				_check(str((m as Dictionary).get("id", "")) == "frontier" and bool((m as Dictionary).get("enabled", false)),
+						"T006 manifest id=frontier enabled=true")
+				var prov: Dictionary = (m as Dictionary).get("provides", {})
+				for c in ["units", "buildings", "tech", "scenarios"]:
+						_check(prov.has(c) and (prov[c] as Array).size() > 0, "T006 manifest provides %s" % c)
+
+
+func test_t006_mod_units_count() -> void:
+		print("test_t006_mod_units_count")
+		var n: TickHarness = _t006_harness()
+		_check(_t006_fr_ids(n.data_loader.get_catalog("units")).size() >= 10, "T006 at least 10 fr_ units")
+
+
+func test_t006_mod_buildings_count() -> void:
+		print("test_t006_mod_buildings_count")
+		var n: TickHarness = _t006_harness()
+		_check(_t006_fr_ids(n.data_loader.get_catalog("buildings")).size() >= 10, "T006 at least 10 fr_ buildings")
+		_check(n.data_loader.get_catalog("buildings").has("fr_citadel"), "T006 fr_citadel exists")
+
+
+func test_t006_mod_tech_count() -> void:
+		print("test_t006_mod_tech_count")
+		var n: TickHarness = _t006_harness()
+		_check(_t006_tech_nodes(n).size() >= 10, "T006 at least 10 fr_ tech nodes")
+
+
+func test_t006_mod_scenario_duel() -> void:
+		print("test_t006_mod_scenario_duel")
+		var n: TickHarness = _t006_harness()
+		var sc: Variant = n.data_loader.get_entry("scenarios", "fr_river_valley")
+		_check(sc is Dictionary, "T006 fr_river_valley scenario exists")
+		if sc is Dictionary:
+				_check((sc as Dictionary).get("players", []).size() == 2, "T006 fr_river_valley has 2 players")
+				var rules: Dictionary = (sc as Dictionary).get("rules", {})
+				_check(bool(rules.get("full_ai", false)), "T006 fr_river_valley enables full_ai")
+
+
+func test_t006_mod_scenario_four() -> void:
+		print("test_t006_mod_scenario_four")
+		var n: TickHarness = _t006_harness()
+		var sc: Variant = n.data_loader.get_entry("scenarios", "fr_four_realms")
+		_check(sc is Dictionary, "T006 fr_four_realms scenario exists")
+		if sc is Dictionary:
+				_check((sc as Dictionary).get("players", []).size() == 4, "T006 fr_four_realms has 4 players")
+
+
+func test_t006_mod_scenario_rows_natural() -> void:
+		print("test_t006_mod_scenario_rows_natural")
+		var n: TickHarness = _t006_harness()
+		for sid in ["fr_river_valley", "fr_four_realms"]:
+				var sc: Variant = n.data_loader.get_entry("scenarios", sid)
+				if not (sc is Dictionary):
+						_check(false, "T006 %s exists for map check" % sid)
+						continue
+				ScenarioLoader.apply_scenario(n, sc)
+				var ms: Dictionary = n.world_state.get_section("map")
+				var w: int = int(ms.get("width", 0))
+				var h: int = int(ms.get("height", 0))
+				var tiles: Array = ms.get("tiles", [])
+				var cnt: Array = [0, 0, 0, 0]
+				for t in tiles:
+						if int(t) >= 0 and int(t) < 4:
+								cnt[int(t)] += 1
+				var total: float = float(max(1, w * h))
+				_check(w >= (48 if sid == "fr_river_valley" else 64) and h >= (32 if sid == "fr_river_valley" else 48),
+						"T006 %s size is at least the required minimum" % sid)
+				_check(cnt[2] / total >= 0.05 and cnt[2] / total <= 0.25, "T006 %s water 5..25%%" % sid)
+				_check(cnt[3] / total >= 0.08 and cnt[3] / total <= 0.30, "T006 %s forest 8..30%%" % sid)
+				_check(cnt[1] / total >= 0.02 and cnt[1] / total <= 0.15, "T006 %s rock 2..15%%" % sid)
+
+
+func test_t006_hud_logic_building_menu() -> void:
+		print("test_t006_hud_logic_building_menu")
+		var cat: Dictionary = {
+				"fr_b": { "id": "fr_b", "cost": { "resource_basic": 100 }, "requires": { "buildings": ["fr_a"] } },
+				"fr_a": { "id": "fr_a", "cost": { "resource_basic": 50 } },
+				"fr_c": { "id": "fr_c", "cost": { "resource_basic": 500, "resource_energy": 5 }, "requires": { "tech": ["fr_t"] } },
+		}
+		var menu: Array = HudLogicUtil.building_menu(cat, ["fr_a"], [], { "resource_basic": 120 })
+		_check(menu.size() == 3, "T006 building_menu returns one entry per building")
+		var ids: Array = []
+		for e in menu:
+				ids.append(str(e["id"]))
+		_check(ids == ["fr_a", "fr_b", "fr_c"], "T006 building_menu is id-sorted")
+		_check(bool(menu[0]["affordable"]) and (menu[0]["missing"] as Array).is_empty(), "T006 affordable building has no missing prereqs")
+		_check(not bool(menu[2]["affordable"]) and menu[2]["missing"] == ["tech:fr_t"], "T006 gated building reports tech:fr_t missing")
+
+
+func test_t006_hud_logic_production_menu() -> void:
+		print("test_t006_hud_logic_production_menu")
+		var cat: Dictionary = {
+				"fr_u1": { "id": "fr_u1", "cost": { "resource_basic": 10 } },
+				"fr_u2": { "id": "fr_u2", "cost": { "resource_basic": 10, "resource_energy": 50 }, "requires": { "tech": ["fr_t"] } },
+		}
+		var pm: Array = HudLogicUtil.production_menu({ "buildable_units": ["fr_u2", "fr_u1"] }, cat, [], [], { "resource_basic": 20, "resource_energy": 10 })
+		_check(pm.size() == 2 and str(pm[0]["id"]) == "fr_u1" and str(pm[1]["id"]) == "fr_u2", "T006 production_menu is id-sorted")
+		_check(bool(pm[0]["affordable"]) and not bool(pm[1]["affordable"]) and pm[1]["missing"] == ["tech:fr_t"],
+				"T006 production_menu reports affordability + missing")
+
+
+func test_t006_hud_logic_resource_lines() -> void:
+		print("test_t006_hud_logic_resource_lines")
+		var rl: Array = HudLogicUtil.resource_lines({ "resource_energy": 7, "resource_basic": 30 })
+		_check(rl.size() == 2 and str(rl[0]["id"]) == "resource_basic" and int(rl[0]["amount"]) == 30
+				and str(rl[1]["id"]) == "resource_energy" and int(rl[1]["amount"]) == 7,
+				"T006 resource_lines puts resource_basic first then sorted")
+
+
+func test_t006_huds_use_build_menus() -> void:
+		print("test_t006_huds_use_build_menus")
+		for path in ["res://ui/desktop/desktop_hud.gd", "res://ui/mobile/game_hud.gd"]:
+				var text: String = FileAccess.get_file_as_string(path)
+				var f: String = path.get_file()
+				_check(text.contains("HudLogicUtil.building_menu("), "T006 %s uses HudLogicUtil.building_menu" % f)
+				_check(text.contains("HudLogicUtil.production_menu("), "T006 %s uses HudLogicUtil.production_menu" % f)
+				_check(text.contains("HudLogicUtil.resource_lines("), "T006 %s uses HudLogicUtil.resource_lines" % f)
+				_check(text.contains("\"build_building\""), "T006 %s issues build_building commands" % f)
+				_check(text.contains("\"research_tech\""), "T006 %s issues research_tech commands" % f)
+
+
+func test_t006_render_styles_draw_forest() -> void:
+		print("test_t006_render_styles_draw_forest")
+		for sp in ["res://render/style_simple/style_simple.gd", "res://render/style_sprite/style_sprite.gd",
+						"res://render/style_detailed/style_detailed.gd"]:
+				var s: Script = load(sp)
+				var argc: int = -1
+				for m in s.get_script_method_list():
+						if str(m["name"]) == "draw_tile":
+								argc = (m["args"] as Array).size()
+				_check(argc >= 5, "T006 %s draw_tile takes (canvas, rect, terrain, x, y)" % sp.get_file())
+
+
+func test_t006_render_adapter_passes_tile_coords() -> void:
+		print("test_t006_render_adapter_passes_tile_coords")
+		var ra: String = FileAccess.get_file_as_string("res://render/render_adapter.gd")
+		var rx: RegEx = RegEx.new()
+		rx.compile("draw_tile\\(self,[^,)]+,[^,)]+,[^,)]+,[^,)]+\\)")
+		_check(rx.search(ra) != null, "T006 render_adapter passes tile x,y to style.draw_tile")
+
+
+func test_t006_minimap_knows_forest() -> void:
+		print("test_t006_minimap_knows_forest")
+		var mini: String = FileAccess.get_file_as_string("res://ui/shared/minimap.gd")
+		_check(mini.to_lower().contains("forest"), "T006 minimap knows forest terrain")
+
+
+func test_t006_localization_keys() -> void:
+		print("test_t006_localization_keys")
+		var n: TickHarness = _t006_harness()
+		var en: Dictionary = _t006_loc_table("res://localization/en.json")
+		var fa: Dictionary = _t006_loc_table("res://localization/fa.json")
+		var keys: Array = []
+		for id in _t006_fr_ids(n.data_loader.get_catalog("units")):
+				keys.append(str(n.data_loader.get_catalog("units")[id].get("display_name_key", "")))
+		for id in _t006_fr_ids(n.data_loader.get_catalog("buildings")):
+				keys.append(str(n.data_loader.get_catalog("buildings")[id].get("display_name_key", "")))
+		for tid in _t006_tech_nodes(n).keys():
+				keys.append(str(_t006_tech_nodes(n)[tid].get("display_name_key", "")))
+		keys.append("resource.resource_basic.name")
+		keys.append("resource.resource_energy.name")
+		var miss: Array = []
+		for k in keys:
+				if k == "" or not en.has(k) or not fa.has(k) or str(fa.get(k, "")) == str(en.get(k, "")):
+						miss.append(k)
+		_check(miss.is_empty(), "T006 every fr_ name key exists and is translated in en+fa %s" % str(miss))
+
+
+func _t006_loc_table(path: String) -> Dictionary:
+		var raw: String = FileAccess.get_file_as_string(path)
+		var d: Variant = JSON.parse_string(raw)
+		if d is Dictionary:
+				return (d as Dictionary).get("strings", {})
+		return {}
+
+
+func test_t006_game_smoke_references_duel() -> void:
+		print("test_t006_game_smoke_references_duel")
+		var smoke: String = FileAccess.get_file_as_string("res://tools/game_smoke.gd")
+		_check(smoke.contains("fr_river_valley"), "T006 game_smoke smokes the frontier duel")
+
+
+func test_t006_ai_duel_is_decisive() -> void:
+		print("test_t006_ai_duel_is_decisive")
+		var n: TickHarness = _t006_harness()
+		var sc: Variant = n.data_loader.get_entry("scenarios", "fr_river_valley")
+		if not (sc is Dictionary):
+				_check(false, "T006 fr_river_valley available for AI check")
+				return
+		var s: Dictionary = (sc as Dictionary).duplicate(true)
+		for p in s.get("players", []):
+				p["is_human"] = false
+				p["smart"] = true
+		ScenarioLoader.apply_scenario(n, s)
+		var vic: Object = n.get_module("victory")
+		while n.world_state.current_tick < 18000 and not vic.is_over():
+				n.run_ticks(200)
+		_check(vic.is_over() and vic.winner() >= 0, "T006 AI-vs-AI frontier duel ends with a winner (tick %d)" % n.world_state.current_tick)
+		_check(n.world_state.current_tick >= 3000, "T006 frontier duel is not a rush-over before tick 3000")
