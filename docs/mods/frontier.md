@@ -104,13 +104,23 @@ every value-per-cost sits within 0.25x–4x of the median (check B25).
 
 ## Scenarios
 
+The maps are produced by `tools/mapgen/frontier_mapgen.py` (Python 3, stdlib only,
+deterministic seeded fractal value noise — no stamps). Running that script rewrites
+the three `map.rows` grids byte-for-byte, so the committed maps are reproducible.
+
 - `fr_river_valley` — 2 players (owner 0 human, owner 1 `smart` AI), 64×32 ASCII
-  map: a winding river with fords, forest groves and rocky outcrops. Water 9.6 %,
-  forest 8.8 %, rock 10.6 %; one connected landmass; both citadels equidistant.
+  map: a **real winding river** that crosses the whole map (centreline sways more
+  than 6 tiles, mean width 2–6) and is broken by **three land fords** so armies can
+  cross; forest groves and rocky outcrops. Forest 15.5 %, water 7.1 %, rock 12.1 %
+  (12 forest clusters, all distinct shapes). Both citadels sit on opposite banks.
 - `fr_four_realms` — 4-player FFA, 80×48 ASCII map, one citadel in each corner
-  region with mirrored terrain for fairness.
-- `fr_border_siege` — 2 players with pre-placed watchtowers and walls (a tutorial
-  in defensive play).
+  region. One quadrant is generated organically and mirrored, then de-symmetrised,
+  so it is 4-fold fair but the clusters are irregular. Forest 13.9 %, water 7.0 %,
+  rock 8.0 % (21 forest clusters, all distinct shapes).
+- `fr_border_siege` — 2 players, 64×32 ASCII map with a **central rock ridge with
+  three passes** plus forest flanks (different layout from every other map, ≥ 25 %
+  of tiles differ). Pre-placed watchtowers and walls (a tutorial in defensive
+  play). Forest 15.0 %, rock 15.2 %, no water.
 
 All three set `hq_type: "fr_citadel"` and
 `rules: { full_ai: true, pop_cap: 45, faction_prefix: "fr_" }`.
@@ -121,6 +131,15 @@ When `rules.full_ai` is true, the strategic AI (`strategic_ai` + `ai_commander`)
 plays the whole tree via the pure, deterministic `FullTreeOrderUtil`:
 it researches the cheapest reachable tech, builds the next reachable building in
 tree order (economy → production → defense), and keeps a rotating unit queue on
-its production buildings so the army is a real mix. It masses before it pushes, so
-a duel is a build-up rather than a rush. When `full_ai` is absent the AI behaves
-exactly as before (vanilla golden hashes lock this).
+its production buildings so the army is a real mix.
+
+Each personality plays the tree differently, driven by the data table
+`FullTreeOrderUtil.PERSONALITY_PLAN` (see DEC-019): a building-priority list, a
+build-avoid list, a unit-mix preference and an attack-army threshold. `economic`
+builds lumber mill/power well first and favours late units; `aggressive` builds
+barracks/stable early, skips static defenses (watchtower/wall) and pushes earliest;
+`defensive` (the 4th personality) fortifies first and masses the largest army.
+
+Full-tree AIs hold their all-in until `FULL_TREE_MIN_ATTACK_TICK`, so a duel is a
+build-up that reaches the late buildings and units rather than a rush. Without
+`full_ai` the AI behaves exactly as before (vanilla golden hashes lock this).
