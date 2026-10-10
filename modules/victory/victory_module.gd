@@ -281,13 +281,29 @@ func _finish(section: Dictionary, winning_team: int) -> void:
 
 
 # A "command building" keeps a player alive: any owned building with health > 0.
+# A "command building" keeps a player alive: any owned building with health > 0.
+# T006 WP1: a building archetype with `counts_for_survival: false` (e.g. a wall)
+# does NOT keep its owner alive -- a player reduced to only walls is eliminated.
 func _has_command_building(owner: int) -> bool:
 	var buildings: Dictionary = nexus.world_state.get_section("buildings").get("list", {})
-	for key in buildings.keys():
+	var keys: Array = buildings.keys()
+	keys.sort()
+	for key in keys:
 		var b: Dictionary = buildings[key]
-		if int(b.get("owner", -1)) == owner and int(b.get("health", 0)) > 0:
+		if int(b.get("owner", -1)) != owner or int(b.get("health", 0)) <= 0:
+			continue
+		if _counts_for_survival(str(b.get("type", ""))):
 			return true
 	return false
+
+
+# T006 WP1: whether a building type counts toward "still alive". Default true;
+# an archetype may opt out with "counts_for_survival": false.
+func _counts_for_survival(type_id: String) -> bool:
+	var archetype: Variant = nexus.data_loader.get_entry("buildings", type_id)
+	if archetype is Dictionary:
+		return bool((archetype as Dictionary).get("counts_for_survival", true))
+	return true
 
 
 func is_over() -> bool:

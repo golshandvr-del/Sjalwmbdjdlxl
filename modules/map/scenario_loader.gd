@@ -79,24 +79,45 @@ static func apply_scenario(nexus: Object, scenario: Dictionary) -> void:
 	var map_data: Dictionary = scenario.get("map", {})
 	var map_module: Object = nexus.get_module("map")
 	if map_module != null:
-		map_module.create_grid(int(map_data.get("width", 20)), int(map_data.get("height", 14)))
-		for wall in map_data.get("walls", []):
-			map_module.set_terrain(int(wall[0]), int(wall[1]), MapModule.TERRAIN_WALL)
-		# Phase E6: sea cells become water terrain (blocks land pathing/placement).
-		for cell in map_data.get("sea", []):
-			if cell is Array and (cell as Array).size() >= 2:
-				map_module.set_terrain(int(cell[0]), int(cell[1]), MapModule.TERRAIN_WATER)
+		# T006 WP1: an ASCII `rows` map (".", "#", "~", "T") is an alternative to
+		# width/height/walls. Width = row length, height = row count.
+		var rows: Array = map_data.get("rows", [])
+		if not rows.is_empty():
+			_apply_ascii_rows(map_module, rows)
+		else:
+			map_module.create_grid(int(map_data.get("width", 20)), int(map_data.get("height", 14)))
+			for wall in map_data.get("walls", []):
+				map_module.set_terrain(int(wall[0]), int(wall[1]), MapModule.TERRAIN_WALL)
+			# Phase E6: sea cells become water terrain (blocks land pathing/placement).
+			for cell in map_data.get("sea", []):
+				if cell is Array and (cell as Array).size() >= 2:
+					map_module.set_terrain(int(cell[0]), int(cell[1]), MapModule.TERRAIN_WATER)
 
 	# 2b) Phase P7 (R10): resolve HQ placements. If the scenario ships explicit
 	# HQ buildings for every player they are used verbatim; otherwise the
 	# deterministic PlacementPlanner seats the remaining players (auto-fill,
 	# R10.4) using the requested team layout (R10.2).
+	# 2a) T006 WP1: scenario `hq_type` (a custom command-building id, e.g.
+	# "fr_citadel") and `rules` (pop_cap / full_ai / faction_prefix). Both are
+	# OPT-IN: a scenario without them leaves vanilla behaviour (and its hash)
+	# untouched -- vanilla scenarios never get a "rules" section (check C23).
+	var hq_type: String = str(scenario.get("hq_type", "hq"))
+	if hq_type == "":
+		hq_type = "hq"
+	if scenario.has("hq_type"):
+		nexus.world_state.get_section("scenario")["hq_type"] = hq_type
+	var rules: Dictionary = scenario.get("rules", {})
+	if not rules.is_empty():
+		nexus.world_state.get_section("rules")["pop_cap"] = int(rules.get("pop_cap", 0))
+		nexus.world_state.get_section("rules")["full_ai"] = bool(rules.get("full_ai", false))
+		nexus.world_state.get_section("rules")["faction_prefix"] = str(rules.get("faction_prefix", ""))
+
 	var victory: Object = nexus.get_module("victory")
 	var game_mode: String = str(scenario.get("game_mode", "ffa"))
 	if victory != null:
 		victory.set_mode(game_mode)
 	var players: Array = scenario.get("players", [])
-	var resolved_hqs: Array = _resolve_hqs(scenario, players, map_module)
+	var resolved_hqs: Array = _resolve_hqs(scenario, players, map_module, hq_type)
 
 	# 3) Player resources + AI / victory / fog registration.
 	var economy: Object = nexus.get_module("economy")
@@ -135,8 +156,9 @@ static func apply_scenario(nexus: Object, scenario: Dictionary) -> void:
 		for b in resolved_hqs:
 			buildings.place_building(str(b.get("type", "hq")), int(b.get("owner", 0)), int(b.get("x", 0)), int(b.get("y", 0)))
 		for b in scenario.get("buildings", []):
-			if str(b.get("type", "hq")) != "hq":
-				buildings.place_building(str(b.get("type", "hq")), int(b.get("owner", 0)), int(b.get("x", 0)), int(b.get("y", 0)))
+			var btype: String = str(b.get("type", "hq"))
+			if btype != "hq" and btype != hq_type:
+				buildings.place_building(btype, int(b.get("owner", 0)), int(b.get("x", 0)), int(b.get("y", 0)))
 
 	# 5) Units.
 	var units: Object = nexus.get_module("units")
@@ -154,12 +176,13 @@ static func apply_scenario(nexus: Object, scenario: Dictionary) -> void:
 # the scenario already gives an HQ keeps it (manual placement, R10.3); the rest
 # are seated by the deterministic PlacementPlanner honouring the team layout
 # ("clustered" | "random", R10.2) and avoiding walls / taken cells (R10.1).
-static func _resolve_hqs(scenario: Dictionary, players: Array, map_module: Object) -> Array:
+static func _resolve_hqs(scenario: Dictionary, players: Array, map_module: Object, hq_type: String = "hq") -> Array:
 	var out: Array = []
 	var placed_owners: Dictionary = {}
 	for b in scenario.get("buildings", []):
-		if str(b.get("type", "hq")) == "hq":
-			out.append({ "type": "hq", "owner": int(b.get("owner", 0)), "x": int(b.get("x", 0)), "y": int(b.get("y", 0)) })
+		var bt: String = str(b.get("type", "hq"))
+		if bt == "hq" or bt == hq_type:
+			out.append({ "type": bt, "owner": int(b.get("owner", 0)), "x": int(b.get("x", 0)), "y": int(b.get("y", 0)) })
 			placed_owners[int(b.get("owner", 0))] = Vector2i(int(b.get("x", 0)), int(b.get("y", 0)))
 
 	# Which players still need an HQ?
@@ -184,9 +207,41 @@ static func _resolve_hqs(scenario: Dictionary, players: Array, map_module: Objec
 	var layout: String = str(scenario.get("team_layout", PlacementPlanner.LAYOUT_CLUSTERED))
 	var planned: Array = PlacementPlanner.plan_hqs(width, height, need, layout, int(scenario.get("random_seed", 0)), is_blocked)
 	for entry in planned:
-		out.append({ "type": "hq", "owner": int(entry.get("owner", 0)), "x": int(entry.get("x", 0)), "y": int(entry.get("y", 0)) })
+		out.append({ "type": hq_type, "owner": int(entry.get("owner", 0)), "x": int(entry.get("x", 0)), "y": int(entry.get("y", 0)) })
 		taken["%d,%d" % [int(entry.get("x", 0)), int(entry.get("y", 0))]] = true
 	return out
+
+
+# T006 WP1: build a map grid from ASCII rows. Each row is a String whose
+# characters map to terrain ids: '.' ground, '#' wall/rock, '~' water,
+# 'T' forest. Width is the first row's length (all rows are expected equal);
+# height is the row count. Unknown characters fall back to ground.
+static func _apply_ascii_rows(map_module: Object, rows: Array) -> void:
+	var height: int = rows.size()
+	var width: int = 0
+	for r in rows:
+		width = max(width, str(r).length())
+	if width <= 0 or height <= 0:
+		map_module.create_grid(1, 1)
+		return
+	map_module.create_grid(width, height)
+	for y in range(height):
+		var row: String = str(rows[y])
+		for x in range(width):
+			var ch: String = row.substr(x, 1) if x < row.length() else "."
+			map_module.set_terrain(x, y, _terrain_from_char(ch))
+
+
+static func _terrain_from_char(ch: String) -> int:
+	match ch:
+		"#":
+			return MapModule.TERRAIN_WALL
+		"~":
+			return MapModule.TERRAIN_WATER
+		"T":
+			return MapModule.TERRAIN_FOREST
+		_:
+			return MapModule.TERRAIN_GROUND
 
 
 # Register CTF flags with the VictoryModule. Explicit `flags` in the scenario win

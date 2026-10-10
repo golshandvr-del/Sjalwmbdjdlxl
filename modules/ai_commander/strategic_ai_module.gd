@@ -54,6 +54,36 @@ extends IModule
 const SECTION: String = "strategic_ai"
 const RESOURCE: String = "resource_basic"
 
+# T006 WP4: when a scenario sets rules.full_ai the strategic AI plays the WHOLE
+# data-driven tree (research, every building tier, unit mix from all producers)
+# instead of only the vanilla outpost/HQ loop. Everything below is opt-in via
+# world state, so vanilla behaviour (and its golden hashes) is untouched.
+const RULES_SECTION: String = "rules"
+
+# Fallback faction prefix used when rules.full_ai is set but faction_prefix is
+# empty. Keeps the AI inside its own faction content.
+const DEFAULT_FACTION_PREFIX: String = "fr_"
+
+# T006B WP3: a full-tree AI does not commit its all-in before this tick, so it has
+# time to actually play the tree (late buildings, tech, late units) instead of
+# trading early armies in a rush. Mirror of the personality attack timing.
+const FULL_TREE_MIN_ATTACK_TICK: int = 6500
+# T006 WP4: how large an army a full-tree AI masses before it commits to a push.
+const FULL_TREE_ATTACK_ARMY: int = 30
+
+# Cap on buildings the full-tree AI tries to own (keeps placement bounded and the
+# match finite). The first N by the deterministic order are pursued.
+const FULL_TREE_BUILDING_CAP: int = 14
+
+# How many production buildings the full-tree AI keeps a unit queue running on at
+# once (round-robin over the sorted producer ids) so its army is a real MIX.
+const FULL_TREE_PRODUCER_FANOUT: int = 4
+
+# Gold held back each pass for the next reachable building so the tree keeps
+# growing; capped so unit production never stalls behind an expensive tier.
+const FULL_TREE_UNIT_RESERVE: int = 60
+const FULL_TREE_UNIT_RESERVE_CAP: int = 200
+
 # How many simulation ticks between strategic planning passes. Deliberately
 # slower than the tactical AiCommander so macro decisions are stable.
 const DEFAULT_PLAN_INTERVAL: int = 30
@@ -67,6 +97,9 @@ const PERSONALITY: Dictionary = {
 	"economic":   { "attack_army_size": 6, "expansion_cap": 3, "upgrade_reserve": 300, "research_first": true },
 	"balanced":   { "attack_army_size": 4, "expansion_cap": 2, "upgrade_reserve": 250, "research_first": true },
 	"aggressive": { "attack_army_size": 3, "expansion_cap": 1, "upgrade_reserve": 400, "research_first": false },
+	# T006B WP2: the 4th personality. Masses the largest army and expands
+	# least; its building/unit priorities live in FullTreeOrderUtil.
+	"defensive":  { "attack_army_size": 8, "expansion_cap": 1, "upgrade_reserve": 350, "research_first": true },
 }
 
 # Research order the AI prefers (cheapest / highest value first). The actual
@@ -250,6 +283,14 @@ func _plan_for_player(owner: int, personality: Dictionary) -> void:
 	# deterministic FALLBACK whenever the pipeline yields nothing decisive
 	# (empty context / no HQ), so existing strategic tests do not regress.
 	var research_first: bool = _economy_or_research_first(owner, personality)
+	# T006 WP4: a full_ai scenario drives the whole tree instead of the vanilla
+	# outpost loop. The army posture below still runs so the AI fights.
+	if _full_ai_enabled() and bool(flags.get("economy", true)):
+		_plan_full_tree(owner)
+		if bool(flags.get("hq_upgrade", true)):
+			_plan_hq_upgrade(owner, personality)
+		_plan_army_posture(owner, personality)
+		return
 	# Priority order is intentional: secure tech/economy first, then decide
 	# whether to keep massing or to commit to the attack.
 	if research_first:
@@ -379,6 +420,11 @@ func _plan_hq_upgrade(owner: int, personality: Dictionary) -> void:
 	var hq: Dictionary = _find_hq(owner)
 	if hq.is_empty():
 		return
+	# T006 WP4: skip when the HQ archetype defines no upgrade levels (avoids a
+	# pointless max_level rejection every planning pass).
+	var hq_archetype: Variant = nexus.data_loader.get_entry("buildings", str(hq.get("type", "")))
+	if hq_archetype is Dictionary and (hq_archetype as Dictionary).get("upgrades", {}).is_empty():
+		return
 	# Skip if an upgrade is already running or the HQ is still a build site.
 	if not (hq.get("upgrade_in_progress", {}) as Dictionary).is_empty():
 		return
@@ -391,12 +437,24 @@ func _plan_hq_upgrade(owner: int, personality: Dictionary) -> void:
 
 func _plan_army_posture(owner: int, personality: Dictionary) -> void:
 	var threshold: int = int(personality.get("attack_army_size", 4))
+	# T006 WP4: a full-tree AI masses a real army before committing, so the duel is a
+	# build-up (not a rush) and the winner has had time to complete its tree.
+	if _full_ai_enabled():
+		# T006B WP2: the personality table sets how big an army must mass before
+		# the all-in, so aggressive pushes sooner and defensive masses longer.
+		threshold = max(threshold, FullTreeOrderUtil.full_tree_army_size(_personality_name(owner)))
 	var army: Array = _combat_units(owner)
 	var section: Dictionary = nexus.world_state.get_section(SECTION)
 	var posture_map: Dictionary = section["posture"]
 
 	var under_threat: bool = _enemy_near_base(owner)
 	var ready_to_attack: bool = army.size() >= threshold
+	# T006B WP3: full-tree AIs hold the push until the tree has matured, so the
+	# duel is a build-up that reaches the late buildings/units (and lasts long
+	# enough for them to matter). Vanilla AIs are unaffected.
+	if _full_ai_enabled() and int(nexus.world_state.current_tick) < FULL_TREE_MIN_ATTACK_TICK:
+		ready_to_attack = false
+		under_threat = false
 
 	if ready_to_attack or under_threat:
 		posture_map[str(owner)] = "attack"
@@ -784,6 +842,323 @@ func _enemy_near_base(owner: int) -> bool:
 			return true
 	return false
 
+
+# --- T006 WP4: full-tree planner (rules.full_ai) ----------------------------
+
+# True when the current scenario opted into full-tree AI play. Reads the "rules"
+# section WITHOUT creating it (get_section() would add an empty section to vanilla
+# matches and change the world hash -- the A1 lock).
+func _full_ai_enabled() -> bool:
+	if not nexus.world_state.has_section(RULES_SECTION):
+		return false
+	return bool(nexus.world_state.get_section(RULES_SECTION).get("full_ai", false))
+
+
+func _faction_prefix() -> String:
+	if nexus.world_state.has_section(RULES_SECTION):
+		var p: String = str(nexus.world_state.get_section(RULES_SECTION).get("faction_prefix", ""))
+		if p != "":
+			return p
+	return DEFAULT_FACTION_PREFIX
+
+
+func _wallet(owner: int) -> Dictionary:
+	return nexus.world_state.get_section("economy").get("players", {}).get(str(owner), {})
+
+
+# The set of building types `owner` owns COMPLETED (health > 0, not a build site).
+func _completed_types(owner: int) -> Array:
+	return PrereqUtil.owner_completed_building_types(_buildings(), owner)
+
+
+func _researched_ids(owner: int) -> Array:
+	return nexus.world_state.get_section("tech").get("players", {}).get(str(owner), {}).get("researched", [])
+
+
+func _in_progress_ids(owner: int) -> Array:
+	var ip: Dictionary = nexus.world_state.get_section("tech").get("players", {}).get(str(owner), {}).get("in_progress", {})
+	var keys: Array = ip.keys()
+	keys.sort()
+	return keys
+
+
+func _all_tech_nodes() -> Dictionary:
+	var out: Dictionary = {}
+	var catalog: Dictionary = nexus.data_loader.get_catalog("tech")
+	var trees: Array = catalog.keys()
+	trees.sort()
+	for tree_id in trees:
+		var doc: Variant = catalog[tree_id]
+		if not (doc is Dictionary):
+			continue
+		for node in (doc as Dictionary).get("nodes", []):
+			if node is Dictionary and str(node.get("id", "")) != "":
+				out[str(node["id"])] = node
+	return out
+
+
+# One full-tree planning pass: research the cheapest reachable tech, then build
+# the next reachable building (economy/production/defense in tree order), then
+# keep a unit queue running on its production buildings. Every order goes through
+# the normal command path, so the owning module still enforces prerequisites,
+# cost and pop_cap -- the AI simply never issues a doomed order.
+func _plan_full_tree(owner: int) -> void:
+	var completed: Array = _completed_types(owner)
+	var researched: Array = _researched_ids(owner)
+	# T006B WP2: the flexible personality table (FullTreeOrderUtil.PERSONALITY_PLAN)
+	# biases building priority and unit mix without any branching code here.
+	var name: String = _personality_name(owner)
+	_full_tree_research(owner, completed, researched)
+	_full_tree_build(owner, completed, researched, FullTreeOrderUtil.build_bias(name), FullTreeOrderUtil.build_avoid(name))
+	_full_tree_units(owner, FullTreeOrderUtil.unit_bias(name), FullTreeOrderUtil.build_bias(name), FullTreeOrderUtil.build_avoid(name))
+
+
+# T006B WP2: the effective personality name for an owner ("balanced" default).
+func _personality_name(owner: int) -> String:
+	return str(nexus.world_state.get_section(SECTION).get("controlled", {}).get(str(owner), "balanced"))
+
+
+func _full_tree_research(owner: int, completed: Array, researched: Array) -> void:
+	if not _in_progress_ids(owner).is_empty():
+		return
+	var nodes: Dictionary = _all_tech_nodes()
+	var order: Array = FullTreeOrderUtil.tech_order(nodes, completed, researched, _in_progress_ids(owner))
+	var wallet: Dictionary = _wallet(owner)
+	for node_id in order:
+		var node: Dictionary = nodes.get(node_id, {})
+		if FullTreeOrderUtil.can_afford(node.get("cost", {}), wallet):
+			nexus.issue_command("research_tech", owner, { "owner": owner, "node_id": node_id }, 1)
+			return
+
+
+func _full_tree_build(owner: int, completed: Array, researched: Array, bias: Array = [], avoid: Array = []) -> void:
+	if completed.size() >= FULL_TREE_BUILDING_CAP:
+		return
+	var catalog: Dictionary = nexus.data_loader.get_catalog("buildings")
+	var order: Array = FullTreeOrderUtil.building_order(catalog, _faction_prefix(), completed, researched, bias, avoid)
+	if order.is_empty():
+		return
+	var hq: Dictionary = _find_hq(owner)
+	if hq.is_empty():
+		return
+	var hx: int = int(hq.get("x", 0))
+	var hy: int = int(hq.get("y", 0))
+	var wallet: Dictionary = _wallet(owner)
+	# Build the FIRST reachable building we can afford this pass; if we cannot
+	# afford it yet, wait (income grows) rather than skipping ahead in the tree.
+	for building_id in order:
+		var entry: Dictionary = catalog.get(building_id, {})
+		if not FullTreeOrderUtil.can_afford(entry.get("cost", {}), wallet):
+			return
+		var spot: Vector2i = _smart_build_spot(owner, building_id, hx, hy)
+		if spot.x < 0:
+			spot = _find_build_spot(hx, hy, owner)
+		if spot.x < 0:
+			return
+		nexus.issue_command("build_building", owner, {
+			"type": building_id, "owner": owner, "x": spot.x, "y": spot.y,
+		}, 1)
+		return
+
+
+# Keep a unit queue running on up to FULL_TREE_PRODUCER_FANOUT production
+# buildings, round-robin by owner so the army is a real mix. Choice of unit is
+# data-driven (UnitCandidateUtil) restricted to the producer buildable_units.
+func _full_tree_units(owner: int, unit_bias: Array = [], build_bias: Array = [], build_avoid: Array = []) -> void:
+	# T006B WP2: never order units at the scenario pop_cap -- the economy module
+	# would reject each order, so checking here avoids rejection spam (F07).
+	if PopCapUtil.at_cap(nexus, owner):
+		return
+	var producers: Array = _production_buildings(owner)
+	if producers.is_empty():
+		return
+	var catalog: Dictionary = nexus.data_loader.get_catalog("units")
+	var prefix: String = _faction_prefix()
+	var completed: Array = _completed_types(owner)
+	var researched: Array = _researched_ids(owner)
+	var used: int = 0
+	var tick: int = int(nexus.world_state.current_tick)
+	# While the tree is still growing, hold back enough gold for the next reachable
+	# building so the AI does not pour every coin into units. Capped so unit
+	# production never stalls behind an expensive tier.
+	var reserve: int = 0
+	if completed.size() < FULL_TREE_BUILDING_CAP:
+		reserve = min(_next_building_cost(owner, completed, researched, build_bias, build_avoid), FULL_TREE_UNIT_RESERVE_CAP)
+	# Unit types the owner has already fielded (or has queued): used to prefer a
+	# NEW type from each producer so the army is a real mix, not one unit spam.
+	var fielded: Dictionary = _fielded_unit_types(owner)
+	# Rotate which producers get a turn each pass so every production building is
+	# eventually used (the army becomes a mix, not one building spamming a unit).
+	var start: int = int(tick / DEFAULT_PLAN_INTERVAL + owner) % producers.size()
+	for i in range(producers.size()):
+		if used >= FULL_TREE_PRODUCER_FANOUT:
+			break
+		var b: Dictionary = producers[(start + i) % producers.size()]
+		var allowed: Array = []
+		for uid in b.get("buildable_units", []):
+			var uid_s: String = str(uid)
+			if prefix != "" and not uid_s.begins_with(prefix):
+				continue
+			if not catalog.has(uid_s):
+				continue
+			if not PrereqUtil.missing((catalog[uid_s] as Dictionary).get("requires", {}), completed, researched).is_empty():
+				continue
+			var unit_cost: Dictionary = (catalog[uid_s] as Dictionary).get("cost", {})
+			if not FullTreeOrderUtil.can_afford(unit_cost, _wallet(owner)):
+				continue
+			if _gold(owner) - FullTreeOrderUtil.total_cost(catalog[uid_s] as Dictionary) < reserve:
+				continue
+			allowed.append(uid_s)
+		if allowed.is_empty():
+			continue
+		# T006B WP2: order the buildable types by the personality's unit bias, so
+		# each personality fields a different mix from the same building.
+		_sort_by_bias(allowed, unit_bias)
+		var queue: Array = b.get("build_queue", [])
+		if queue.size() >= 1:
+			used += 1
+			continue
+		# Diversity first: build a type this owner has not fielded yet; otherwise let
+		# the data-driven utility chooser decide (it may reinforce an existing type).
+		var unit_type: String = ""
+		for uid2 in allowed:
+			if not fielded.has(uid2):
+				unit_type = uid2
+				break
+		if unit_type == "":
+			unit_type = _full_tree_pick_unit(catalog, allowed, owner, tick)
+		if unit_type == "":
+			continue
+		nexus.issue_command("build_unit", owner, {
+			"owner": owner, "building_id": int(b.get("id", -1)), "unit_type": unit_type,
+		}, 1)
+		fielded[unit_type] = true
+		used += 1
+
+
+# Unit types the owner currently has alive OR queued in a building (the "mix" the
+# full-tree AI is trying to broaden). Deterministic, sorted iteration.
+func _fielded_unit_types(owner: int) -> Dictionary:
+	var out: Dictionary = {}
+	var units: Dictionary = _units()
+	var ukeys: Array = units.keys()
+	ukeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in ukeys:
+		var u: Dictionary = units[key]
+		if int(u.get("owner", -1)) == owner and int(u.get("health", 0)) > 0:
+			out[str(u.get("type", ""))] = true
+	var buildings: Dictionary = _buildings()
+	var bkeys: Array = buildings.keys()
+	bkeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in bkeys:
+		var b: Dictionary = buildings[key]
+		if int(b.get("owner", -1)) != owner:
+			continue
+		for item in b.get("build_queue", []):
+			out[str((item as Dictionary).get("type", ""))] = true
+	return out
+
+
+# Gold currently in the owner's wallet.
+func _gold(owner: int) -> int:
+	return int(_wallet(owner).get(RESOURCE, 0))
+
+
+# Total gold cost of the next reachable building (0 when the tree is done/blocked).
+func _next_building_cost(owner: int, completed: Array, researched: Array, bias: Array = [], avoid: Array = []) -> int:
+	var catalog: Dictionary = nexus.data_loader.get_catalog("buildings")
+	var order: Array = FullTreeOrderUtil.building_order(catalog, _faction_prefix(), completed, researched, bias, avoid)
+	if order.is_empty():
+		return 0
+	return FullTreeOrderUtil.total_cost(catalog.get(order[0], {}))
+
+
+# Production buildings the owner has finished, id-sorted, that can build units.
+func _production_buildings(owner: int) -> Array:
+	var out: Array = []
+	var list: Dictionary = _buildings()
+	var keys: Array = list.keys()
+	keys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in keys:
+		var b: Dictionary = list[key]
+		if int(b.get("owner", -1)) != owner:
+			continue
+		if int(b.get("health", 0)) <= 0 or int(b.get("construction_remaining", 0)) > 0:
+			continue
+		if (b.get("buildable_units", []) as Array).is_empty():
+			continue
+		out.append(b)
+	# T006B WP2: once real producers exist, drop the HQ from the unit queue. The
+	# citadel builds militia/scout, and letting it spam adds the SAME type for every
+	# personality, flattening the unit mix the personality table is meant to vary.
+	# Early game (HQ is the only producer) it still produces, so nobody stalls.
+	if out.size() > 1:
+		var hq: Dictionary = _find_hq(owner)
+		var hq_id: int = int(hq.get("id", -1))
+		var filtered: Array = []
+		for b2 in out:
+			if int(b2.get("id", -1)) != hq_id:
+				filtered.append(b2)
+		if not filtered.is_empty():
+			out = filtered
+	return out
+
+
+# T006B WP2: stable-sort ids so the ones listed in `bias` (in bias order) come
+# first; the rest keep their existing order. Deterministic.
+func _sort_by_bias(ids: Array, bias: Array) -> void:
+	if bias.is_empty():
+		return
+	var rank: Dictionary = {}
+	for i in range(bias.size()):
+		rank[str(bias[i])] = i
+	ids.sort_custom(func(a, b):
+		var ra: int = int(rank.get(str(a), 1 << 30))
+		var rb: int = int(rank.get(str(b), 1 << 30))
+		if ra != rb:
+			return ra < rb
+		return str(a) < str(b))
+
+
+func _full_tree_pick_unit(catalog: Dictionary, allowed: Array, owner: int, tick: int) -> String:
+	if allowed.is_empty():
+		return ""
+	var weights: Dictionary = AiWeightDerivationUtil.derive_weights(null)
+	var context: Dictionary = AiContextUtil.build_context(_full_tree_summary(owner), owner)
+	var seed_value: int = int(nexus.world_state.random_seed)
+	return UnitCandidateUtil.choose_unit(
+		catalog, weights, context, seed_value, tick, owner, 0,
+		null, null, allowed, str(allowed[0]))
+
+
+# A minimal deterministic world summary for the unit chooser (the same shape
+# AiContextUtil expects). Kept small: enough to bias toward a mixed army.
+func _full_tree_summary(owner: int) -> Dictionary:
+	var hq: Dictionary = _find_hq(owner)
+	var own: Array = []
+	var enemy: Array = []
+	var units: Dictionary = _units()
+	var ukeys: Array = units.keys()
+	ukeys.sort_custom(func(a, b): return int(a) < int(b))
+	for key in ukeys:
+		var u: Dictionary = units[key]
+		if int(u.get("health", 0)) <= 0:
+			continue
+		var rec: Dictionary = { "id": int(u.get("id", 0)), "x": int(u.get("x", 0)), "y": int(u.get("y", 0)), "health": int(u.get("health", 0)) }
+		if int(u.get("owner", -1)) == owner:
+			own.append(rec)
+		else:
+			enemy.append(rec)
+	return {
+		"hq": {} if hq.is_empty() else { "x": int(hq.get("x", 0)), "y": int(hq.get("y", 0)) },
+		"own_units": own,
+		"enemy_units": enemy,
+		"enemy_buildings": [],
+		"own_economy": _resources(owner),
+		"enemy_economy": 0,
+		"own_army": own.size(),
+		"enemy_army": enemy.size(),
+	}
 
 # --- Save / load ------------------------------------------------------------
 # State lives entirely in world_state (section "strategic_ai"), so module-level

@@ -1,0 +1,47 @@
+{
+  "id": "frontier",
+  "name": "Frontier",
+  "version": "1.0.0",
+  "author": "Project Nexus Team",
+  "description": "The Frontier total-conversion mod: a real multi-tier tech tree, 12 new units (two resources: gold + energy), 12 new buildings including watchtowers and walls, and three full-map scenarios. Adds a complete playable game on top of Project Nexus. Enabled by default.",
+  "enabled": true,
+  "load_after": [],
+  "provides": {
+    "units": [
+      "data/units/fr_militia.json",
+      "data/units/fr_scout.json",
+      "data/units/fr_spearman.json",
+      "data/units/fr_archer.json",
+      "data/units/fr_rider.json",
+      "data/units/fr_mage.json",
+      "data/units/fr_priest.json",
+      "data/units/fr_lancer.json",
+      "data/units/fr_ballista.json",
+      "data/units/fr_catapult.json",
+      "data/units/fr_paladin.json",
+      "data/units/fr_wyvern.json"
+    ],
+    "buildings": [
+      "data/buildings/fr_citadel.json",
+      "data/buildings/fr_barracks.json",
+      "data/buildings/fr_lumber_mill.json",
+      "data/buildings/fr_watchtower.json",
+      "data/buildings/fr_wall.json",
+      "data/buildings/fr_power_well.json",
+      "data/buildings/fr_stable.json",
+      "data/buildings/fr_academy.json",
+      "data/buildings/fr_workshop.json",
+      "data/buildings/fr_sanctum.json",
+      "data/buildings/fr_cannon_tower.json",
+      "data/buildings/fr_dragon_roost.json"
+    ],
+    "tech": [
+      "data/tech/frontier_tech.json"
+    ],
+    "scenarios": [
+      "data/scenarios/fr_river_valley.json",
+      "data/scenarios/fr_four_realms.json",
+      "data/scenarios/fr_border_siege.json"
+    ]
+  }
+}

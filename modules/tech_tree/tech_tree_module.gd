@@ -120,6 +120,15 @@ func research_blocked_reason(owner: int, node_id: String) -> String:
 	for req in node.get("requires", []):
 		if not is_researched(owner, str(req)):
 			return "missing_prerequisite"
+	# T006 WP1: building prerequisites ("requires_buildings") in addition to the
+	# tech prerequisites. A missing completed building blocks research (check C15).
+	var req_buildings: Array = node.get("requires_buildings", [])
+	if not req_buildings.is_empty():
+		var completed: Array = PrereqUtil.owner_completed_building_types(
+			nexus.world_state.get_section("buildings").get("list", {}), owner)
+		for rb in req_buildings:
+			if not completed.has(str(rb)):
+				return "missing_prerequisite"
 	return ""
 
 

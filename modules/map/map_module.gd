@@ -29,6 +29,9 @@ const SECTION: String = "map"
 const TERRAIN_GROUND: int = 0
 const TERRAIN_WALL: int = 1
 const TERRAIN_WATER: int = 2
+# T006 WP1: forest. Not walkable and not buildable (like rock/wall), but it is a
+# distinct terrain id so the renderer/minimap can draw real tree art.
+const TERRAIN_FOREST: int = 3
 
 # Default grid dimensions if no scenario configures the map.
 var _width: int = 0

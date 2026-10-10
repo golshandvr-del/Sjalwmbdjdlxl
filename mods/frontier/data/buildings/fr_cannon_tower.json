@@ -1,0 +1,29 @@
+{
+  "id": "fr_cannon_tower",
+  "display_name_key": "building.fr_cannon_tower.name",
+  "stats": {
+    "health": 700,
+    "vision_range": 7,
+    "attack_damage": 30,
+    "attack_range": 6
+  },
+  "produces": {},
+  "buildable_units": [],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "cost": {
+    "resource_basic": 340
+  },
+  "build_time_ticks": 120,
+  "requires": {
+    "buildings": [
+      "fr_workshop",
+      "fr_watchtower"
+    ]
+  },
+  "attack_cooldown_ticks": 8
+}

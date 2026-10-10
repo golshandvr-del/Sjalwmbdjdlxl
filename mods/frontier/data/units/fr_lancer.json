@@ -1,0 +1,27 @@
+{
+  "id": "fr_lancer",
+  "display_name_key": "unit.fr_lancer.name",
+  "category": "cavalry",
+  "stats": {
+    "health": 170,
+    "move_speed": 2,
+    "attack_damage": 20,
+    "attack_range": 1,
+    "vision_range": 5
+  },
+  "cost": {
+    "resource_basic": 90
+  },
+  "build_time_ticks": 105,
+  "visual": {
+    "shape": "diamond",
+    "color": "#D07F7F",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "requires": {
+    "tech": [
+      "fr_tech_lancer_training"
+    ]
+  }
+}

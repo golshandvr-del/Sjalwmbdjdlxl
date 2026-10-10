@@ -1,0 +1,22 @@
+{
+  "id": "fr_archer",
+  "display_name_key": "unit.fr_archer.name",
+  "category": "ranged",
+  "stats": {
+    "health": 65,
+    "move_speed": 2,
+    "attack_damage": 12,
+    "attack_range": 3,
+    "vision_range": 6
+  },
+  "cost": {
+    "resource_basic": 50
+  },
+  "build_time_ticks": 85,
+  "visual": {
+    "shape": "triangle",
+    "color": "#C8B36F",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

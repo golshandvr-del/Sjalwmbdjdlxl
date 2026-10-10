@@ -57,6 +57,8 @@ const GESTURE_PAN_SPEED: float = 40.0
 var _loc: Localization = Localization.new()
 var _selected_unit_ids: Array = []
 var _local_hq_id: int = -1
+var _build_menu: PopupMenu = null
+var _produce_menu: PopupMenu = null
 
 # Box-select drag state.
 var _dragging: bool = false
@@ -483,9 +485,11 @@ func _refresh_top_bar() -> void:
 	var units_module: Object = Nexus.get_module("units")
 	if units_module == null:
 		return
-	var economy: Object = Nexus.get_module("economy")
-	var gold: int = economy.get_resource(LOCAL_PLAYER, "resource_basic") if economy != null else 0
-	_resource_label.text = "%s: %d" % [_loc.t("ui.game.resources"), gold]
+	var lines: Array = HudLogicUtil.resource_lines(_local_wallet())
+	var parts: Array = []
+	for l in lines:
+		parts.append("%s: %d" % [_loc.t("resource.%s.name" % str(l["id"])), int(l["amount"])])
+	_resource_label.text = "  ".join(parts)
 	var paused: bool = Nexus.sim_clock.is_paused()
 	var units: int = units_module.count()
 	var tech: Object = Nexus.get_module("tech_tree")
@@ -738,11 +742,8 @@ func _on_pause_pressed() -> void:
 
 
 func _on_build_pressed() -> void:
-	Nexus.player_command("build_unit", {
-		"owner": LOCAL_PLAYER,
-		"building_id": _local_hq_id,
-		"unit_type": "soldier",
-	}, 1)
+	# T006 WP6: open the prerequisite-aware build menu (shared HudLogicUtil logic).
+	_show_build_menu()
 
 
 func _on_speed_pressed() -> void:
@@ -859,3 +860,134 @@ func _get_meta_locale() -> String:
 
 func _has_nexus() -> bool:
 	return get_node_or_null("/root/Nexus") != null
+
+# --- T006 WP6: player build/production menus (shared logic in HudLogicUtil) --
+
+const T006_PRODUCE_ACTION: int = 100000
+
+
+func _local_wallet() -> Dictionary:
+	var economy: Object = Nexus.get_module("economy")
+	if economy == null:
+		return {}
+	economy.ensure_player(LOCAL_PLAYER)
+	return (Nexus.world_state.get_section("economy").get("players", {}).get(str(LOCAL_PLAYER), {}) as Dictionary)
+
+
+func _completed_building_types() -> Array:
+	var buildings: Dictionary = Nexus.world_state.get_section("buildings").get("list", {})
+	return PrereqUtil.owner_completed_building_types(buildings, LOCAL_PLAYER)
+
+
+func _researched_techs() -> Array:
+	var tech: Object = Nexus.get_module("tech_tree")
+	if tech == null:
+		return []
+	tech.ensure_player(LOCAL_PLAYER)
+	return (Nexus.world_state.get_section("tech").get("players", {}).get(str(LOCAL_PLAYER), {}).get("researched", []) as Array).duplicate()
+
+
+func _catalog_label(kind: String, id: String) -> String:
+	var entry: Dictionary = Nexus.data_loader.get_catalog(kind).get(id, {})
+	var key: String = str(entry.get("display_name_key", ""))
+	return _loc.t(key) if key != "" else id
+
+
+func _ensure_menu(menu: PopupMenu, node_name: String, handler: Callable) -> PopupMenu:
+	if menu != null:
+		return menu
+	var created: PopupMenu = PopupMenu.new()
+	created.name = node_name
+	add_child(created)
+	created.id_pressed.connect(handler)
+	return created
+
+
+func _show_build_menu() -> void:
+	_build_menu = _ensure_menu(_build_menu, "T006BuildMenu", _on_build_menu_selected)
+	_build_menu.clear()
+	var entries: Array = HudLogicUtil.building_menu(
+		Nexus.data_loader.get_catalog("buildings"), _completed_building_types(), _researched_techs(), _local_wallet())
+	for i in range(entries.size()):
+		var e: Dictionary = entries[i]
+		_build_menu.add_item(_catalog_label("buildings", str(e["id"])), i)
+		_build_menu.set_item_disabled(i, not bool(e["affordable"]) or not (e["missing"] as Array).is_empty())
+	_build_menu.add_separator()
+	_build_menu.add_item("Produce units", T006_PRODUCE_ACTION)
+	_build_menu.position = Vector2i(get_viewport().get_mouse_position())
+	_build_menu.popup()
+
+
+func _show_production_menu() -> void:
+	_produce_menu = _ensure_menu(_produce_menu, "T006ProduceMenu", _on_produce_menu_selected)
+	_produce_menu.clear()
+	var buildings: Object = Nexus.get_module("buildings")
+	if buildings == null or _local_hq_id < 0:
+		return
+	var hq: Dictionary = buildings.get_building(_local_hq_id)
+	var entries: Array = HudLogicUtil.production_menu(
+		hq, Nexus.data_loader.get_catalog("units"), _completed_building_types(), _researched_techs(), _local_wallet())
+	for i in range(entries.size()):
+		var e: Dictionary = entries[i]
+		_produce_menu.add_item(_catalog_label("units", str(e["id"])), i)
+		_produce_menu.set_item_disabled(i, not bool(e["affordable"]) or not (e["missing"] as Array).is_empty())
+	_produce_menu.position = Vector2i(get_viewport().get_mouse_position())
+	_produce_menu.popup()
+
+
+func _on_build_menu_selected(id: int) -> void:
+	if id == T006_PRODUCE_ACTION:
+		_show_production_menu()
+		return
+	var entries: Array = HudLogicUtil.building_menu(
+		Nexus.data_loader.get_catalog("buildings"), _completed_building_types(), _researched_techs(), _local_wallet())
+	if id < 0 or id >= entries.size():
+		return
+	var spot: Vector2i = _find_build_spot()
+	Nexus.player_command("build_building", {
+		"type": str(entries[id]["id"]),
+		"owner": LOCAL_PLAYER,
+		"x": spot.x,
+		"y": spot.y,
+	}, 1)
+
+
+func _on_produce_menu_selected(id: int) -> void:
+	var buildings: Object = Nexus.get_module("buildings")
+	if buildings == null or _local_hq_id < 0:
+		return
+	var hq: Dictionary = buildings.get_building(_local_hq_id)
+	var entries: Array = HudLogicUtil.production_menu(
+		hq, Nexus.data_loader.get_catalog("units"), _completed_building_types(), _researched_techs(), _local_wallet())
+	if id < 0 or id >= entries.size():
+		return
+	Nexus.player_command("build_unit", {
+		"owner": LOCAL_PLAYER,
+		"building_id": _local_hq_id,
+		"unit_type": str(entries[id]["id"]),
+	}, 1)
+
+
+func _find_build_spot() -> Vector2i:
+	var map: Object = Nexus.get_module("map")
+	var buildings: Object = Nexus.get_module("buildings")
+	var origin: Vector2i = Vector2i(0, 0)
+	if buildings != null and _local_hq_id >= 0:
+		var hq: Dictionary = buildings.get_building(_local_hq_id)
+		origin = Vector2i(int(hq.get("x", 0)), int(hq.get("y", 0)))
+	var list: Dictionary = Nexus.world_state.get_section("buildings").get("list", {})
+	var used: Dictionary = {}
+	for k in list.keys():
+		used[Vector2i(int(list[k]["x"]), int(list[k]["y"]))] = true
+	for r in range(1, 14):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if abs(dx) != r and abs(dy) != r:
+					continue
+				var p: Vector2i = origin + Vector2i(dx, dy)
+				if used.has(p):
+					continue
+				if map != null and not map.is_walkable(p.x, p.y):
+					continue
+				return p
+	return origin

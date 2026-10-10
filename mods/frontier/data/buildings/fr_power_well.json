@@ -1,0 +1,27 @@
+{
+  "id": "fr_power_well",
+  "display_name_key": "building.fr_power_well.name",
+  "stats": {
+    "health": 450,
+    "vision_range": 7
+  },
+  "produces": {
+    "resource_energy": 10
+  },
+  "buildable_units": [],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "cost": {
+    "resource_basic": 160
+  },
+  "build_time_ticks": 80,
+  "requires": {
+    "buildings": [
+      "fr_lumber_mill"
+    ]
+  }
+}

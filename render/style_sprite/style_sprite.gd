@@ -31,6 +31,7 @@ extends RefCounted
 const COLOR_GROUND: Color = Color(0.16, 0.20, 0.16, 1.0)
 const COLOR_WALL: Color = Color(0.32, 0.30, 0.28, 1.0)
 const COLOR_WATER: Color = Color(0.12, 0.22, 0.38, 1.0)
+const COLOR_FOREST: Color = Color(0.14, 0.30, 0.15, 1.0)
 const COLOR_GRID: Color = Color(0.0, 0.0, 0.0, 0.18)
 
 const OWNER_COLORS: Array = [
@@ -66,9 +67,10 @@ const TERRAIN_TEXTURES: Dictionary = {
 	0: "textures/ground.png",
 	1: "textures/wall.png",
 	2: "textures/water.png",
+	3: "textures/forest.png",
 }
 
-func draw_tile(canvas, rect: Rect2, terrain_id: int) -> void:
+func draw_tile(canvas, rect: Rect2, terrain_id: int, x: int = 0, y: int = 0) -> void:
 	var tex_path: String = str(TERRAIN_TEXTURES.get(terrain_id, TERRAIN_TEXTURES[0]))
 	if texture_service != null and texture_service.has_texture(tex_path):
 		var tex: Texture2D = texture_service.get_texture(tex_path)
@@ -82,9 +84,20 @@ func draw_tile(canvas, rect: Rect2, terrain_id: int) -> void:
 			color = COLOR_WALL
 		2:
 			color = COLOR_WATER
+		3:
+			color = COLOR_FOREST
 		_:
 			color = COLOR_GROUND
+	if terrain_id == 0:
+		var v: float = float(((x * 73856093) ^ (y * 19349663)) & 7) / 7.0
+		color = COLOR_GROUND.lerp(Color(0.21, 0.28, 0.19, 1.0), v)
 	canvas.draw_rect(rect, color, true)
+	if terrain_id == 3:
+		for i in range(3):
+			var fx: float = float((x * 31 + y * 17 + i * 13) % 5) / 5.0
+			var fy: float = float((x * 19 + y * 41 + i * 7) % 5) / 5.0
+			var p: Vector2 = rect.position + Vector2(rect.size.x * (0.15 + fx * 0.6), rect.size.y * (0.15 + fy * 0.6))
+			canvas.draw_circle(p, rect.size.x * 0.14, Color(0.09, 0.22, 0.10, 1.0))
 	canvas.draw_rect(rect, COLOR_GRID, false, 1.0)
 
 

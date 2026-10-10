@@ -1,0 +1,23 @@
+{
+  "id": "fr_mage",
+  "display_name_key": "unit.fr_mage.name",
+  "category": "magic",
+  "stats": {
+    "health": 60,
+    "move_speed": 2,
+    "attack_damage": 24,
+    "attack_range": 3,
+    "vision_range": 6
+  },
+  "cost": {
+    "resource_basic": 40,
+    "resource_energy": 30
+  },
+  "build_time_ticks": 80,
+  "visual": {
+    "shape": "circle",
+    "color": "#B07FD8",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

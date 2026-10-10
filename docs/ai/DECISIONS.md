@@ -73,3 +73,49 @@ Every scenario in `data/scenarios/` must (a) produce identical hashes on two fre
 300-tick runs, (b) survive save@150 -> JSON -> load -> +150 bit-identically, and the
 four-player scenario must stay in sync across four lockstep peers. New shipped
 scenarios are covered automatically (the test enumerates the catalog).
+
+## DEC-017 T006 WP0 pathing performance + fog-less viewer belief (vanilla goldens)
+`core/path_service.gd` uses a binary-heap open set with an identical pop order, and
+`core/belief_grid_util.gd` treats a viewer that owns no fog grid as having full
+knowledge. Together these cut A* cost and stop AI players (never fog viewers) from
+planning through walls and replanning every tick. The vanilla 600-tick hashes after
+WP0 are the A1 goldens: `skirmish_basic 853235305436049241`,
+`skirmish_duel -4480766952479341591`, `skirmish_four_corners -1523216689346447094`.
+
+## DEC-018 T006 prerequisite/rules/terrain/defensive-building contracts + frontier mod
+General, data-driven engine features (no mod special-casing):
+- `core/prereq_util.gd` (`PrereqUtil`) is the single prerequisite checker. Buildings
+  and units carry `requires { buildings, tech }`; tech nodes carry
+  `requires_buildings`. Every rejection happens BEFORE spending/placing/queueing and
+  emits the owning module's `*_rejected` event with `reason: "missing_prerequisite"`.
+- `build_unit` honours the producing building's `buildable_units`, not only the HQ.
+- `MapModule.TERRAIN_FOREST = 3` (blocked like rock); scenario `map.rows` accepts
+  ASCII `. # ~ T`; scenario `hq_type` and `rules { pop_cap, full_ai, faction_prefix }`
+  are opt-in and stored in the `scenario` / `rules` world-state sections. Vanilla
+  scenarios never get a `rules` section, so their hash is unchanged.
+- Defensive buildings (`stats.attack_damage > 0`) fire via the combat module with
+  `combat.attack.attacker_kind = "building"`, respecting diplomacy/teams. Only such
+  archetypes add the extra attack fields to their record; other buildings keep the
+  13-key shape.
+- `counts_for_survival: false` (walls) is ignored by the victory "still alive" test.
+- `mods/frontier/` is the first total-conversion mod: 12 units, 12 buildings, a
+  10-node tech tree, defensive towers/walls, a second resource (`resource_energy`)
+  and three natural-map scenarios. The `rules.full_ai` strategic AI plays the whole
+  tree through the pure `FullTreeOrderUtil`; without `full_ai` the AI is unchanged.
+- Objective judge: `tests/acceptance/t006_acceptance.gd` (read-only, 148 checks),
+  wired into CI as gate G7.
+
+
+## DEC-019 Personality-driven full-tree AI (T006B WP2)
+When `rules.full_ai` is set, each AI personality drives its own full-tree plan
+from a single data table, `FullTreeOrderUtil.PERSONALITY_PLAN`: a building-priority
+list (`build_bias`), a build-avoid list (`build_avoid`), a unit-mix preference
+(`unit_bias`) and an attack-army threshold (`full_tree_army_size`). A 4th
+personality, `"defensive"`, fortifies first (watchtower/wall/cannon tower) and
+masses the largest army; `"aggressive"` skips static defenses and pushes earliest;
+`"economic"` favours economy buildings and late units. The table is data, not
+branching code, and stays deterministic (no RNG). Full-tree AIs also hold their
+all-in until `FULL_TREE_MIN_ATTACK_TICK` so the tree is actually played before the
+duel resolves (T006B WP3). Vanilla behaviour is untouched: every change is gated
+by `rules.full_ai`.
+

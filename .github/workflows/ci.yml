@@ -23,7 +23,7 @@ jobs:
   gates:
     name: G1-G4 headless gates (Godot 4.7.2)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -48,6 +48,7 @@ jobs:
         run: |
           godot --headless --path . --script res://tests/test_runner.gd 2>&1 | tee /tmp/test.log
           grep -E "^Total: [0-9]+ +Passed: [0-9]+ +Failed: 0" /tmp/test.log
+          if grep -E "SCRIPT ERROR" /tmp/test.log; then exit 1; fi
 
       - name: G3 scene smoke
         run: |
@@ -66,6 +67,16 @@ jobs:
           mkdir -p /tmp/packrun
           (cd /tmp/packrun && godot --headless --main-pack /tmp/nexus.pck --quit-after 300 2>&1 | tee /tmp/pack.log)
           if grep -E "SCRIPT ERROR|ERROR: Failed to load" /tmp/pack.log; then exit 1; fi
+
+      - name: G7 T006 acceptance
+        run: |
+          godot --headless --path . --script res://tests/acceptance/t006_acceptance.gd 2>&1 | tee /tmp/t006.log
+          grep -E "^T006_SUMMARY pass=[0-9]+ fail=0$" /tmp/t006.log
+
+      - name: G8 T006B acceptance
+        run: |
+          godot --headless --path . --script res://tests/acceptance/t006b_acceptance.gd 2>&1 | tee /tmp/t006b.log
+          grep -E "^T006B_SUMMARY pass=[0-9]+ fail=0$" /tmp/t006b.log
 
       - name: G5 Godot must not dirty the tree (uid/import policy, DEC-007)
         run: |

@@ -1,0 +1,22 @@
+{
+  "id": "fr_spearman",
+  "display_name_key": "unit.fr_spearman.name",
+  "category": "infantry",
+  "stats": {
+    "health": 120,
+    "move_speed": 2,
+    "attack_damage": 9,
+    "attack_range": 1,
+    "vision_range": 4
+  },
+  "cost": {
+    "resource_basic": 45
+  },
+  "build_time_ticks": 82,
+  "visual": {
+    "shape": "square",
+    "color": "#6F8FBF",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

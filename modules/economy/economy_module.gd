@@ -166,6 +166,22 @@ func _handle_build_unit(data: Dictionary) -> void:
 	if not (building.get("buildable_units", []) as Array).has(unit_type):
 		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "not_buildable_here" })
 		return
+	# T006 WP1: unit prerequisites -- reject BEFORE spending (check C14).
+	var requires: Variant = a.get("requires", {})
+	if requires is Dictionary and not (requires as Dictionary).is_empty():
+		var completed: Array = PrereqUtil.owner_completed_building_types(
+			nexus.world_state.get_section("buildings").get("list", {}), owner)
+		var researched: Array = nexus.world_state.get_section("tech").get("players", {}).get(str(owner), {}).get("researched", [])
+		var missing: Array = PrereqUtil.missing(requires, completed, researched)
+		if not missing.is_empty():
+			nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "missing_prerequisite", "unit_type": unit_type, "missing": missing })
+			return
+	# T006 WP1: rules.pop_cap -- alive units + queued items at the cap rejects
+	# production (check C21). Vanilla scenarios have no "rules" section, so this
+	# is a no-op for them.
+	if PopCapUtil.at_cap(nexus, owner):
+		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "pop_cap" })
+		return
 	var cost: Dictionary = a.get("cost", {})
 	var build_time: int = int(a.get("build_time_ticks", 60))
 	if not try_spend(owner, cost):

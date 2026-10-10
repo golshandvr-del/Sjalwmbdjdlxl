@@ -106,12 +106,30 @@ func on_tick(_delta_tick: int) -> void:
 
 func _think_for_player(owner: int, diff: Dictionary) -> void:
 	_manage_economy(owner, diff)
+	# T006 WP4: in a rules.full_ai scenario the high-level strategic brain owns army
+	# movement (mass, then one coordinated push); the tactical commander would
+	# otherwise trickle every idle unit forward and turn the match into a rush.
+	if _full_ai_enabled():
+		return
 	_manage_offense(owner, diff)
+
+
+# T006 WP4: true when the scenario opted into full-tree strategic AI. Reads the
+# "rules" section WITHOUT creating it (get_section() would add a section to
+# vanilla matches and change the world hash).
+func _full_ai_enabled() -> bool:
+	if not nexus.world_state.has_section("rules"):
+		return false
+	return bool(nexus.world_state.get_section("rules").get("full_ai", false))
 
 
 # --- Economy: queue soldiers at the AI HQ -----------------------------------
 
 func _manage_economy(owner: int, diff: Dictionary) -> void:
+	# T006B WP2: stop ordering at the scenario pop_cap -- the economy module would
+	# reject every order past the cap, turning the AI into rejection spam (F07).
+	if PopCapUtil.at_cap(nexus, owner):
+		return
 	# Deterministic "chance": use the tick + owner as a stable pseudo-roll so
 	# the decision is reproducible (no real RNG -> lockstep safe).
 	var roll: int = (int(nexus.world_state.current_tick) * 31 + owner * 7) % 100

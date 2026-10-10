@@ -1,0 +1,27 @@
+{
+  "id": "fr_lumber_mill",
+  "display_name_key": "building.fr_lumber_mill.name",
+  "stats": {
+    "health": 400,
+    "vision_range": 7
+  },
+  "produces": {
+    "resource_basic": 30
+  },
+  "buildable_units": [],
+  "visual": {
+    "shape": "square",
+    "color": "#6FA0C0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "cost": {
+    "resource_basic": 120
+  },
+  "build_time_ticks": 70,
+  "requires": {
+    "buildings": [
+      "fr_citadel"
+    ]
+  }
+}

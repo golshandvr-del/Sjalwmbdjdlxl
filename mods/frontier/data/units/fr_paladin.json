@@ -1,0 +1,28 @@
+{
+  "id": "fr_paladin",
+  "display_name_key": "unit.fr_paladin.name",
+  "category": "cavalry",
+  "stats": {
+    "health": 220,
+    "move_speed": 2,
+    "attack_damage": 18,
+    "attack_range": 1,
+    "vision_range": 6
+  },
+  "cost": {
+    "resource_basic": 120,
+    "resource_energy": 20
+  },
+  "build_time_ticks": 120,
+  "visual": {
+    "shape": "diamond",
+    "color": "#F0E0A0",
+    "size_scale": 1.0,
+    "outline": true
+  },
+  "requires": {
+    "tech": [
+      "fr_tech_holy_order"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "fr_militia",
+  "display_name_key": "unit.fr_militia.name",
+  "category": "infantry",
+  "stats": {
+    "health": 70,
+    "move_speed": 4,
+    "attack_damage": 6,
+    "attack_range": 1,
+    "vision_range": 5
+  },
+  "cost": {
+    "resource_basic": 30
+  },
+  "build_time_ticks": 75,
+  "visual": {
+    "shape": "square",
+    "color": "#8FA8C8",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

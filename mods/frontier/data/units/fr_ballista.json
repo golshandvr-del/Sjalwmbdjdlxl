@@ -1,0 +1,23 @@
+{
+  "id": "fr_ballista",
+  "display_name_key": "unit.fr_ballista.name",
+  "category": "siege",
+  "stats": {
+    "health": 85,
+    "move_speed": 1,
+    "attack_damage": 26,
+    "attack_range": 5,
+    "vision_range": 6
+  },
+  "cost": {
+    "resource_basic": 55,
+    "resource_energy": 35
+  },
+  "build_time_ticks": 87,
+  "visual": {
+    "shape": "square",
+    "color": "#A08060",
+    "size_scale": 1.0,
+    "outline": true
+  }
+}

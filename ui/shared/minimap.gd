@@ -32,6 +32,7 @@ const OWNER_COLORS: Array = [
 const NEUTRAL_COLOR: Color = Color(0.7, 0.7, 0.7)
 const GROUND_COLOR: Color = Color(0.10, 0.13, 0.10)
 const WALL_COLOR: Color = Color(0.32, 0.34, 0.40)
+const FOREST_COLOR: Color = Color(0.16, 0.34, 0.17, 1.0)
 const BORDER_COLOR: Color = Color(0.239, 0.435, 0.706)
 const CAMERA_BOX_COLOR: Color = Color(1, 1, 1, 0.85)
 
@@ -82,9 +83,14 @@ func _draw() -> void:
 	# Terrain (only draw walls as blocks; ground is the background colour).
 	var tiles: Array = map.get("tiles", [])
 	if tiles.size() >= w * h:
+		# T006 WP7: forest terrain is drawn with its own colour (was folded into
+		# the wall block), so the minimap shows natural terrain at a glance.
 		for y in range(h):
 			for x in range(w):
-				if int(tiles[y * w + x]) != 0:
+				var terr: int = int(tiles[y * w + x])
+				if terr == 3:
+					draw_rect(Rect2(Vector2(x, y) * cell, cell), FOREST_COLOR, true)
+				elif terr != 0:
 					draw_rect(Rect2(Vector2(x, y) * cell, cell), WALL_COLOR, true)
 
 	var ws: Object = _world_state()

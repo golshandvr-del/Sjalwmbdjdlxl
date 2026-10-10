@@ -1,0 +1,210 @@
+{
+  "id": "frontier_tech_tree",
+  "display_name_key": "tech.tree.frontier.name",
+  "nodes": [
+    {
+      "id": "fr_tech_woodcraft",
+      "display_name_key": "tech.fr_tech_woodcraft.name",
+      "cost": {
+        "resource_basic": 100
+      },
+      "research_time_ticks": 120,
+      "requires": [],
+      "requires_buildings": [],
+      "effects": [
+        {
+          "type": "unit_stat_add",
+          "category": "infantry",
+          "stat": "max_health",
+          "amount": 25
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_fletching",
+      "display_name_key": "tech.fr_tech_fletching.name",
+      "cost": {
+        "resource_basic": 110
+      },
+      "research_time_ticks": 130,
+      "requires": [],
+      "requires_buildings": [],
+      "effects": [
+        {
+          "type": "unit_stat_add",
+          "category": "ranged",
+          "stat": "attack_damage",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_lancer_training",
+      "display_name_key": "tech.fr_tech_lancer_training.name",
+      "cost": {
+        "resource_basic": 140
+      },
+      "research_time_ticks": 150,
+      "requires": [],
+      "requires_buildings": [
+        "fr_stable"
+      ],
+      "effects": [
+        {
+          "type": "unit_stat_add",
+          "category": "cavalry",
+          "stat": "attack_damage",
+          "amount": 6
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_fortifications",
+      "display_name_key": "tech.fr_tech_fortifications.name",
+      "cost": {
+        "resource_basic": 150
+      },
+      "research_time_ticks": 140,
+      "requires": [],
+      "requires_buildings": [
+        "fr_watchtower"
+      ],
+      "effects": [
+        {
+          "type": "unit_stat_add",
+          "category": "siege",
+          "stat": "max_health",
+          "amount": 30
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_holy_order",
+      "display_name_key": "tech.fr_tech_holy_order.name",
+      "cost": {
+        "resource_basic": 180
+      },
+      "research_time_ticks": 170,
+      "requires": [
+        "fr_tech_lancer_training"
+      ],
+      "requires_buildings": [
+        "fr_sanctum"
+      ],
+      "effects": [
+        {
+          "type": "veterancy_bonus",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_arcane_study",
+      "display_name_key": "tech.fr_tech_arcane_study.name",
+      "cost": {
+        "resource_basic": 160
+      },
+      "research_time_ticks": 160,
+      "requires": [
+        "fr_tech_woodcraft"
+      ],
+      "requires_buildings": [
+        "fr_academy"
+      ],
+      "effects": [
+        {
+          "type": "unit_stat_add",
+          "category": "magic",
+          "stat": "attack_damage",
+          "amount": 6
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_siege_engineering",
+      "display_name_key": "tech.fr_tech_siege_engineering.name",
+      "cost": {
+        "resource_basic": 200
+      },
+      "research_time_ticks": 190,
+      "requires": [
+        "fr_tech_fletching"
+      ],
+      "requires_buildings": [
+        "fr_workshop"
+      ],
+      "effects": [
+        {
+          "type": "unit_stat_add",
+          "category": "siege",
+          "stat": "attack_damage",
+          "amount": 8
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_elite_guard",
+      "display_name_key": "tech.fr_tech_elite_guard.name",
+      "cost": {
+        "resource_basic": 220
+      },
+      "research_time_ticks": 200,
+      "requires": [
+        "fr_tech_woodcraft",
+        "fr_tech_holy_order"
+      ],
+      "requires_buildings": [
+        "fr_barracks"
+      ],
+      "effects": [
+        {
+          "type": "unit_stat_add",
+          "category": "infantry",
+          "stat": "attack_damage",
+          "amount": 7
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_advanced_logistics",
+      "display_name_key": "tech.fr_tech_advanced_logistics.name",
+      "cost": {
+        "resource_basic": 190
+      },
+      "research_time_ticks": 180,
+      "requires": [
+        "fr_tech_fortifications"
+      ],
+      "requires_buildings": [
+        "fr_power_well"
+      ],
+      "effects": [
+        {
+          "type": "veterancy_bonus",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": "fr_tech_dragon_taming",
+      "display_name_key": "tech.fr_tech_dragon_taming.name",
+      "cost": {
+        "resource_basic": 260
+      },
+      "research_time_ticks": 220,
+      "requires": [
+        "fr_tech_arcane_study",
+        "fr_tech_siege_engineering"
+      ],
+      "requires_buildings": [
+        "fr_dragon_roost"
+      ],
+      "effects": [
+        {
+          "type": "veterancy_bonus",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}
