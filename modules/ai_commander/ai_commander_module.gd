@@ -126,6 +126,10 @@ func _full_ai_enabled() -> bool:
 # --- Economy: queue soldiers at the AI HQ -----------------------------------
 
 func _manage_economy(owner: int, diff: Dictionary) -> void:
+	# T006B WP2: stop ordering at the scenario pop_cap -- the economy module would
+	# reject every order past the cap, turning the AI into rejection spam (F07).
+	if PopCapUtil.at_cap(nexus, owner):
+		return
 	# Deterministic "chance": use the tick + owner as a stable pseudo-roll so
 	# the decision is reproducible (no real RNG -> lockstep safe).
 	var roll: int = (int(nexus.world_state.current_tick) * 31 + owner * 7) % 100

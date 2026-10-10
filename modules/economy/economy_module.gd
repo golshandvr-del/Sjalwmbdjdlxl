@@ -179,8 +179,7 @@ func _handle_build_unit(data: Dictionary) -> void:
 	# T006 WP1: rules.pop_cap -- alive units + queued items at the cap rejects
 	# production (check C21). Vanilla scenarios have no "rules" section, so this
 	# is a no-op for them.
-	var pop_cap: int = _pop_cap()
-	if pop_cap > 0 and _population(owner) >= pop_cap:
+	if PopCapUtil.at_cap(nexus, owner):
 		nexus.emit_event(EVENT_BUILD_REJECTED, { "owner": owner, "reason": "pop_cap" })
 		return
 	var cost: Dictionary = a.get("cost", {})
@@ -199,36 +198,6 @@ func _handle_build_unit(data: Dictionary) -> void:
 func _building_record(building_id: int) -> Dictionary:
 	var list: Dictionary = nexus.world_state.get_section("buildings").get("list", {})
 	return list.get(str(building_id), {})
-
-
-# T006 WP1: the scenario's pop_cap rule (0 = unlimited / no rules section).
-func _pop_cap() -> int:
-	# Read WITHOUT get_section(): get_section() CREATES an empty section, which would
-	# add a "rules" section to vanilla matches and change the world hash (A1 lock).
-	if not nexus.world_state.has_section("rules"):
-		return 0
-	return int(nexus.world_state.get_section("rules").get("pop_cap", 0))
-
-
-# T006 WP1: current population of `owner` = living units + items already in that
-# owner's build queues (deterministic, sorted iteration).
-func _population(owner: int) -> int:
-	var n: int = 0
-	var units: Dictionary = nexus.world_state.get_section("units").get("list", {})
-	var ukeys: Array = units.keys()
-	ukeys.sort()
-	for key in ukeys:
-		var u: Dictionary = units[key]
-		if int(u.get("owner", -1)) == owner and int(u.get("health", 0)) > 0:
-			n += 1
-	var buildings: Dictionary = nexus.world_state.get_section("buildings").get("list", {})
-	var bkeys: Array = buildings.keys()
-	bkeys.sort()
-	for key in bkeys:
-		var b: Dictionary = buildings[key]
-		if int(b.get("owner", -1)) == owner:
-			n += (b.get("build_queue", []) as Array).size()
-	return n
 
 
 # --- Helpers / save-load ----------------------------------------------------

@@ -965,6 +965,10 @@ func _full_tree_build(owner: int, completed: Array, researched: Array, bias: Arr
 # buildings, round-robin by owner so the army is a real mix. Choice of unit is
 # data-driven (UnitCandidateUtil) restricted to the producer buildable_units.
 func _full_tree_units(owner: int, unit_bias: Array = [], build_bias: Array = [], build_avoid: Array = []) -> void:
+	# T006B WP2: never order units at the scenario pop_cap -- the economy module
+	# would reject each order, so checking here avoids rejection spam (F07).
+	if PopCapUtil.at_cap(nexus, owner):
+		return
 	var producers: Array = _production_buildings(owner)
 	if producers.is_empty():
 		return

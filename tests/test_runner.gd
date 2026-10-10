@@ -746,6 +746,7 @@ func _init() -> void:
 	test_t006b_building_order_bias_and_avoid()
 	test_t006b_defensive_building_place_returns_int_id()
 	test_t006b_full_tree_ai_uses_personality_bias()
+	test_t006b_pop_cap_util()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -13448,6 +13449,19 @@ func test_t006b_defensive_building_place_returns_int_id() -> void:
 	_check(new_id >= 0, "T006B place_building returns a usable int id (%d)" % new_id)
 	var placed: Dictionary = _t006_buildings(n).get(str(new_id), {})
 	_check(placed.has("attack_damage"), "T006B the placed tower record carries attack_damage")
+
+
+func test_t006b_pop_cap_util() -> void:
+	print("test_t006b_pop_cap_util")
+	var n: TickHarness = _t006_harness()
+	_check(PopCapUtil.pop_cap(n) == 0, "T006B pop_cap is 0 with no rules section")
+	_check(not PopCapUtil.at_cap(n, 0), "T006B at_cap is false without a rules section")
+	PopCapUtil.population(n, 0)
+	_check(not n.world_state.has_section("rules"), "T006B PopCapUtil never creates the rules section")
+	ScenarioLoader.apply_scenario(n, _t006_flat_scenario(16, 12, 1, { "pop_cap": 1 }))
+	_check(PopCapUtil.pop_cap(n) == 1, "T006B pop_cap reads the scenario rule")
+	_check(PopCapUtil.population(n, 0) == 0, "T006B population counts living units + queued items")
+	_check(not PopCapUtil.at_cap(n, 0), "T006B at_cap is false below the scenario cap")
 
 
 func test_t006b_full_tree_ai_uses_personality_bias() -> void:

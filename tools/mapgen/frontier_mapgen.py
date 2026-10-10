@@ -474,16 +474,36 @@ def patch_scenario(sid, rows, citadels):
     print("wrote %s (%d rows)" % (path, len(rows)))
 
 
+def build_all():
+    return {
+        "fr_river_valley": build_river_valley(),
+        "fr_four_realms": build_four_realms(),
+        "fr_border_siege": build_border_siege(),
+    }
+
+
 def main():
-    rv = build_river_valley()
-    fr = build_four_realms()
-    bs = build_border_siege()
-    for name, (g, w, h, cit) in [("fr_river_valley", rv), ("fr_four_realms", fr), ("fr_border_siege", bs)]:
+    # --stdout <sid>: print that scenario's rows as JSON WITHOUT writing any file.
+    # Used by the determinism test in tests/test_runner.gd.
+    if len(sys.argv) >= 3 and sys.argv[1] == "--stdout":
+        sid = sys.argv[2]
+        grids = build_all()
+        if sid not in grids:
+            print("unknown scenario: %s" % sid, file=sys.stderr)
+            return 1
+        g, w, h, _cit = grids[sid]
+        print(json.dumps(to_rows(g, w, h)))
+        return 0
+    grids = build_all()
+    order = ["fr_river_valley", "fr_four_realms", "fr_border_siege"]
+    for name in order:
+        g, w, h, cit = grids[name]
         report(name, g, w, h, cit)
-    patch_scenario("fr_river_valley", to_rows(rv[0], rv[1], rv[2]), rv[3])
-    patch_scenario("fr_four_realms", to_rows(fr[0], fr[1], fr[2]), fr[3])
-    patch_scenario("fr_border_siege", to_rows(bs[0], bs[1], bs[2]), bs[3])
+    for name in order:
+        g, w, h, cit = grids[name]
+        patch_scenario(name, to_rows(g, w, h), cit)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

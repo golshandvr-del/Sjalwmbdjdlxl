@@ -62,7 +62,7 @@ in `test_t006_defensive_building_attack_fields`. Gates G2 now also fails on any
 Objective judges, verbatim:
 - `T006_SUMMARY pass=148 fail=0`
 - `T006B_SUMMARY pass=44 fail=0`
-- tests `Total: 4653   Passed: 4653   Failed: 0   Skipped: 0` (SCRIPT ERROR count 0)
+- tests `Total: 4659   Passed: 4659   Failed: 0   Skipped: 0` (SCRIPT ERROR count 0)
 Vanilla scenarios are unchanged (A1/A2 goldens).
 
 ## Task log
