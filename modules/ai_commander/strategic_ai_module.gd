@@ -64,12 +64,16 @@ const RULES_SECTION: String = "rules"
 # empty. Keeps the AI inside its own faction content.
 const DEFAULT_FACTION_PREFIX: String = "fr_"
 
+# T006B WP3: a full-tree AI does not commit its all-in before this tick, so it has
+# time to actually play the tree (late buildings, tech, late units) instead of
+# trading early armies in a rush. Mirror of the personality attack timing.
+const FULL_TREE_MIN_ATTACK_TICK: int = 6500
 # T006 WP4: how large an army a full-tree AI masses before it commits to a push.
 const FULL_TREE_ATTACK_ARMY: int = 30
 
 # Cap on buildings the full-tree AI tries to own (keeps placement bounded and the
 # match finite). The first N by the deterministic order are pursued.
-const FULL_TREE_BUILDING_CAP: int = 9
+const FULL_TREE_BUILDING_CAP: int = 14
 
 # How many production buildings the full-tree AI keeps a unit queue running on at
 # once (round-robin over the sorted producer ids) so its army is a real MIX.
@@ -93,6 +97,9 @@ const PERSONALITY: Dictionary = {
 	"economic":   { "attack_army_size": 6, "expansion_cap": 3, "upgrade_reserve": 300, "research_first": true },
 	"balanced":   { "attack_army_size": 4, "expansion_cap": 2, "upgrade_reserve": 250, "research_first": true },
 	"aggressive": { "attack_army_size": 3, "expansion_cap": 1, "upgrade_reserve": 400, "research_first": false },
+	# T006B WP2: the 4th personality. Masses the largest army and expands
+	# least; its building/unit priorities live in FullTreeOrderUtil.
+	"defensive":  { "attack_army_size": 8, "expansion_cap": 1, "upgrade_reserve": 350, "research_first": true },
 }
 
 # Research order the AI prefers (cheapest / highest value first). The actual
@@ -433,13 +440,21 @@ func _plan_army_posture(owner: int, personality: Dictionary) -> void:
 	# T006 WP4: a full-tree AI masses a real army before committing, so the duel is a
 	# build-up (not a rush) and the winner has had time to complete its tree.
 	if _full_ai_enabled():
-		threshold = max(threshold, FULL_TREE_ATTACK_ARMY)
+		# T006B WP2: the personality table sets how big an army must mass before
+		# the all-in, so aggressive pushes sooner and defensive masses longer.
+		threshold = max(threshold, FullTreeOrderUtil.full_tree_army_size(_personality_name(owner)))
 	var army: Array = _combat_units(owner)
 	var section: Dictionary = nexus.world_state.get_section(SECTION)
 	var posture_map: Dictionary = section["posture"]
 
 	var under_threat: bool = _enemy_near_base(owner)
 	var ready_to_attack: bool = army.size() >= threshold
+	# T006B WP3: full-tree AIs hold the push until the tree has matured, so the
+	# duel is a build-up that reaches the late buildings/units (and lasts long
+	# enough for them to matter). Vanilla AIs are unaffected.
+	if _full_ai_enabled() and int(nexus.world_state.current_tick) < FULL_TREE_MIN_ATTACK_TICK:
+		ready_to_attack = false
+		under_threat = false
 
 	if ready_to_attack or under_threat:
 		posture_map[str(owner)] = "attack"
@@ -890,9 +905,17 @@ func _all_tech_nodes() -> Dictionary:
 func _plan_full_tree(owner: int) -> void:
 	var completed: Array = _completed_types(owner)
 	var researched: Array = _researched_ids(owner)
+	# T006B WP2: the flexible personality table (FullTreeOrderUtil.PERSONALITY_PLAN)
+	# biases building priority and unit mix without any branching code here.
+	var name: String = _personality_name(owner)
 	_full_tree_research(owner, completed, researched)
-	_full_tree_build(owner, completed, researched)
-	_full_tree_units(owner)
+	_full_tree_build(owner, completed, researched, FullTreeOrderUtil.build_bias(name), FullTreeOrderUtil.build_avoid(name))
+	_full_tree_units(owner, FullTreeOrderUtil.unit_bias(name), FullTreeOrderUtil.build_bias(name), FullTreeOrderUtil.build_avoid(name))
+
+
+# T006B WP2: the effective personality name for an owner ("balanced" default).
+func _personality_name(owner: int) -> String:
+	return str(nexus.world_state.get_section(SECTION).get("controlled", {}).get(str(owner), "balanced"))
 
 
 func _full_tree_research(owner: int, completed: Array, researched: Array) -> void:
@@ -908,11 +931,11 @@ func _full_tree_research(owner: int, completed: Array, researched: Array) -> voi
 			return
 
 
-func _full_tree_build(owner: int, completed: Array, researched: Array) -> void:
+func _full_tree_build(owner: int, completed: Array, researched: Array, bias: Array = [], avoid: Array = []) -> void:
 	if completed.size() >= FULL_TREE_BUILDING_CAP:
 		return
 	var catalog: Dictionary = nexus.data_loader.get_catalog("buildings")
-	var order: Array = FullTreeOrderUtil.building_order(catalog, _faction_prefix(), completed, researched)
+	var order: Array = FullTreeOrderUtil.building_order(catalog, _faction_prefix(), completed, researched, bias, avoid)
 	if order.is_empty():
 		return
 	var hq: Dictionary = _find_hq(owner)
@@ -941,7 +964,7 @@ func _full_tree_build(owner: int, completed: Array, researched: Array) -> void:
 # Keep a unit queue running on up to FULL_TREE_PRODUCER_FANOUT production
 # buildings, round-robin by owner so the army is a real mix. Choice of unit is
 # data-driven (UnitCandidateUtil) restricted to the producer buildable_units.
-func _full_tree_units(owner: int) -> void:
+func _full_tree_units(owner: int, unit_bias: Array = [], build_bias: Array = [], build_avoid: Array = []) -> void:
 	var producers: Array = _production_buildings(owner)
 	if producers.is_empty():
 		return
@@ -956,7 +979,7 @@ func _full_tree_units(owner: int) -> void:
 	# production never stalls behind an expensive tier.
 	var reserve: int = 0
 	if completed.size() < FULL_TREE_BUILDING_CAP:
-		reserve = min(_next_building_cost(owner, completed, researched), FULL_TREE_UNIT_RESERVE_CAP)
+		reserve = min(_next_building_cost(owner, completed, researched, build_bias, build_avoid), FULL_TREE_UNIT_RESERVE_CAP)
 	# Unit types the owner has already fielded (or has queued): used to prefer a
 	# NEW type from each producer so the army is a real mix, not one unit spam.
 	var fielded: Dictionary = _fielded_unit_types(owner)
@@ -984,7 +1007,9 @@ func _full_tree_units(owner: int) -> void:
 			allowed.append(uid_s)
 		if allowed.is_empty():
 			continue
-		allowed.sort()
+		# T006B WP2: order the buildable types by the personality's unit bias, so
+		# each personality fields a different mix from the same building.
+		_sort_by_bias(allowed, unit_bias)
 		var queue: Array = b.get("build_queue", [])
 		if queue.size() >= 1:
 			used += 1
@@ -1036,9 +1061,9 @@ func _gold(owner: int) -> int:
 
 
 # Total gold cost of the next reachable building (0 when the tree is done/blocked).
-func _next_building_cost(owner: int, completed: Array, researched: Array) -> int:
+func _next_building_cost(owner: int, completed: Array, researched: Array, bias: Array = [], avoid: Array = []) -> int:
 	var catalog: Dictionary = nexus.data_loader.get_catalog("buildings")
-	var order: Array = FullTreeOrderUtil.building_order(catalog, _faction_prefix(), completed, researched)
+	var order: Array = FullTreeOrderUtil.building_order(catalog, _faction_prefix(), completed, researched, bias, avoid)
 	if order.is_empty():
 		return 0
 	return FullTreeOrderUtil.total_cost(catalog.get(order[0], {}))
@@ -1059,7 +1084,36 @@ func _production_buildings(owner: int) -> Array:
 		if (b.get("buildable_units", []) as Array).is_empty():
 			continue
 		out.append(b)
+	# T006B WP2: once real producers exist, drop the HQ from the unit queue. The
+	# citadel builds militia/scout, and letting it spam adds the SAME type for every
+	# personality, flattening the unit mix the personality table is meant to vary.
+	# Early game (HQ is the only producer) it still produces, so nobody stalls.
+	if out.size() > 1:
+		var hq: Dictionary = _find_hq(owner)
+		var hq_id: int = int(hq.get("id", -1))
+		var filtered: Array = []
+		for b2 in out:
+			if int(b2.get("id", -1)) != hq_id:
+				filtered.append(b2)
+		if not filtered.is_empty():
+			out = filtered
 	return out
+
+
+# T006B WP2: stable-sort ids so the ones listed in `bias` (in bias order) come
+# first; the rest keep their existing order. Deterministic.
+func _sort_by_bias(ids: Array, bias: Array) -> void:
+	if bias.is_empty():
+		return
+	var rank: Dictionary = {}
+	for i in range(bias.size()):
+		rank[str(bias[i])] = i
+	ids.sort_custom(func(a, b):
+		var ra: int = int(rank.get(str(a), 1 << 30))
+		var rb: int = int(rank.get(str(b), 1 << 30))
+		if ra != rb:
+			return ra < rb
+		return str(a) < str(b))
 
 
 func _full_tree_pick_unit(catalog: Dictionary, allowed: Array, owner: int, tick: int) -> String:

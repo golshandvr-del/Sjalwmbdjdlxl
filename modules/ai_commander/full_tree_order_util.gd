@@ -24,6 +24,63 @@ class_name FullTreeOrderUtil
 extends RefCounted
 
 
+# T006B WP2: personality-driven full-tree play. One data table (no branching
+# code scattered around) that each personality reads for (a) building priority,
+# (b) unit-mix preference and (c) attack timing. Ids absent from a `build_bias`
+# list keep the default (depth, cost, id) order and sort after the listed ones.
+# Everything here is static data -> deterministic, no RNG.
+const PERSONALITY_PLAN: Dictionary = {
+        "economic": {
+                "build_bias": ["fr_lumber_mill", "fr_power_well", "fr_academy", "fr_barracks", "fr_workshop", "fr_stable", "fr_sanctum", "fr_dragon_roost", "fr_cannon_tower", "fr_watchtower", "fr_wall"],
+                "unit_bias": ["fr_lancer", "fr_mage", "fr_wyvern", "fr_paladin", "fr_ballista", "fr_catapult", "fr_rider", "fr_archer", "fr_spearman", "fr_priest", "fr_militia", "fr_scout"],
+                "full_tree_army_size": 30,
+        },
+        "balanced": {
+                "build_bias": [],
+                "unit_bias": [],
+                "build_avoid": [],
+                "full_tree_army_size": 30,
+        },
+        "aggressive": {
+                "build_bias": ["fr_barracks", "fr_stable", "fr_workshop", "fr_sanctum", "fr_dragon_roost", "fr_academy", "fr_power_well", "fr_lumber_mill"],
+                "build_avoid": ["fr_watchtower", "fr_wall"],
+                "unit_bias": ["fr_catapult", "fr_ballista", "fr_lancer", "fr_rider", "fr_wyvern", "fr_paladin", "fr_mage", "fr_spearman", "fr_archer", "fr_militia", "fr_priest", "fr_scout"],
+                "full_tree_army_size": 26,
+        },
+        # T006B WP2: the new 4th personality. Masses the largest army, expands
+        # least, and fortifies first (watchtower/wall/cannon tower before economy).
+        "defensive": {
+                "build_bias": ["fr_watchtower", "fr_wall", "fr_cannon_tower", "fr_lumber_mill", "fr_power_well", "fr_barracks", "fr_academy", "fr_workshop", "fr_stable", "fr_sanctum", "fr_dragon_roost"],
+                "unit_bias": ["fr_spearman", "fr_archer", "fr_priest", "fr_rider", "fr_lancer", "fr_paladin", "fr_mage", "fr_ballista", "fr_catapult", "fr_wyvern", "fr_militia", "fr_scout"],
+                "full_tree_army_size": 36,
+        },
+}
+
+
+# The build-priority id list for a personality (empty for balanced / unknown).
+static func build_bias(personality: String) -> Array:
+        var plan: Dictionary = PERSONALITY_PLAN.get(personality, {})
+        return (plan.get("build_bias", []) as Array).duplicate()
+
+
+# Ids a personality deliberately does NOT build (empty for balanced / unknown).
+static func build_avoid(personality: String) -> Array:
+        var plan: Dictionary = PERSONALITY_PLAN.get(personality, {})
+        return (plan.get("build_avoid", []) as Array).duplicate()
+
+
+# The preferred unit ids for a personality (empty for balanced / unknown).
+static func unit_bias(personality: String) -> Array:
+        var plan: Dictionary = PERSONALITY_PLAN.get(personality, {})
+        return (plan.get("unit_bias", []) as Array).duplicate()
+
+
+# The army size at which a personality commits to its all-in push.
+static func full_tree_army_size(personality: String) -> int:
+        var plan: Dictionary = PERSONALITY_PLAN.get(personality, {})
+        return int(plan.get("full_tree_army_size", 30))
+
+
 # Sorted ids of buildings `owner` could START building right now: id has the
 # prefix, is not the HQ, is buildable, is not already completed, and every
 # prerequisite is met. Ordered by (prerequisite depth, total cost, id) so the
@@ -33,8 +90,13 @@ static func building_order(
                 catalog: Dictionary,
                 prefix: String,
                 completed: Array,
-                researched: Array) -> Array:
+                researched: Array,
+                bias: Array = [],
+                avoid: Array = []) -> Array:
         var depth: Dictionary = {}
+        var bias_rank: Dictionary = {}
+        for i in range(bias.size()):
+                bias_rank[str(bias[i])] = i
         var eligible: Array = []
         var ids: Array = catalog.keys()
         ids.sort_custom(func(a, b): return str(a) < str(b))
@@ -50,6 +112,8 @@ static func building_order(
                         continue
                 if completed.has(id):
                         continue
+                if avoid.has(id):
+                        continue
                 if not PrereqUtil.missing(e.get("requires", {}), completed, researched).is_empty():
                         continue
                 eligible.append({
@@ -57,7 +121,13 @@ static func building_order(
                         "depth": _building_depth(id, catalog, depth, 0),
                         "cost": total_cost(e),
                 })
+        # T006B WP2: biased ids come first (in bias-list order); the rest keep the
+        # default (depth, cost, id) order. An unbias-ed call is unchanged.
         eligible.sort_custom(func(a, b):
+                var ra: int = int(bias_rank.get(str(a["id"]), 1 << 30))
+                var rb: int = int(bias_rank.get(str(b["id"]), 1 << 30))
+                if ra != rb:
+                        return ra < rb
                 if int(a["depth"]) != int(b["depth"]):
                         return int(a["depth"]) < int(b["depth"])
                 if int(a["cost"]) != int(b["cost"]):
