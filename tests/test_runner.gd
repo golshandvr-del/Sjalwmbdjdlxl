@@ -740,6 +740,12 @@ func _init() -> void:
 	test_t006_localization_keys()
 	test_t006_game_smoke_references_duel()
 	test_t006_ai_duel_is_decisive()
+	test_t006b_mapgen_matches_committed_rows()
+	test_t006b_personality_table_lookup()
+	test_t006b_defensive_personality_registered()
+	test_t006b_building_order_bias_and_avoid()
+	test_t006b_defensive_building_place_returns_int_id()
+	test_t006b_full_tree_ai_uses_personality_bias()
 	_print_summary()
 	quit(0 if _failed == 0 else 1)
 
@@ -13026,10 +13032,11 @@ func test_t006_defensive_building_attack_fields() -> void:
 						tower = id
 						break
 		_check(tower != "", "T006 a fr_ defensive building exists")
-		var rec: Dictionary = n.get_module("buildings").place_building(tower, 0, 8, 7) if tower != "" else {}
-		_check(not (rec as Dictionary).is_empty(), "T006 defensive building places")
+		# place_building() returns an int building id (not a Dictionary).
+		var new_id: int = int(n.get_module("buildings").place_building(tower, 0, 8, 7)) if tower != "" else -1
+		_check(new_id >= 0, "T006 defensive building places")
 		var list: Dictionary = _t006_buildings(n)
-		var placed: Dictionary = list.get(str(rec.get("id", -1)), {}) if rec is Dictionary else {}
+		var placed: Dictionary = list.get(str(new_id), {})
 		_check(placed.has("attack_damage"), "T006 defensive building record carries attack_damage")
 
 
@@ -13354,3 +13361,109 @@ func test_t006_ai_duel_is_decisive() -> void:
 				n.run_ticks(200)
 		_check(vic.is_over() and vic.winner() >= 0, "T006 AI-vs-AI frontier duel ends with a winner (tick %d)" % n.world_state.current_tick)
 		_check(n.world_state.current_tick >= 3000, "T006 frontier duel is not a rush-over before tick 3000")
+
+
+# ============================================================================
+# T006B WP4: mapgen determinism, personality tables, defensive AI, fixed tower.
+# ============================================================================
+
+func _t006b_python_rows(sid: String) -> Array:
+	var out: Array = []
+	var code: int = OS.execute("python3", ["tools/mapgen/frontier_mapgen.py", "--stdout", sid], out, true)
+	if code != 0 or out.is_empty():
+		return []
+	var parsed: Variant = JSON.parse_string(str(out[0]).strip_edges())
+	if not (parsed is Array):
+		return []
+	var rows: Array = []
+	for r in (parsed as Array):
+		rows.append(str(r))
+	return rows
+
+
+func test_t006b_mapgen_matches_committed_rows() -> void:
+	print("test_t006b_mapgen_matches_committed_rows")
+	var n: TickHarness = _t006_harness()
+	for sid in ["fr_river_valley", "fr_four_realms", "fr_border_siege"]:
+		var sc: Variant = n.data_loader.get_entry("scenarios", sid)
+		var committed: Array = ((sc as Dictionary).get("map", {}) as Dictionary).get("rows", [])
+		var generated: Array = _t006b_python_rows(sid)
+		_check(generated.size() == committed.size(), "T006B mapgen %s regenerates the committed row count (%d == %d)" % [sid, generated.size(), committed.size()])
+		var same: bool = generated.size() == committed.size()
+		if same:
+			for i in range(committed.size()):
+				if str(generated[i]) != str(committed[i]):
+					same = false
+					break
+		_check(same, "T006B mapgen %s is deterministic and matches the committed map" % sid)
+
+
+func test_t006b_personality_table_lookup() -> void:
+	print("test_t006b_personality_table_lookup")
+	_check(FullTreeOrderUtil.PERSONALITY_PLAN.has("defensive"), "T006B personality table has the defensive entry")
+	_check(FullTreeOrderUtil.PERSONALITY_PLAN.size() == 4, "T006B personality table has exactly 4 personalities")
+	var d: Array = FullTreeOrderUtil.build_bias("defensive")
+	_check(d.size() > 0 and str(d[0]) == "fr_watchtower", "T006B defensive builds a watchtower first (%s)" % str(d))
+	var a: Array = FullTreeOrderUtil.build_avoid("aggressive")
+	_check(a.has("fr_watchtower") and a.has("fr_wall"), "T006B aggressive avoids static defenses (%s)" % str(a))
+	_check((FullTreeOrderUtil.build_bias("balanced") as Array).is_empty(), "T006B balanced has no build bias")
+	_check(FullTreeOrderUtil.unit_bias("defensive").size() > 0, "T006B defensive has a unit mix bias")
+
+
+func test_t006b_defensive_personality_registered() -> void:
+	print("test_t006b_defensive_personality_registered")
+	_check(StrategicAiModule.PERSONALITY.has("defensive"), "T006B StrategicAiModule knows the defensive personality")
+	var d: int = FullTreeOrderUtil.full_tree_army_size("defensive")
+	var a: int = FullTreeOrderUtil.full_tree_army_size("aggressive")
+	_check(d > a, "T006B defensive masses a larger army before attacking (%d > %d)" % [d, a])
+	var b: int = FullTreeOrderUtil.full_tree_army_size("balanced")
+	_check(d >= b and b >= a, "T006B attack timing is ordered defensive >= balanced >= aggressive")
+
+
+func test_t006b_building_order_bias_and_avoid() -> void:
+	print("test_t006b_building_order_bias_and_avoid")
+	var cat: Dictionary = {
+		"fr_a": { "cost": { "resource_basic": 10 } },
+		"fr_b": { "cost": { "resource_basic": 10 } },
+		"fr_c": { "cost": { "resource_basic": 10 } },
+		"v_x": { "cost": { "resource_basic": 10 } },
+	}
+	_check(FullTreeOrderUtil.building_order(cat, "fr_", [], []) == ["fr_a", "fr_b", "fr_c"], "T006B building_order default order is id-sorted")
+	_check(FullTreeOrderUtil.building_order(cat, "fr_", [], [], ["fr_c"]) == ["fr_c", "fr_a", "fr_b"], "T006B building_order honours the personality build bias")
+	_check(FullTreeOrderUtil.building_order(cat, "fr_", [], [], [], ["fr_b"]) == ["fr_a", "fr_c"], "T006B building_order honours the personality avoid list")
+	_check(FullTreeOrderUtil.building_order(cat, "", [], []) == ["fr_a", "fr_b", "fr_c", "v_x"], "T006B building_order with empty prefix keeps all ids")
+
+
+func test_t006b_defensive_building_place_returns_int_id() -> void:
+	print("test_t006b_defensive_building_place_returns_int_id")
+	var n: TickHarness = _t006_harness()
+	var blds: Dictionary = n.data_loader.get_catalog("buildings")
+	var tower: String = ""
+	for id in _t006_fr_ids(blds):
+		if int((blds[id].get("stats", {}) as Dictionary).get("attack_damage", 0)) > 0:
+			tower = id
+			break
+	_check(tower != "", "T006B a fr_ defensive building exists")
+	var new_id: int = int(n.get_module("buildings").place_building(tower, 0, 8, 7)) if tower != "" else -1
+	_check(new_id >= 0, "T006B place_building returns a usable int id (%d)" % new_id)
+	var placed: Dictionary = _t006_buildings(n).get(str(new_id), {})
+	_check(placed.has("attack_damage"), "T006B the placed tower record carries attack_damage")
+
+
+func test_t006b_full_tree_ai_uses_personality_bias() -> void:
+	print("test_t006b_full_tree_ai_uses_personality_bias")
+	var n: TickHarness = _t006_harness()
+	var sc: Variant = n.data_loader.get_entry("scenarios", "fr_four_realms")
+	if not (sc is Dictionary):
+		_check(false, "T006B fr_four_realms available")
+		return
+	var s: Dictionary = (sc as Dictionary).duplicate(true)
+	for p in s.get("players", []):
+		p["is_human"] = false
+		p["smart"] = true
+		if int(p.get("owner", -1)) == 0:
+			p["personality"] = "defensive"
+	ScenarioLoader.apply_scenario(n, s)
+	var ai: Object = n.get_module("strategic_ai")
+	_check(ai.is_controlling(0) and ai.behaviour_for(0).has("attack_army_size"), "T006B owner 0 is a strategic AI with a behaviour")
+	_check(str(n.world_state.get_section("strategic_ai").get("controlled", {}).get("0", "")) == "defensive", "T006B owner 0 personality is defensive")

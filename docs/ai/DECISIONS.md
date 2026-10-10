@@ -104,3 +104,18 @@ General, data-driven engine features (no mod special-casing):
   tree through the pure `FullTreeOrderUtil`; without `full_ai` the AI is unchanged.
 - Objective judge: `tests/acceptance/t006_acceptance.gd` (read-only, 148 checks),
   wired into CI as gate G7.
+
+
+## DEC-019 Personality-driven full-tree AI (T006B WP2)
+When `rules.full_ai` is set, each AI personality drives its own full-tree plan
+from a single data table, `FullTreeOrderUtil.PERSONALITY_PLAN`: a building-priority
+list (`build_bias`), a build-avoid list (`build_avoid`), a unit-mix preference
+(`unit_bias`) and an attack-army threshold (`full_tree_army_size`). A 4th
+personality, `"defensive"`, fortifies first (watchtower/wall/cannon tower) and
+masses the largest army; `"aggressive"` skips static defenses and pushes earliest;
+`"economic"` favours economy buildings and late units. The table is data, not
+branching code, and stays deterministic (no RNG). Full-tree AIs also hold their
+all-in until `FULL_TREE_MIN_ATTACK_TICK` so the tree is actually played before the
+duel resolves (T006B WP3). Vanilla behaviour is untouched: every change is gated
+by `rules.full_ai`.
+

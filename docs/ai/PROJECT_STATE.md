@@ -50,6 +50,21 @@ and `rules { pop_cap, full_ai, faction_prefix }`, defensive buildings, and
 Objective judge `tests/acceptance/t006_acceptance.gd` reports, verbatim:
 `T006_SUMMARY pass=148 fail=0`. Vanilla scenarios are unchanged (A1/A2 goldens).
 
+## T006B "Frontier" review fix-up (in review)
+Addresses the PR #7 review: natural (non-stamped) maps from a committed generator
+`tools/mapgen/frontier_mapgen.py` (real winding river with fords for
+`fr_river_valley`; a rock ridge with passes for `fr_border_siege`; organic
+4-fold `fr_four_realms`), personality-driven full-tree AI (DEC-019: 4th
+`defensive` personality, per-personality building/unit/attack-timing table), a
+longer late game (duel reaches the late buildings/units), and a fixed SCRIPT ERROR
+in `test_t006_defensive_building_attack_fields`. Gates G2 now also fails on any
+`SCRIPT ERROR`; CI gate G8 runs the new judge.
+Objective judges, verbatim:
+- `T006_SUMMARY pass=148 fail=0`
+- `T006B_SUMMARY pass=44 fail=0`
+- tests `Total: 4653   Passed: 4653   Failed: 0   Skipped: 0` (SCRIPT ERROR count 0)
+Vanilla scenarios are unchanged (A1/A2 goldens).
+
 ## Task log
 | ID | Title | Status | Branch | Result |
 |---|---|---|---|---|
@@ -59,6 +74,7 @@ Objective judge `tests/acceptance/t006_acceptance.gd` reports, verbatim:
 | T004 | HudLogicUtil (KI-7 part 1) + save/QA + long-run determinism tests | merged (PR #4) | claude/T004-reference | done by Claude |
 | T005 | HUD dedup part 2 + scenario determinism matrix + docs | PR open (OpenHands) | oh/T005-hud-dedup-scenarios | awaiting Claude review |
 | T006 | Frontier mod (tech tree, defenses, natural maps, full AI) | in review | oh/T006-frontier | T006_SUMMARY pass=148 fail=0 |
+| T006B | Frontier review fix-up (organic maps, personalities, late game, gates) | in review | oh/T006-frontier | T006B_SUMMARY pass=44 fail=0 |
 
 ## Candidate next tasks (Claude decides)
 - T007 Android device QA checklist (docs/ai/DEVICE_QA.md) — Claude decides.
