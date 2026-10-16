@@ -90,6 +90,7 @@ jobs:
           cat <<EOF > ~/.config/godot/editor_settings-4.godot
           [export/android]
           android_sdk_path = "${ANDROID_HOME}"
+          java_sdk_path = "${JAVA_HOME}"
           debug_keystore = "${HOME}/.android/debug.keystore"
           debug_keystore_user = "androiddebugkey"
           debug_keystore_pass = "android"
