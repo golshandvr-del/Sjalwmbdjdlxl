@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, "oh/**", "claude/**" ]
+    branches: [ main ]
     tags: [ "v*" ]
   pull_request:
     branches: [ main ]
@@ -12,18 +12,48 @@ env:
   GODOT_VERSION: "4.7.2"
   GODOT_RELEASE: "stable"
 
-permissions:
-  contents: write
-
 jobs:
-  build-android:
+  build-and-verify:
     name: Build & Verify Android APK (Godot 4.7.2)
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set Version Environment Variables
+        run: |
+          VERSION=$(grep 'config/version=' project.godot | cut -d'"' -f2)
+          echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "APK_NAME=Project-Nexus-v${VERSION}-android-arm64.apk" >> $GITHUB_ENV
+
+      - name: Validate Version Alignment & Tag
+        run: |
+          PROJECT_VERSION=$(grep 'config/version=' project.godot | cut -d'"' -f2)
+          PRESET_VERSION=$(grep 'version/name=' export_presets.cfg | cut -d'"' -f2)
+
+          echo "project.godot version: $PROJECT_VERSION"
+          echo "export_presets.cfg version: $PRESET_VERSION"
+
+          if [ "$PROJECT_VERSION" != "$PRESET_VERSION" ]; then
+            echo "ERROR: project.godot version ($PROJECT_VERSION) does not match export_presets.cfg version ($PRESET_VERSION)!"
+            exit 1
+          fi
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            TAG_VERSION="${TAG_NAME#v}"
+            echo "Pushed tag: $TAG_NAME (extracted version: $TAG_VERSION)"
+
+            if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
+              echo "ERROR: Tag version ($TAG_VERSION) does not match project.godot version ($PROJECT_VERSION)!"
+              exit 1
+            fi
+            echo "Version tag matches project version successfully!"
+          fi
 
       - name: Set up Java JDK
         uses: actions/setup-java@v4
@@ -105,14 +135,14 @@ jobs:
           godot --headless --path . --script res://tests/acceptance/t006b_acceptance.gd 2>&1 | tee /tmp/t006b.log
           grep -E "^T006B_SUMMARY pass=[0-9]+ fail=0$" /tmp/t006b.log
 
-      - name: Export Android APK
+      - name: Export Android APK (Debug Mode)
         run: |
           mkdir -p build/android
-          godot --headless --path . --export-release "Android" build/android/Project-Nexus-v1.0.0-android-arm64.apk
+          godot --headless --path . --export-debug "Android" "build/android/${APK_NAME}"
 
       - name: Verify Exported APK
         run: |
-          APK_PATH="build/android/Project-Nexus-v1.0.0-android-arm64.apk"
+          APK_PATH="build/android/${APK_NAME}"
           if [ ! -f "$APK_PATH" ]; then
             echo "ERROR: APK file $APK_PATH does not exist!"
             exit 1
@@ -128,37 +158,38 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Project-Nexus-v1.0.0-android-arm64-apk
-          path: build/android/Project-Nexus-v1.0.0-android-arm64.apk
+          name: Project-Nexus-v${{ env.APP_VERSION }}-android-arm64-apk
+          path: build/android/${{ env.APK_NAME }}
 
-      - name: Validate Version Tag Match (if Tag Push)
-        if: startsWith(github.ref, 'refs/tags/v')
+  release:
+    name: Publish GitHub Release
+    needs: build-and-verify
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set Version Environment Variables
         run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          TAG_VERSION="${TAG_NAME#v}"
-          PROJECT_VERSION=$(grep 'config/version=' project.godot | cut -d'"' -f2)
-          PRESET_VERSION=$(grep 'version/name=' export_presets.cfg | cut -d'"' -f2)
+          VERSION=$(grep 'config/version=' project.godot | cut -d'"' -f2)
+          echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "APK_NAME=Project-Nexus-v${VERSION}-android-arm64.apk" >> $GITHUB_ENV
 
-          echo "Pushed tag: $TAG_NAME (extracted version: $TAG_VERSION)"
-          echo "project.godot version: $PROJECT_VERSION"
-          echo "export_presets.cfg version: $PRESET_VERSION"
-
-          if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
-            echo "ERROR: Tag version ($TAG_VERSION) does not match project.godot version ($PROJECT_VERSION)!"
-            exit 1
-          fi
-          if [ "$TAG_VERSION" != "$PRESET_VERSION" ]; then
-            echo "ERROR: Tag version ($TAG_VERSION) does not match export_presets.cfg version ($PRESET_VERSION)!"
-            exit 1
-          fi
-          echo "Version tag matches project versions successfully!"
+      - name: Download APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Project-Nexus-v${{ env.APP_VERSION }}-android-arm64-apk
+          path: build/android
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME="${GITHUB_REF#refs/tags/}"
-          gh release create "$TAG_NAME" build/android/Project-Nexus-v1.0.0-android-arm64.apk \
+          gh release create "$TAG_NAME" "build/android/${APK_NAME}" \
             --title "Project Nexus $TAG_NAME" \
             --generate-notes
