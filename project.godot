@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Project Nexus"
 config/description="A modular, open-source, cross-platform top-down 2D strategy game. Central Brain (Nexus) architecture with an Event Bus. Hybrid RTS + Turn-based via Active Pause."
-config/version="0.6.0"
+config/version="1.0.0"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
@@ -46,6 +46,8 @@ pointing/emulate_touch_from_mouse=true
 ; GUI audit: the engine default clear color is a flat grey that showed through
 ; any screen without an explicit background (e.g. Match Setup). Match the theme.
 environment/defaults/default_clear_color=Color(0.0627451, 0.0745098, 0.105882, 1)
+
+textures/vram_compression/import_etc2_astc=true
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

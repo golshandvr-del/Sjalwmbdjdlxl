@@ -67,13 +67,16 @@ echo "--> Headless test suite"
 echo "--> MA6 scene touch probe"
 "${GODOT_BIN}" --headless --path . res://tests/ma6_touch_probe.tscn
 
-# 4) Export each requested preset.
+# 4) Ensure build output directories exist.
+mkdir -p build/android build/linux build/windows build/macos
+
+# 5) Export each requested preset.
 for preset in "${PRESETS[@]}"; do
   echo "--> Exporting preset: ${preset}"
   # --export-release writes to the export_path declared in export_presets.cfg.
   if ! "${GODOT_BIN}" --headless --path . --export-release "${preset}"; then
-    echo "WARNING: export of '${preset}' failed (missing export templates or"
-    echo "         platform SDK?). See docs/RELEASE.md. Continuing."
+    echo "ERROR: export of '${preset}' failed (missing export templates or platform SDK?). See docs/RELEASE.md."
+    exit 1
   fi
 done
 
