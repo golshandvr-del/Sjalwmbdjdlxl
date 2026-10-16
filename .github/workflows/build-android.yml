@@ -73,8 +73,10 @@ jobs:
           unzip -q templates.tpz
           mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
           mkdir -p ~/.local/share/godot/templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          mkdir -p ~/.config/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
           cp -r templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
           cp -r templates/* ~/.local/share/godot/templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+          cp -r templates/* ~/.config/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
           rm -rf templates templates.tpz
 
           godot --version
