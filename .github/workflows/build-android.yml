@@ -141,6 +141,9 @@ jobs:
       - name: Export Android APK (Debug Mode)
         run: |
           mkdir -p build/android
+          TEMPLATE_DIR="${HOME}/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}"
+          sed -i "s|custom_template/debug=\"\"|custom_template/debug=\"${TEMPLATE_DIR}/android_debug.apk\"|" export_presets.cfg
+          sed -i "s|custom_template/release=\"\"|custom_template/release=\"${TEMPLATE_DIR}/android_release.apk\"|" export_presets.cfg
           godot --headless --path . --export-debug "Android" "build/android/${APK_NAME}"
 
       - name: Verify Exported APK
