@@ -47,5 +47,7 @@ pointing/emulate_touch_from_mouse=true
 ; any screen without an explicit background (e.g. Match Setup). Match the theme.
 environment/defaults/default_clear_color=Color(0.0627451, 0.0745098, 0.105882, 1)
 
+textures/vram_compression/import_etc2_astc=true
+
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

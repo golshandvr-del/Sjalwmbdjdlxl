@@ -98,6 +98,7 @@ jobs:
 
       - name: G0 import project (twice)
         run: |
+          rm -rf .godot/imported
           godot --headless --editor --quit --path . || true
           godot --headless --editor --quit --path . || true
 
