@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Project Nexus"
 config/description="A modular, open-source, cross-platform top-down 2D strategy game. Central Brain (Nexus) architecture with an Event Bus. Hybrid RTS + Turn-based via Active Pause."
-config/version="0.6.0"
+config/version="1.0.0"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"

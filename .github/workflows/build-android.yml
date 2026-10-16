@@ -1,0 +1,164 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, "oh/**", "claude/**" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_RELEASE: "stable"
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build & Verify Android APK (Godot 4.7.2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Godot Headless & Export Templates
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip" -O godot.zip
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+          rm -f godot.zip
+
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz" -O templates.tpz
+          unzip -q templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          mkdir -p ~/.local/share/godot/templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          cp -r templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+          cp -r templates/* ~/.local/share/godot/templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+          rm -rf templates templates.tpz
+
+          godot --version
+
+      - name: Configure Android SDK & Debug Keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android -keystore ~/.android/debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 9999
+
+          mkdir -p ~/.config/godot
+          cat <<EOF > ~/.config/godot/editor_settings-4.godot
+          [export/android]
+          android_sdk_path = "${ANDROID_HOME}"
+          debug_keystore = "${HOME}/.android/debug.keystore"
+          debug_keystore_user = "androiddebugkey"
+          debug_keystore_pass = "android"
+          EOF
+
+      - name: G0 import project (twice)
+        run: |
+          godot --headless --editor --quit --path . || true
+          godot --headless --editor --quit --path . || true
+
+      - name: G1 CODE_POLICY lint
+        run: godot --headless --path . --script res://tools/check_code_policy.gd
+
+      - name: G2 tests
+        run: |
+          godot --headless --path . --script res://tests/test_runner.gd 2>&1 | tee /tmp/test.log
+          grep -E "^Total: [0-9]+ +Passed: [0-9]+ +Failed: 0" /tmp/test.log
+          if grep -E "SCRIPT ERROR" /tmp/test.log; then exit 1; fi
+
+      - name: G3 scene smoke
+        run: |
+          godot --headless --path . res://tools/scene_smoke.tscn 2>&1 | tee /tmp/scene.log
+          grep -q "SCENE_SMOKE_DONE failures=0" /tmp/scene.log
+
+      - name: G4 game smoke
+        run: |
+          godot --headless --path . res://tools/game_smoke.tscn 2>&1 | tee /tmp/game.log
+          grep -q "GAME_SMOKE_DONE failures=0" /tmp/game.log
+
+      - name: G6 exported pack boots
+        run: |
+          godot --headless --path . --export-pack "Android" /tmp/nexus.pck 2>&1 | tail -3
+          test -s /tmp/nexus.pck
+          mkdir -p /tmp/packrun
+          (cd /tmp/packrun && godot --headless --main-pack /tmp/nexus.pck --quit-after 300 2>&1 | tee /tmp/pack.log)
+          if grep -E "SCRIPT ERROR|ERROR: Failed to load" /tmp/pack.log; then exit 1; fi
+
+      - name: G7 T006 acceptance
+        run: |
+          godot --headless --path . --script res://tests/acceptance/t006_acceptance.gd 2>&1 | tee /tmp/t006.log
+          grep -E "^T006_SUMMARY pass=[0-9]+ fail=0$" /tmp/t006.log
+
+      - name: G8 T006B acceptance
+        run: |
+          godot --headless --path . --script res://tests/acceptance/t006b_acceptance.gd 2>&1 | tee /tmp/t006b.log
+          grep -E "^T006B_SUMMARY pass=[0-9]+ fail=0$" /tmp/t006b.log
+
+      - name: Export Android APK
+        run: |
+          mkdir -p build/android
+          godot --headless --path . --export-release "Android" build/android/Project-Nexus-v1.0.0-android-arm64.apk
+
+      - name: Verify Exported APK
+        run: |
+          APK_PATH="build/android/Project-Nexus-v1.0.0-android-arm64.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK file $APK_PATH does not exist!"
+            exit 1
+          fi
+          if [ ! -s "$APK_PATH" ]; then
+            echo "ERROR: APK file $APK_PATH is empty (size 0)!"
+            exit 1
+          fi
+          echo "Testing APK ZIP structure..."
+          unzip -t "$APK_PATH" > /dev/null
+          echo "APK verification successful! File size: $(stat -c%s "$APK_PATH") bytes."
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project-Nexus-v1.0.0-android-arm64-apk
+          path: build/android/Project-Nexus-v1.0.0-android-arm64.apk
+
+      - name: Validate Version Tag Match (if Tag Push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG_NAME#v}"
+          PROJECT_VERSION=$(grep 'config/version=' project.godot | cut -d'"' -f2)
+          PRESET_VERSION=$(grep 'version/name=' export_presets.cfg | cut -d'"' -f2)
+
+          echo "Pushed tag: $TAG_NAME (extracted version: $TAG_VERSION)"
+          echo "project.godot version: $PROJECT_VERSION"
+          echo "export_presets.cfg version: $PRESET_VERSION"
+
+          if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
+            echo "ERROR: Tag version ($TAG_VERSION) does not match project.godot version ($PROJECT_VERSION)!"
+            exit 1
+          fi
+          if [ "$TAG_VERSION" != "$PRESET_VERSION" ]; then
+            echo "ERROR: Tag version ($TAG_VERSION) does not match export_presets.cfg version ($PRESET_VERSION)!"
+            exit 1
+          fi
+          echo "Version tag matches project versions successfully!"
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG_NAME" build/android/Project-Nexus-v1.0.0-android-arm64.apk \
+            --title "Project Nexus $TAG_NAME" \
+            --generate-notes

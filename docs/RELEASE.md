@@ -14,11 +14,20 @@ installed. Everything needed to do that reproducibly is committed here
 ## Automated Android build (CI)
 
 `.github/workflows/build-android.yml` builds an installable APK on GitHub
-Actions. It installs Godot 4.x + the export templates + the Android SDK, runs the
-same green-tree gates as `ci.yml` (CODE_POLICY lint + headless tests), generates
-a throwaway debug keystore, exports the **Android** preset (`arm64-v8a`), and
-uploads `project-nexus.apk` as a workflow artifact. It runs on demand
-(*workflow_dispatch*) and on any `v*` tag, so ordinary pushes stay fast.
+Actions. It installs Godot 4.7.2 + the export templates + Java 17 / Android SDK,
+runs the full CI quality gates (G1-G4, G6-G8), generates a debug keystore, exports
+the **Android** preset (`arm64-v8a`), and produces
+`build/android/Project-Nexus-v1.0.0-android-arm64.apk`.
+
+- **Pull requests & branch pushes:** Runs all quality gates, builds the APK, verifies
+  its ZIP structure and size, and uploads the APK as a downloadable workflow artifact.
+- **Manual dispatch (*workflow_dispatch*):** Builds and uploads the APK artifact.
+- **Tag push (`v*`, e.g. `v1.0.0`):** Validates that the tag version matches `config/version`
+  in `project.godot` and `version/name` in `export_presets.cfg`, then automatically creates
+  a GitHub Release with the APK attached.
+
+> **Signing Limitations:** CI-generated APKs are signed using a standard Android debug keystore.
+> They are intended for developer/QA sideload testing and are **not** production- or Google Play-signed.
 
 ## Content bundling (why `include_filter` matters)
 
@@ -35,7 +44,7 @@ filter or the shipped build will silently miss it.
 
 | Preset name        | Platform        | Arch          | Output (`export_path`)                  |
 |--------------------|-----------------|---------------|-----------------------------------------|
-| `Android`          | Android         | `arm64-v8a`   | `build/android/project-nexus.apk`       |
+| `Android`          | Android         | `arm64-v8a`   | `build/android/Project-Nexus-v1.0.0-android-arm64.apk` |
 | `Linux/X11`        | Linux desktop   | `x86_64`      | `build/linux/project-nexus.x86_64`      |
 | `Windows Desktop`  | Windows desktop | `x86_64`      | `build/windows/project-nexus.exe`       |
 | `macOS`            | macOS           | `universal`   | `build/macos/project-nexus.zip`         |
